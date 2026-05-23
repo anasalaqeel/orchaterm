@@ -156,7 +156,12 @@ body {
 }
 
 /* ── xterm overrides ─────────────────────────────────────────────────────── */
-/* Let xterm set its own background from the theme — no !important overrides. */
+/* Let xterm set its own background from the theme — no !important overrides.
+   Add a small padding so text doesn't press against the panel edges.         */
+
+.xterm {
+  padding: 8px;
+}
 
 .xterm-viewport {
   /* xterm sets this inline from theme.background — don't fight it */

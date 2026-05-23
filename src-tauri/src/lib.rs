@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -7,6 +8,119 @@ use std::thread;
 use portable_pty::{native_pty_system, CommandBuilder, Child, MasterPty, PtySize};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
+
+// ── Shell detection ────────────────────────────────────────────────────────────
+
+#[derive(Clone, Serialize)]
+struct ShellInfo {
+    /// Human-readable label shown in the dropdown.
+    name: String,
+    /// The executable passed to spawn_pty (bare name or absolute path).
+    path: String,
+    /// Optional extra arguments passed after the executable (e.g. ["--", "bash"]
+    /// for `wsl -- bash`).
+    args: Vec<String>,
+}
+
+/// Resolves `exe` (a bare name like "bash") to its full path by walking PATH.
+/// Returns `None` if not found.
+fn resolve_in_path(exe: &str) -> Option<std::path::PathBuf> {
+    let path_env = std::env::var("PATH").unwrap_or_default();
+    for dir in std::env::split_paths(&path_env) {
+        let candidate = dir.join(exe);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        #[cfg(target_os = "windows")]
+        for ext in &["exe", "cmd", "bat"] {
+            let with_ext = dir.join(format!("{exe}.{ext}"));
+            if with_ext.exists() {
+                return Some(with_ext);
+            }
+        }
+    }
+    None
+}
+
+/// Canonicalizes a path for deduplication — falls back to the original path
+/// string if canonicalization fails (e.g. the file doesn't exist yet).
+fn canonical_key(p: &Path) -> String {
+    std::fs::canonicalize(p)
+        .unwrap_or_else(|_| p.to_path_buf())
+        .to_string_lossy()
+        .to_lowercase()
+}
+
+
+#[tauri::command]
+fn get_available_shells() -> Vec<ShellInfo> {
+    let simple = |name: &str, path: &str| ShellInfo {
+        name: name.to_string(),
+        path: path.to_string(),
+        args: vec![],
+    };
+
+    let mut shells: Vec<ShellInfo> = Vec::new();
+    let mut seen_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut wsl_found = false;
+
+    // ── Windows shells looked up by name in PATH ─────────────────────────
+    // Do NOT include bash/zsh/fish here. On Windows, bash is always either
+    // Git Bash (found via absolute path below) or WSL bash (synthetic entry).
+    // Including it in PATH lookup creates unavoidable duplicates.
+    let named: &[(&str, &str)] = &[
+        ("PowerShell 7",   "pwsh"),
+        ("PowerShell",     "powershell"),
+        ("Command Prompt", "cmd"),
+        ("WSL",            "wsl"),
+    ];
+
+    for (label, exe) in named {
+        if let Some(full_path) = resolve_in_path(exe) {
+            let key = canonical_key(&full_path);
+            if seen_keys.contains(&key) { continue; }
+            seen_keys.insert(key);
+            if *exe == "wsl" { wsl_found = true; }
+            shells.push(simple(label, exe));
+        }
+    }
+
+    // ── Synthetic: bash inside WSL ────────────────────────────────────────
+    // Only added when wsl.exe is present. Uses `wsl -- bash` so it always
+    // opens bash regardless of what WSL's default shell is set to.
+    if wsl_found {
+        shells.push(ShellInfo {
+            name: "Git Bash (WSL)".to_string(),
+            path: "wsl".to_string(),
+            args: vec!["--".to_string(), "bash".to_string()],
+        });
+    }
+
+    // ── Git Bash via known absolute paths ────────────────────────────────
+    // bin\bash.exe sets up the correct MSYS2 environment; usr\bin\bash.exe
+    // is the raw internal binary and must not be exposed.
+    let abs: &[(&str, &str)] = &[
+        ("Git Bash",     r"C:\Program Files\Git\bin\bash.exe"),
+        ("Git Bash",     r"C:\Program Files (x86)\Git\bin\bash.exe"),
+        ("PowerShell 7", r"C:\Program Files\PowerShell\7\pwsh.exe"),
+    ];
+
+    for (label, abs_path) in abs {
+        let p = Path::new(abs_path);
+        if !p.exists() { continue; }
+        let key = canonical_key(p);
+        if seen_keys.contains(&key) { continue; }
+        seen_keys.insert(key);
+        shells.push(simple(label, abs_path));
+    }
+
+    // ── Guarantee a fallback ─────────────────────────────────────────────
+    if shells.is_empty() {
+        shells.push(simple("Command Prompt", "cmd"));
+    }
+
+    shells
+}
 
 // ── Per-session state ──────────────────────────────────────────────────────────
 // Writer is stored behind its own Arc<Mutex> so that `write_pty` only locks the
@@ -53,6 +167,8 @@ fn spawn_pty(
     cols: u16,
     rows: u16,
     shell: Option<String>,
+    // Extra args passed after the exe, e.g. ["--", "bash"] for `wsl -- bash`.
+    shell_args: Option<Vec<String>>,
     state: State<'_, PtyState>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
@@ -71,6 +187,12 @@ fn spawn_pty(
     // Build shell command — try user preference first, fallback to cmd.exe.
     let shell_to_use = shell.unwrap_or_else(|| "powershell.exe".to_string());
     let mut cmd = CommandBuilder::new(&shell_to_use);
+    // Append any extra args (e.g. ["--", "bash"] for wsl).
+    if let Some(args) = shell_args {
+        for arg in args {
+            cmd.arg(arg);
+        }
+    }
     cmd.cwd(&workspace_path);
     cmd.env("TERM", "xterm-256color");
 
@@ -246,6 +368,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
+            get_available_shells,
             spawn_pty,
             write_pty,
             resize_pty,

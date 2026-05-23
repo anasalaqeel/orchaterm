@@ -87,12 +87,16 @@ export const AgentSandbox: React.FC = () => {
     checkOllama();
   }, [settings.ollamaHost]);
 
-  // Seed default agents selected (only when the list is first populated and nothing is selected yet).
+  // Seed the first two agents as selected once — only on initial load.
+  // Must NOT re-run when selectedAgentIds changes, otherwise unchecking the
+  // last agent immediately re-seeds the list (the exact bug reported).
+  const seededRef = React.useRef(false);
   useEffect(() => {
-    if (agents.length > 0 && selectedAgentIds.length === 0) {
+    if (!seededRef.current && agents.length > 0) {
+      seededRef.current = true;
       setSelectedAgentIds(agents.slice(0, 2).map(a => a.id));
     }
-  }, [agents, selectedAgentIds]);
+  }, [agents]);
 
   const handleToggleAgent = (agentId: string) => {
     setSelectedAgentIds(prev => 

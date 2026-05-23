@@ -21,15 +21,16 @@ export interface TerminalTabHandle {
 interface TerminalTabProps {
   sessionId: string;
   workspacePath: string;
-  /** Shell executable path (e.g. "powershell.exe"). Passed as a prop so
-   *  there is no stale closure over context values. */
+  /** Shell executable (e.g. "powershell", "wsl"). */
   shell: string;
+  /** Optional extra args forwarded to spawn_pty (e.g. ["--", "bash"] for wsl). */
+  shellArgs?: string[];
 }
 
 type SpawnState = 'idle' | 'spawning' | 'running' | 'error';
 
 export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
-  ({ sessionId, workspacePath, shell }, ref) => {
+  ({ sessionId, workspacePath, shell, shellArgs }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const termRef = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
@@ -71,6 +72,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           cols,
           rows,
           shell,
+          shellArgs: shellArgs ?? [],
         });
         setSpawnState('running');
       } catch (err: any) {
@@ -79,7 +81,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         setErrorMsg(msg);
         term.write(`\r\n\x1b[31m[Error] Failed to spawn shell: ${msg}\x1b[0m\r\n`);
       }
-    }, [sessionId, workspacePath, shell]);
+    }, [sessionId, workspacePath, shell, shellArgs]);
 
     // ── Main effect — creates xterm, wires listeners, spawns PTY ─────────
     useEffect(() => {
@@ -90,7 +92,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         cursorBlink: true,
         cursorStyle: 'block',
         scrollback: 5000,
-        padding: 10,
         theme: {
           background: '#070d14',
           foreground: '#d4d4d4',
