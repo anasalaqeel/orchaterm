@@ -1,0 +1,188 @@
+@import "xterm/css/xterm.css";
+
+/* Shared CSS variables */
+:root[data-theme] {
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+  --spacing-3xl: 64px;
+
+  --font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
+  --font-family-mono: "Fira Code", Menlo, Monaco, "Courier New", monospace;
+
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 20px;
+  --font-size-3xl: 24px;
+  --font-size-4xl: 32px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --border-radius-sm: 6px;
+  --border-radius-md: 10px;
+  --border-radius-lg: 14px;
+  --border-radius-xl: 20px;
+  --border-radius-full: 9999px;
+}
+
+/* Light Theme Variables */
+:root[data-theme="light"] {
+  --color-primary-rgb: 59, 130, 246; /* Blue accent */
+  --color-primary: rgb(var(--color-primary-rgb));
+  --color-brand: var(--color-primary);
+  --color-secondary: #64748b;
+  --color-success-rgb: 16, 185, 129;
+  --color-success: rgb(var(--color-success-rgb));
+  --color-warning-rgb: 245, 158, 11;
+  --color-warning: rgb(var(--color-warning-rgb));
+  --color-error-rgb: 239, 68, 68;
+  --color-error: rgb(var(--color-error-rgb));
+  --color-info-rgb: 59, 130, 246;
+
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f5f9;
+  --bg-hover: #e2e8f0;
+  --bg-active: #cbd5e1;
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #94a3b8;
+  --text-inverse: #ffffff;
+
+  --border-color: rgba(15, 23, 42, 0.08);
+  --border-color-hover: rgba(15, 23, 42, 0.15);
+
+  --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  --gradient-surface: linear-gradient(180deg, #ffffff 0%, rgba(255, 255, 255, 0.4) 100%);
+  --gradient-glow: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0) 70%);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Dark Theme Variables (Cobalt2 Accent Elements) */
+:root[data-theme="dark"] {
+  --color-primary-rgb: 255, 157, 0; /* Cobalt2 Amber/Orange */
+  --color-primary: rgb(var(--color-primary-rgb));
+  --color-brand: var(--color-primary);
+  --color-secondary: #94a3b8;
+  --color-success-rgb: 52, 211, 153;
+  --color-success: rgb(var(--color-success-rgb));
+  --color-warning-rgb: 251, 191, 36;
+  --color-warning: rgb(var(--color-warning-rgb));
+  --color-error-rgb: 248, 113, 113;
+  --color-error: rgb(var(--color-error-rgb));
+  --color-info-rgb: 96, 165, 250;
+
+  /* Cobalt2 Specific Backgrounds */
+  --bg-primary: #193549; /* Deep Cobalt blue */
+  --bg-secondary: #0d2131; /* Contrast dark blue panels */
+  --bg-tertiary: #0b1b28; /* Deeper inputs background */
+  --bg-hover: #1e3a5f;
+  --bg-active: #0b1b28;
+
+  --text-primary: #ffffff;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #64748b;
+  --text-inverse: #020617;
+
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-color-hover: rgba(255, 255, 255, 0.15);
+
+  --gradient-primary: linear-gradient(135deg, #FF9D00 0%, #d97706 100%);
+  --gradient-surface: linear-gradient(180deg, #0d2131 0%, rgba(13, 33, 49, 0.7) 100%);
+  --gradient-glow: radial-gradient(circle, rgba(255, 157, 0, 0.25) 0%, rgba(255, 157, 0, 0) 70%);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+}
+
+/* Global Reset & Base Styles */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.25);
+  border-radius: var(--border-radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.45);
+}
+
+/* Inputs and interactive focus visible rules */
+*:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* Custom xterm styling overlays to blend natively into Cobalt2 */
+.xterm {
+  padding: 12px;
+}
+
+.xterm-viewport {
+  background-color: #0d2131 !important;
+}
+
+.xterm-screen {
+  background-color: #0d2131 !important;
+}
+
+.xterm-container {
+  background-color: #0d2131;
+  border: 1px solid rgba(255, 157, 0, 0.2);
+  border-radius: 8px;
+}
+
+.xterm-container:focus-within {
+  border-color: #FF9D00;
+  box-shadow: 0 0 10px rgba(255, 157, 0, 0.2);
+}
+
+.xterm-selection div {
+  background-color: rgba(158, 255, 255, 0.2) !important;
+}
+
+.xterm-rows {
+  font-family: 'Fira Code', 'Courier New', Courier, monospace;
+}
