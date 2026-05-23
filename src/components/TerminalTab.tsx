@@ -88,23 +88,38 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       // ─ xterm instance ────────────────────────────────────────────────
       const term = new Terminal({
         cursorBlink: true,
+        cursorStyle: 'block',
+        scrollback: 5000,
+        padding: 10,
         theme: {
-          background: '#0d2131',
-          foreground: '#ffffff',
+          background: '#070d14',
+          foreground: '#d4d4d4',
           cursor: '#FF9D00',
-          selectionBackground: 'rgba(158, 255, 255, 0.3)',
-          black: '#000000',
+          cursorAccent: '#070d14',
+          selectionBackground: 'rgba(158, 255, 255, 0.25)',
+          selectionForeground: '#ffffff',
+          black: '#1a1a1a',
+          brightBlack: '#4a4a4a',
           red: '#ff6262',
+          brightRed: '#ff8080',
           green: '#3ad900',
+          brightGreen: '#57ff1a',
           yellow: '#ffc56f',
-          blue: '#008b94',
+          brightYellow: '#ffd699',
+          blue: '#4db8ff',
+          brightBlue: '#80ccff',
           magenta: '#ff76ff',
+          brightMagenta: '#ffaaff',
           cyan: '#9ed9ff',
-          white: '#e3e3e3',
+          brightCyan: '#c2e9ff',
+          white: '#d4d4d4',
+          brightWhite: '#ffffff',
         },
         fontFamily:
-          "'Fira Code', Consolas, Monaco, 'Courier New', Courier, monospace",
+          "'Fira Code', 'Cascadia Code', Consolas, Monaco, 'Courier New', monospace",
         fontSize: 13,
+        lineHeight: 1.4,
+        letterSpacing: 0,
         allowProposedApi: true,
       });
 
@@ -238,9 +253,7 @@ const styles = {
     height: 100%;
     display: flex;
     flex-direction: column;
-    background-color: #0d2131;
-    border-bottom-left-radius: 8px;
-    border-bottom-right-radius: 8px;
+    background-color: #070d14;
     overflow: hidden;
     position: relative;
   `,
@@ -248,6 +261,9 @@ const styles = {
     flex: 1;
     width: 100%;
     min-height: 0;
+    /* xterm renders its own canvas; this colour shows only in any gap
+       before the canvas is attached or while transitioning. */
+    background-color: #070d14;
   `,
   errorOverlay: css`
     position: absolute;
@@ -255,7 +271,7 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(13, 33, 49, 0.85);
+    background: rgba(7, 13, 20, 0.88);
     backdrop-filter: blur(4px);
     z-index: 10;
   `,
@@ -264,7 +280,7 @@ const styles = {
     max-width: 360px;
     padding: 24px;
     border-radius: 12px;
-    background: #0b1b28;
+    background: #0b1520;
     border: 1px solid rgba(248, 113, 113, 0.3);
   `,
   errorTitle: css`

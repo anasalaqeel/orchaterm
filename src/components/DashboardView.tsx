@@ -691,7 +691,7 @@ const s = {
     flex: 1;
     height: 100vh;
     overflow: hidden;
-    background: var(--bg-primary);
+    background: #070d14;
   `,
   consoleHeader: css`
     padding: var(--spacing-md) var(--spacing-lg);
@@ -770,7 +770,7 @@ const s = {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--bg-secondary);
+    background: #070d14;
   `,
   consoleSplitRight: css`
     width: 50%;

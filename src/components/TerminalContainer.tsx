@@ -269,19 +269,16 @@ const styles = {
     height: 100%;
     display: flex;
     flex-direction: column;
-    background-color: #0d2131;
-    border: 1px solid rgba(30, 41, 59, 0.8);
-    border-radius: 12px;
+    background-color: #070d14;
     overflow: hidden;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   `,
   header: css`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background-color: #0b1b28;
+    background-color: #0b1520;
     padding: 0 16px;
-    border-bottom: 1px solid #09131a;
+    border-bottom: 1px solid #0d1c2a;
     user-select: none;
   `,
   tabsList: css`
@@ -314,16 +311,16 @@ const styles = {
     }
   `,
   activeTab: css`
-    background-color: #0d2131;
+    background-color: #070d14;
     border-top-color: #ff9d00;
     color: #f1f5f9;
   `,
   inactiveTab: css`
-    background-color: #0b1b28;
-    color: #94a3b8;
+    background-color: #0b1520;
+    color: #64748b;
     &:hover {
-      background-color: #0f2334;
-      color: #e2e8f0;
+      background-color: #0d1c2a;
+      color: #94a3b8;
     }
   `,
   tabIcon: css`
@@ -414,7 +411,7 @@ const styles = {
   `,
   viewports: css`
     flex: 1;
-    background-color: #0d2131;
+    background-color: #070d14;
     min-height: 0;
     position: relative;
   `,

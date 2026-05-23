@@ -155,28 +155,16 @@ body {
   outline-offset: 2px;
 }
 
-/* Custom xterm styling overlays to blend natively into Cobalt2 */
-.xterm {
-  padding: 12px;
-}
+/* ── xterm overrides ─────────────────────────────────────────────────────── */
+/* Let xterm set its own background from the theme — no !important overrides. */
 
 .xterm-viewport {
-  background-color: #0d2131 !important;
+  /* xterm sets this inline from theme.background — don't fight it */
+  background-color: transparent !important;
 }
 
 .xterm-screen {
-  background-color: #0d2131 !important;
-}
-
-.xterm-container {
-  background-color: #0d2131;
-  border: 1px solid rgba(255, 157, 0, 0.2);
-  border-radius: 8px;
-}
-
-.xterm-container:focus-within {
-  border-color: #FF9D00;
-  box-shadow: 0 0 10px rgba(255, 157, 0, 0.2);
+  background-color: transparent !important;
 }
 
 .xterm-selection div {
