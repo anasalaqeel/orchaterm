@@ -24,7 +24,6 @@ import {
   OrchestratorPlan,
   OrchestratorTask,
   OrchestratorTaskOutput,
-  OrchestratorTaskStatus,
   ConductorLogEntry,
   SessionRegistryEntry,
 } from '../types';
@@ -91,8 +90,9 @@ export class OrchestratorEngine {
   // ── Public: plan lifecycle ──────────────────────────────────────────────────
 
   start(plan: OrchestratorPlan): void {
-    if (this.plan?.status === 'running') {
-      this.log('error', 'Cannot start: another plan is already running');
+    // Block if a plan is actively running or paused — caller must stop() first.
+    if (this.plan?.status === 'running' || this.plan?.status === 'paused') {
+      this.log('error', 'Cannot start: a plan is already running or paused. Call stop() first.');
       return;
     }
     // Deep-clone so mutations don't escape
@@ -131,10 +131,12 @@ export class OrchestratorEngine {
       clearTimeout(timer);
       this.taskTimers.delete(taskId);
     }
-    // Unwatch all sessions
+    // Fully unwatch all running task sessions so their Tauri listeners are
+    // removed. Using unwatch() (not clearBuffer()) ensures the listeners are
+    // torn down and don't accumulate if the engine is stopped and restarted.
     for (const task of this.plan.tasks) {
       if (task.status === 'running') {
-        bufferWatcher.clearBuffer(task.assignedSessionId);
+        bufferWatcher.unwatch(task.assignedSessionId);
       }
     }
     this.mutatePlan({ status: 'failed' });
@@ -351,8 +353,10 @@ ${task.description}${buildSentinelInstruction(task.id)}`;
     this.log('dispatch', `Task "${task.title}" dispatched`, task.id, task.assignedSessionId);
     this.emitState();
 
-    // Start watching for the sentinel
-    bufferWatcher.watchForSentinel(task.assignedSessionId, (output) => {
+    // Start watching for the sentinel. Must be awaited so the listener is
+    // registered before any PTY data can arrive — without await, a fast agent
+    // could emit the sentinel before the listener is active.
+    await bufferWatcher.watchForSentinel(task.assignedSessionId, (output) => {
       this.onSentinelReceived(task.id, output);
     });
 
@@ -476,7 +480,7 @@ ${task.description}${buildSentinelInstruction(task.id)}`;
 
 export const orchestratorEngine = new OrchestratorEngine({
   ollamaHost: 'http://localhost:11434',
-  ollamaModel: '',
+  ollamaModel: 'llama3.2',
   taskTimeoutMinutes: 30,
   sessionRegistry: new Map(),
 });
