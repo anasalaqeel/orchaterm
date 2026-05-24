@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Workspace, Agent, TaskLog, SavedPrompt, AppData, AppSettings } from '../types';
-import { loadData, saveData, isTauri } from '../services/storage';
+import { Workspace, Agent, TaskLog, SavedPrompt, AppData, AppSettings, OrchestratorPlan, TerminalSession } from '../types';
+import { loadData, saveData, loadPlans, savePlans, isTauri } from '../services/storage';
 import { Command } from '@tauri-apps/plugin-shell';
 import { openUrl } from '@tauri-apps/plugin-opener';
 
@@ -17,8 +17,6 @@ export interface DashboardContextType {
   savedPrompts: SavedPrompt[];
   activeWorkspaceId: string | null;
   setActiveWorkspaceId: (id: string | null) => void;
-  activeView: string;
-  setActiveView: (view: string) => void;
   viewMode: 'grid' | 'console';
   setViewMode: (mode: 'grid' | 'console') => void;
   toast: ToastInfo | null;
@@ -27,27 +25,27 @@ export interface DashboardContextType {
   theme: 'dark' | 'light';
   toggleTheme: () => void;
   isLoaded: boolean;
-  
+
   // Workspace CRUD
   addWorkspace: (workspace: Omit<Workspace, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   updateWorkspace: (id: string, updates: Partial<Workspace>) => Promise<void>;
   deleteWorkspace: (id: string) => Promise<void>;
-  
+
   // Agent CRUD
   addAgent: (agent: Omit<Agent, 'id'>) => Promise<void>;
   updateAgent: (id: string, updates: Partial<Agent>) => Promise<void>;
   deleteAgent: (id: string) => Promise<void>;
-  
+
   // Task Log CRUD
   addTaskLog: (log: Omit<TaskLog, 'id' | 'timestamp'>) => Promise<void>;
   updateTaskLog: (id: string, updates: Partial<TaskLog>) => Promise<void>;
   deleteTaskLog: (id: string) => Promise<void>;
-  
+
   // Prompt CRUD
   addSavedPrompt: (prompt: Omit<SavedPrompt, 'id' | 'createdAt' | 'usedAt'>) => Promise<void>;
   updateSavedPrompt: (id: string, updates: Partial<SavedPrompt>) => Promise<void>;
   deleteSavedPrompt: (id: string) => Promise<void>;
-  
+
   // Custom functions
   copyPromptToClipboard: (promptId: string) => Promise<void>;
   launchAgent: (agentId: string) => Promise<void>;
@@ -55,6 +53,18 @@ export interface DashboardContextType {
   importSettings: (jsonData: string) => Promise<boolean>;
   settings: AppSettings;
   updateSettings: (updates: Partial<AppSettings>) => Promise<void>;
+
+  // Orchestrator plans (persisted)
+  plans: OrchestratorPlan[];
+  addPlan: (plan: OrchestratorPlan) => Promise<void>;
+  updatePlan: (id: string, updates: Partial<OrchestratorPlan>) => Promise<void>;
+  deletePlan: (id: string) => Promise<void>;
+
+  // Terminal sessions (ephemeral — reset each app launch, not persisted)
+  terminalSessions: TerminalSession[];
+  addTerminalSession: (session: TerminalSession) => void;
+  removeTerminalSession: (sessionId: string) => void;
+  updateTerminalSession: (sessionId: string, updates: Partial<TerminalSession>) => void;
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
@@ -65,7 +75,6 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
   const [savedPrompts, setSavedPrompts] = useState<SavedPrompt[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<string>('dashboard');
   const [viewMode, setViewMode] = useState<'grid' | 'console'>('grid');
   const [toast, setToast] = useState<ToastInfo | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -75,7 +84,12 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     ollamaHost: 'http://localhost:11434',
     openaiApiKey: '',
     anthropicApiKey: '',
+    conductorOllamaModel: '',
+    conductorTaskTimeoutMinutes: 30,
   });
+  const [plans, setPlans] = useState<OrchestratorPlan[]>([]);
+  // Terminal sessions are ephemeral — they are NOT persisted to disk.
+  const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
 
   // Initialize and load data from storage
   useEffect(() => {
@@ -91,8 +105,11 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setActiveWorkspaceId(data.workspaces[0].id);
         }
         if (data.settings) {
-          setSettings(data.settings);
+          setSettings(prev => ({ ...prev, ...data.settings }));
         }
+
+        const savedPlans = await loadPlans();
+        setPlans(savedPlans);
         
         // Load theme from localStorage
         const savedTheme = localStorage.getItem('agentdeck_theme');
@@ -397,6 +414,46 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
+  // PLAN CRUD
+  const addPlan = async (plan: OrchestratorPlan) => {
+    const next = [plan, ...plans];
+    setPlans(next);
+    await savePlans(next);
+  };
+
+  const updatePlan = async (id: string, updates: Partial<OrchestratorPlan>) => {
+    const next = plans.map(p => p.id === id ? { ...p, ...updates } : p);
+    setPlans(next);
+    await savePlans(next);
+  };
+
+  const deletePlan = async (id: string) => {
+    const next = plans.filter(p => p.id !== id);
+    setPlans(next);
+    await savePlans(next);
+  };
+
+  // TERMINAL SESSION MANAGEMENT (ephemeral — no persistence)
+  const addTerminalSession = (session: TerminalSession) => {
+    // Upsert — if the session ID already exists (e.g. the user re-opened the
+    // workspace console without closing tabs), update it rather than duplicating.
+    setTerminalSessions(prev =>
+      prev.some(s => s.id === session.id)
+        ? prev.map(s => s.id === session.id ? { ...s, ...session } : s)
+        : [...prev, session]
+    );
+  };
+
+  const removeTerminalSession = (sessionId: string) => {
+    setTerminalSessions(prev => prev.filter(s => s.id !== sessionId));
+  };
+
+  const updateTerminalSession = (sessionId: string, updates: Partial<TerminalSession>) => {
+    setTerminalSessions(prev =>
+      prev.map(s => s.id === sessionId ? { ...s, ...updates } : s)
+    );
+  };
+
   const exportSettings = (): string => {
     // Strip sensitive API keys so they are never leaked via export.
     const safeSettings = {
@@ -468,8 +525,6 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       savedPrompts,
       activeWorkspaceId,
       setActiveWorkspaceId,
-      activeView,
-      setActiveView,
       toast,
       setToast,
       showToast,
@@ -496,6 +551,14 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       updateSettings,
       viewMode,
       setViewMode,
+      plans,
+      addPlan,
+      updatePlan,
+      deletePlan,
+      terminalSessions,
+      addTerminalSession,
+      removeTerminalSession,
+      updateTerminalSession,
     }}>
       {children}
     </DashboardContext.Provider>

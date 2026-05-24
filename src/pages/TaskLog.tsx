@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDashboard } from '../context/DashboardContext';
 import { TaskLog } from '../types';
-import { ConfirmDialog } from './ConfirmDialog';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { 
   History, 
   Search, 
