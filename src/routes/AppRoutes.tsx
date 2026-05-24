@@ -1,7 +1,6 @@
 import { Routes, Route } from 'react-router';
 import { AppLayout }    from '../components/layout/AppLayout';
 import { ConductorView } from '../pages/Conductor';
-import { AgentsView }    from '../pages/Agents';
 import { TaskLogView }   from '../pages/TaskLog';
 import { PromptVaultView } from '../pages/PromptVault';
 import { SettingsView }  from '../pages/Settings';
@@ -18,7 +17,6 @@ export function AppRoutes() {
         <Route index element={null} />
 
         <Route path="/conductor" element={<ConductorView />} />
-        <Route path="/agents"    element={<AgentsView />} />
         <Route path="/logs"      element={<TaskLogView />} />
         <Route path="/prompts"   element={<PromptVaultView />} />
         <Route path="/settings"  element={<SettingsView />} />

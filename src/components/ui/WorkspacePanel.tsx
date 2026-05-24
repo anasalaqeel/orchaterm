@@ -2,8 +2,7 @@
  * WorkspacePanel.tsx
  *
  * Right-side panel in the Workspace Console view.
- * Shows live workspace context: open terminal sessions with agent assignments
- * (the primary place to wire sessions to agents before running the Conductor),
+ * Shows live workspace context: open terminal sessions,
  * current task, conductor plan status, and recent task logs.
  */
 
@@ -12,10 +11,10 @@ import { css } from '@emotion/css';
 import {
   Edit2, Check, X, Terminal, Activity,
   ClipboardList, Clock, AlertTriangle, CheckCircle2,
-  Loader2, ArrowRight, Link2, UserCheck,
+  Loader2, ArrowRight,
 } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
-import { Workspace, Agent, TaskLog, OrchestratorPlan } from '../../types';
+import { Workspace, TaskLog, OrchestratorPlan } from '../../types';
 import { orchestratorEngine } from '../../services/orchestratorEngine';
 
 interface WorkspacePanelProps {
@@ -138,13 +137,12 @@ const ConductorStatus: React.FC<ConductorStatusProps> = ({ plan }) => {
 
 export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => {
   const {
-    agents, taskLogs, terminalSessions,
-    updateWorkspace, updateTerminalSession, showToast,
+    taskLogs, terminalSessions,
+    updateWorkspace, showToast,
   } = useDashboard();
 
   // Sessions open in this workspace
   const workspaceSessions = terminalSessions.filter(s => s.workspaceId === workspace.id);
-  const assignedCount = workspaceSessions.filter(s => s.assignedAgentId).length;
 
   // Current task inline edit
   const [editingTask, setEditingTask] = useState(false);
@@ -172,8 +170,6 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => 
     setTaskDraft(workspace.currentTask);
     setEditingTask(false);
   }, [workspace.id, workspace.currentTask]);
-
-  const assignedAgent: Agent | undefined = agents.find(a => a.id === workspace.agentId);
 
   const recentLogs: TaskLog[] = taskLogs
     .filter(l => l.workspaceId === workspace.id)
@@ -216,18 +212,16 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => 
 
       <div className={s.divider} />
 
-      {/* ── Terminal Sessions → Agent Assignment ── */}
-      {/* This is the PRIMARY place to assign agents to terminal sessions
-          before heading to the Conductor to build and run a plan. */}
+      {/* ── Terminal Sessions ── */}
       <div className={s.section}>
         <div className={s.sectionRow}>
           <span className={s.sectionLabel}>
-            <Link2 size={11} />
+            <Terminal size={11} />
             Terminal Sessions
           </span>
           {workspaceSessions.length > 0 && (
             <span className={s.sessionBadge}>
-              {assignedCount}/{workspaceSessions.length} assigned
+              {workspaceSessions.length} open
             </span>
           )}
         </div>
@@ -235,39 +229,21 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => 
         {workspaceSessions.length === 0 ? (
           <div className={s.sessionsEmpty}>
             <Terminal size={12} />
-            <span>Open tabs in the left terminal panel, then assign an agent to each one here.</span>
+            <span>Open tabs in the left terminal panel to see them listed here.</span>
           </div>
         ) : (
           <div className={s.sessionList}>
-            {workspaceSessions.map(session => {
-              const assigned = agents.find(a => a.id === session.assignedAgentId);
-              return (
-                <div key={session.id} className={s.sessionRow}>
-                  <div className={s.sessionMeta}>
-                    <span
-                      className={s.sessionDot}
-                      style={{ backgroundColor: assigned?.color ?? '#334155' }}
-                    />
-                    <span className={s.sessionName}>{session.title}</span>
-                  </div>
-                  <select
-                    className={s.sessionSelect}
-                    value={session.assignedAgentId ?? ''}
-                    onChange={e => updateTerminalSession(session.id, {
-                      assignedAgentId: e.target.value || null,
-                    })}
-                  >
-                    <option value=''>— Unassigned —</option>
-                    {agents.map(agent => (
-                      <option key={agent.id} value={agent.id}>{agent.name}</option>
-                    ))}
-                  </select>
-                </div>
-              );
-            })}
+            {workspaceSessions.map(session => (
+              <div key={session.id} className={s.sessionRow}>
+                <span
+                  className={s.sessionDot}
+                  style={{ backgroundColor: session.color ?? '#334155' }}
+                />
+                <span className={s.sessionName}>{session.title}</span>
+              </div>
+            ))}
           </div>
         )}
-
       </div>
 
       <div className={s.divider} />
@@ -295,7 +271,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => 
               onChange={e => setTaskDraft(e.target.value)}
               onKeyDown={handleTaskKeyDown}
               rows={3}
-              placeholder='Describe what this agent is working on…'
+              placeholder='Describe what this workspace is working on…'
             />
             <div className={s.taskEditBtns}>
               <button className={s.saveBtn} onClick={handleSaveTask}>
@@ -314,37 +290,6 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => 
             title='Click to edit'
           >
             {workspace.currentTask || <span className={s.taskEmpty}>No task set — click to add one</span>}
-          </div>
-        )}
-      </div>
-
-      <div className={s.divider} />
-
-      {/* ── Assigned Agent (workspace default) ── */}
-      <div className={s.section}>
-        <span className={s.sectionLabel}>
-          <UserCheck size={11} />
-          Default Agent
-        </span>
-
-        {assignedAgent ? (
-          <div className={s.agentChip}>
-            <span className={s.agentDot} style={{ backgroundColor: assignedAgent.color }} />
-            <span className={s.agentName}>{assignedAgent.name}</span>
-            {assignedAgent.launchCommand && (
-              <code className={s.agentCmd}>{assignedAgent.launchCommand}</code>
-            )}
-          </div>
-        ) : (
-          <div className={s.noAgent}>
-            No default agent — assign one in the grid view
-          </div>
-        )}
-
-        {assignedAgent?.launchCommand && (
-          <div className={s.launchHint}>
-            <span className={s.launchHintLabel}>Launch in left terminal:</span>
-            <code className={s.launchCmd}>{assignedAgent.launchCommand}</code>
           </div>
         )}
       </div>
@@ -375,18 +320,14 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => 
           <div className={s.logList}>
             {recentLogs.map(log => {
               const Icon = LOG_STATUS_ICON[log.status];
-              const logAgent = agents.find(a => a.id === log.agentId);
               return (
                 <div key={log.id} className={s.logItem}>
-                  <Icon size={11} style={{ color: LOG_STATUS_COLOR[log.status], flexShrink: 0, marginTop: 1 }} />
+                  <span style={{ color: LOG_STATUS_COLOR[log.status], flexShrink: 0, marginTop: 1, display: 'flex' }}>
+                    <Icon size={11} />
+                  </span>
                   <div className={s.logBody}>
                     <span className={s.logSummary}>{log.summary}</span>
                     <div className={s.logMeta}>
-                      {logAgent && (
-                        <span className={s.logAgent} style={{ color: logAgent.color }}>
-                          {logAgent.name}
-                        </span>
-                      )}
                       <span className={s.logTime}>{formatLogTime(log.timestamp)}</span>
                     </div>
                   </div>
@@ -520,28 +461,17 @@ const s = {
   sessionRow: css`
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
     padding: 5px 8px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    transition: border-color 0.15s;
-    &:hover { border-color: var(--color-brand); }
-  `,
-  sessionMeta: css`
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    flex: 1;
   `,
   sessionDot: css`
     width: 7px;
     height: 7px;
     border-radius: 50%;
     flex-shrink: 0;
-    transition: background-color 0.2s;
   `,
   sessionName: css`
     font-size: 11px;
@@ -551,20 +481,7 @@ const s = {
     text-overflow: ellipsis;
     white-space: nowrap;
   `,
-  sessionSelect: css`
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    padding: 3px 6px;
-    font-size: 10px;
-    color: var(--text-primary);
-    outline: none;
-    cursor: pointer;
-    flex-shrink: 0;
-    max-width: 120px;
-    transition: border-color 0.15s;
-    &:focus { border-color: var(--color-brand); }
-  `,
+
   /* Current Task */
   taskText: css`
     font-size: 12px;
@@ -639,64 +556,6 @@ const s = {
     font-size: 10px;
     color: var(--text-tertiary);
     margin-left: auto;
-  `,
-
-  /* Default Agent */
-  agentChip: css`
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 6px 8px;
-    background-color: var(--bg-secondary);
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-  `,
-  agentDot: css`
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  `,
-  agentName: css`
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-primary);
-    flex: 1;
-  `,
-  agentCmd: css`
-    font-size: 10px;
-    color: var(--text-tertiary);
-    font-family: 'JetBrains Mono', monospace;
-    background: var(--bg-primary);
-    padding: 1px 5px;
-    border-radius: 3px;
-  `,
-  noAgent: css`
-    font-size: 11px;
-    color: var(--text-tertiary);
-    font-style: italic;
-  `,
-  launchHint: css`
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 6px 8px;
-    background-color: var(--bg-secondary);
-    border-radius: 4px;
-    border: 1px solid var(--border-color);
-  `,
-  launchHintLabel: css`
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: var(--text-tertiary);
-  `,
-  launchCmd: css`
-    font-size: 11px;
-    color: #FF9D00;
-    font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
-    word-break: break-all;
   `,
 
   /* Conductor status */
@@ -833,10 +692,6 @@ const s = {
     display: flex;
     align-items: center;
     gap: 6px;
-  `,
-  logAgent: css`
-    font-size: 9px;
-    font-weight: 700;
   `,
   logTime: css`
     font-size: 9px;

@@ -1,12 +1,11 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { css, cx } from '@emotion/css';
-import { OrchestratorTask, OrchestratorTaskStatus, TerminalSession, Agent } from '../../types';
+import { OrchestratorTask, OrchestratorTaskStatus, TerminalSession } from '../../types';
 import { TaskCard } from './TaskCard';
 
 interface PipelineBoardProps {
   tasks: OrchestratorTask[];
   sessions: TerminalSession[];
-  agents: Agent[];
 }
 
 // ─── Wave computation ─────────────────────────────────────────────────────────
@@ -60,7 +59,7 @@ interface ArrowPath {
 
 // ─── PipelineBoard ────────────────────────────────────────────────────────────
 
-export const PipelineBoard: React.FC<PipelineBoardProps> = ({ tasks, sessions, agents }) => {
+export const PipelineBoard: React.FC<PipelineBoardProps> = ({ tasks, sessions }) => {
   const waves   = computeWaves(tasks);
   const boardRef = useRef<HTMLDivElement>(null);
 
@@ -99,8 +98,7 @@ export const PipelineBoard: React.FC<PipelineBoardProps> = ({ tasks, sessions, a
 
         const sourceTask  = tasks.find(t => t.id === depId);
         const sess        = sessions.find(s => s.id === sourceTask?.assignedSessionId);
-        const agent       = agents.find(a => a.id === sess?.assignedAgentId);
-        const color       = agent?.color ?? '#475569';
+        const color       = sess?.color ?? '#475569';
         const faded       = sourceTask?.status !== 'done';
 
         newArrows.push({ d, color, faded });
@@ -109,7 +107,7 @@ export const PipelineBoard: React.FC<PipelineBoardProps> = ({ tasks, sessions, a
 
     setSvgDims({ w: board.scrollWidth, h: Math.max(board.scrollHeight, 1) });
     setArrows(newArrows);
-  }, [tasks, sessions, agents, waves.length]);
+  }, [tasks, sessions, waves.length]);
 
   // Recompute after DOM has painted (50ms lets React flush)
   useEffect(() => {
@@ -204,7 +202,6 @@ export const PipelineBoard: React.FC<PipelineBoardProps> = ({ tasks, sessions, a
                     task={task}
                     allTasks={tasks}
                     sessions={sessions}
-                    agents={agents}
                     editable={false}
                   />
                 </div>

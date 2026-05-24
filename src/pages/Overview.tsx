@@ -1,19 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { css, cx } from '@emotion/css';
 import { useDashboard } from '../context/DashboardContext';
 import { TaskLog } from '../types';
 import { TerminalContainer } from '../components/terminal/TerminalContainer';
 import { WorkspacePanel } from '../components/ui/WorkspacePanel';
 import { WorkspaceConductor } from '../components/conductor/WorkspaceConductor';
-import { 
-  Play, 
-  AlertOctagon, 
-  Clock, 
-  CheckCircle, 
-  User, 
-  Plus, 
-  ChevronRight, 
-  Copy, 
+import {
+  AlertOctagon,
+  Clock,
+  CheckCircle,
+  Plus,
+  ChevronRight,
+  Copy,
   Edit2,
   ArrowLeft,
   Network
@@ -22,14 +20,12 @@ import {
 export const DashboardView: React.FC = () => {
   const {
     workspaces,
-    agents,
     taskLogs,
     savedPrompts,
     activeWorkspaceId,
     setActiveWorkspaceId,
     updateWorkspace,
     addTaskLog,
-    launchAgent,
     copyPromptToClipboard,
     showToast,
     addWorkspace,
@@ -43,14 +39,10 @@ export const DashboardView: React.FC = () => {
   const [newProjPath, setNewProjPath] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
   const [newProjColor, setNewProjColor] = useState('#3b82f6');
-  const [newProjAgent, setNewProjAgent] = useState('');
 
   // Inline edit state for workspace task
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editTaskValue, setEditTaskValue] = useState('');
-
-  // Agent dropdown selection state per workspace
-  const [activeDropdownProjId, setActiveDropdownProjId] = useState<string | null>(null);
 
   // Quick log add state
   const [logSummary, setLogSummary] = useState('');
@@ -74,20 +66,6 @@ export const DashboardView: React.FC = () => {
     showToast('Workspace task updated', 'success');
   };
 
-  const handleAgentAssign = (projId: string, agentId: string | null) => {
-    updateWorkspace(projId, { agentId });
-    setActiveDropdownProjId(null);
-    showToast('Agent assigned to workspace', 'success');
-  };
-
-  // Close the agent-assignment dropdown when clicking outside it.
-  useEffect(() => {
-    if (!activeDropdownProjId) return;
-    const close = () => setActiveDropdownProjId(null);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [activeDropdownProjId]);
-
   const handleAddProjectSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProjName.trim()) {
@@ -105,13 +83,11 @@ export const DashboardView: React.FC = () => {
       color: newProjColor,
       status: 'active',
       currentTask: 'Initial planning and environment setup',
-      agentId: newProjAgent || null,
     });
     setNewProjName('');
     setNewProjPath('');
     setNewProjDesc('');
     setNewProjColor('#3b82f6');
-    setNewProjAgent('');
     setShowAddProj(false);
   };
 
@@ -128,7 +104,7 @@ export const DashboardView: React.FC = () => {
 
     addTaskLog({
       workspaceId: activeProject.id,
-      agentId: activeProject.agentId || '',
+      groupId: null,
       summary: logSummary,
       status: logStatus,
     });
@@ -284,7 +260,6 @@ export const DashboardView: React.FC = () => {
             <div className={s.cardsGrid}>
               {workspaces.map((proj) => {
                 const isCurrentActive = proj.id === activeProject?.id;
-                const assignedAgent = agents.find(a => a.id === proj.agentId);
                 const lastLog = getLastLog(proj.id);
 
                 return (
@@ -401,49 +376,8 @@ export const DashboardView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Footer Row: Agent Chip and Switch Button */}
+                    {/* Footer Row: Switch Button */}
                     <div className={s.cardFooter}>
-                      {/* Clickable Assigned Agent Chip */}
-                      <div className={s.agentChipWrapper} onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => setActiveDropdownProjId(activeDropdownProjId === proj.id ? null : proj.id)}
-                          className={s.agentChip}
-                          style={assignedAgent ? { borderLeft: `3px solid ${assignedAgent.color || '#3b82f6'}` } : {}}
-                        >
-                          <User className={s.agentChipIcon} />
-                          <span>{assignedAgent ? assignedAgent.name : 'Unassigned'}</span>
-                        </button>
-
-                        {/* Dropdown overlay */}
-                        {activeDropdownProjId === proj.id && (
-                          <div className={s.dropdown}>
-                            <div className={s.dropdownTitle}>
-                              Assign Agent
-                            </div>
-                            {agents.map((agent) => (
-                              <button
-                                key={agent.id}
-                                onClick={() => handleAgentAssign(proj.id, agent.id)}
-                                className={s.dropdownItem}
-                              >
-                                <span className={s.dropdownDot} style={{ backgroundColor: agent.color }} />
-                                <span>{agent.name}</span>
-                              </button>
-                            ))}
-                            {proj.agentId && (
-                              <button
-                                onClick={() => handleAgentAssign(proj.id, null)}
-                                className={s.dropdownItemDanger}
-                              >
-                                <span className={cx(s.dropdownDot, s.dotDanger)} />
-                                <span>Unassign</span>
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Switch To / Active Button */}
                       {isCurrentActive ? (
                         <button
                           onClick={() => setViewMode('console')}
@@ -493,48 +427,6 @@ export const DashboardView: React.FC = () => {
                 <p className={s.sidebarDesc}>
                   {activeProject.description || 'No description provided for this workspace.'}
                 </p>
-              </div>
-
-              {/* Assigned Agent Details & Launch */}
-              <div className={s.sidebarPanel}>
-                <span className={s.sidebarPanelLabel}>
-                  Assigned Orchestrator
-                </span>
-                {(() => {
-                  const agent = agents.find(a => a.id === activeProject.agentId);
-                  if (!agent) {
-                    return (
-                      <div>
-                        <p className={s.sidebarEmptyText}>No agent assigned yet.</p>
-                        <p className={s.sidebarEmptyHint}>Assign an agent from Settings or Workspace card chip to enable launches.</p>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div className={s.agentDetailBlock}>
-                      <div className={s.agentDetailRow}>
-                        <div className={s.agentDetailName}>
-                          <span className={s.agentDot} style={{ backgroundColor: agent.color }} />
-                          <span className={s.agentNameText}>{agent.name}</span>
-                        </div>
-                        <span className={s.agentTypeLabel}>
-                          {agent.type}
-                        </span>
-                      </div>
-                      <p className={s.agentDesc}>
-                        {agent.bestUsedFor}
-                      </p>
-                      <button
-                        onClick={() => launchAgent(agent.id)}
-                        className={s.launchBtn}
-                      >
-                        <Play className={s.launchIcon} />
-                        <span>Launch {agent.name}</span>
-                      </button>
-                    </div>
-                  );
-                })()}
               </div>
 
               {/* Last Used Prompt Preview */}
@@ -659,32 +551,14 @@ export const DashboardView: React.FC = () => {
                 />
               </div>
 
-              <div className={s.dialogGrid2}>
-                <div>
-                  <label className={s.dialogLabel}>Color Accent</label>
-                  <input
-                    type="color"
-                    value={newProjColor}
-                    onChange={(e) => setNewProjColor(e.target.value)}
-                    className={s.colorPicker}
-                  />
-                </div>
-
-                <div>
-                  <label className={s.dialogLabel}>Assign Agent</label>
-                  <select
-                    value={newProjAgent}
-                    onChange={(e) => setNewProjAgent(e.target.value)}
-                    className={s.dialogSelect}
-                  >
-                    <option value="">Unassigned</option>
-                    {agents.map((agent) => (
-                      <option key={agent.id} value={agent.id}>
-                        {agent.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className={s.dialogLabel}>Color Accent</label>
+                <input
+                  type="color"
+                  value={newProjColor}
+                  onChange={(e) => setNewProjColor(e.target.value)}
+                  className={s.colorPicker}
+                />
               </div>
 
               <div className={s.dialogActions}>

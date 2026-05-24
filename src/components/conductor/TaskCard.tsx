@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { css, cx } from '@emotion/css';
-import { OrchestratorTask, OrchestratorTaskStatus, TerminalSession, Agent } from '../../types';
+import { OrchestratorTask, OrchestratorTaskStatus, TerminalSession } from '../../types';
 import {
   Clock, CheckCircle2, XCircle, Loader2, Circle,
-  ChevronDown, ChevronUp, Trash2, GripVertical
+  ChevronDown, ChevronUp, Trash2, GripVertical, Terminal,
 } from 'lucide-react';
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
@@ -24,39 +24,26 @@ interface TaskCardProps {
   task: OrchestratorTask;
   allTasks: OrchestratorTask[];
   sessions: TerminalSession[];
-  agents: Agent[];
   /** If true, the card shows edit controls (used in PlanBuilder) */
   editable?: boolean;
-  /** Called when any field changes (PlanBuilder) */
   onChange?: (updated: Partial<OrchestratorTask>) => void;
-  /** Called when user wants to delete (PlanBuilder) */
   onDelete?: () => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const TaskCard: React.FC<TaskCardProps> = ({
-  task,
-  allTasks,
-  sessions,
-  agents,
-  editable = false,
-  onChange,
-  onDelete,
+  task, allTasks, sessions,
+  editable = false, onChange, onDelete,
 }) => {
   const [expanded, setExpanded] = useState(false);
 
   const meta = STATUS_META[task.status];
   const Icon = meta.icon;
 
-  // Which agent is assigned to the selected session?
   const assignedSession = sessions.find(s => s.id === task.assignedSessionId);
-  const assignedAgent = agents.find(a => a.id === task.assignedAgentId);
-
-  // Deps — other tasks this one depends on
   const depTasks = allTasks.filter(t => task.dependsOn.includes(t.id));
 
-  // Toggle a dep
   const toggleDep = (otherId: string) => {
     if (!onChange) return;
     const next = task.dependsOn.includes(otherId)
@@ -66,28 +53,21 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   };
 
   return (
-    <div
-      className={cx(
-        styles.card,
-        task.status === 'running' && styles.cardRunning,
-        task.status === 'done'    && styles.cardDone,
-        task.status === 'failed'  && styles.cardFailed,
-      )}
-    >
+    <div className={cx(
+      styles.card,
+      task.status === 'running' && styles.cardRunning,
+      task.status === 'done'    && styles.cardDone,
+      task.status === 'failed'  && styles.cardFailed,
+    )}>
       {/* ── Header ── */}
       <div className={styles.header}>
         {editable && <GripVertical className={styles.grip} />}
 
-        {/* Status icon */}
         <Icon
-          className={cx(
-            styles.statusIcon,
-            task.status === 'running' && styles.spin,
-          )}
+          className={cx(styles.statusIcon, task.status === 'running' && styles.spin)}
           style={{ color: meta.colorVar }}
         />
 
-        {/* Title (editable) */}
         {editable ? (
           <input
             className={styles.titleInput}
@@ -99,38 +79,37 @@ export const TaskCard: React.FC<TaskCardProps> = ({
           <span className={styles.title}>{task.title}</span>
         )}
 
-        {/* Agent chip */}
-        {assignedAgent && (
+        {/* Session chip — shows which terminal this task is assigned to */}
+        {(assignedSession || task.assignedSessionTitle) && (
           <span
-            className={styles.agentChip}
-            style={{ borderColor: assignedAgent.color ?? 'var(--border-color)' }}
-            title={assignedAgent.name}
+            className={styles.sessionChip}
+            style={assignedSession?.color
+              ? { borderColor: assignedSession.color, color: assignedSession.color }
+              : undefined
+            }
           >
-            <span
-              className={styles.agentDot}
-              style={{ backgroundColor: assignedAgent.color ?? '#475569' }}
-            />
-            {assignedAgent.name}
+            <Terminal className={styles.chipIcon} />
+            {assignedSession?.title ?? task.assignedSessionTitle}
           </span>
         )}
 
-        {/* Status label (read-only) */}
         {!editable && (
           <span className={styles.statusLabel} style={{ color: meta.colorVar }}>
             {meta.label}
           </span>
         )}
 
-        {/* Expand toggle */}
         <button
           className={styles.expandBtn}
           onClick={() => setExpanded(v => !v)}
           title={expanded ? 'Collapse' : 'Expand'}
         >
-          {expanded ? <ChevronUp className={styles.expandIcon} /> : <ChevronDown className={styles.expandIcon} />}
+          {expanded
+            ? <ChevronUp className={styles.expandIcon} />
+            : <ChevronDown className={styles.expandIcon} />
+          }
         </button>
 
-        {/* Delete (editable only) */}
         {editable && onDelete && (
           <button className={styles.deleteBtn} onClick={onDelete} title='Remove task'>
             <Trash2 className={styles.expandIcon} />
@@ -141,7 +120,6 @@ export const TaskCard: React.FC<TaskCardProps> = ({
       {/* ── Expanded body ── */}
       {expanded && (
         <div className={styles.body}>
-          {/* Description */}
           {editable ? (
             <textarea
               className={styles.descTextarea}
@@ -151,36 +129,29 @@ export const TaskCard: React.FC<TaskCardProps> = ({
               onChange={e => onChange?.({ description: e.target.value })}
             />
           ) : (
-            task.description && (
-              <p className={styles.descText}>{task.description}</p>
-            )
+            task.description && <p className={styles.descText}>{task.description}</p>
           )}
 
-          {/* Session/agent picker (editable) */}
+          {/* Session picker (editable) */}
           {editable && (
             <div className={styles.fieldRow}>
-              <label className={styles.fieldLabel}>Assign to session</label>
+              <label className={styles.fieldLabel}>Assign to terminal</label>
               <select
                 className={styles.select}
                 value={task.assignedSessionId ?? ''}
                 onChange={e => {
-                  const sid = e.target.value || null;
+                  const sid = e.target.value || '';
                   const sess = sessions.find(s => s.id === sid);
                   onChange?.({
                     assignedSessionId: sid,
-                    assignedAgentId: sess?.assignedAgentId ?? null,
+                    assignedSessionTitle: sess?.title ?? '',
                   });
                 }}
               >
                 <option value=''>— None —</option>
-                {sessions.map(s => {
-                  const ag = agents.find(a => a.id === s.assignedAgentId);
-                  return (
-                    <option key={s.id} value={s.id}>
-                      {s.title}{ag ? ` (${ag.name})` : ''}
-                    </option>
-                  );
-                })}
+                {sessions.map(s => (
+                  <option key={s.id} value={s.id}>{s.title}</option>
+                ))}
               </select>
             </div>
           )}
@@ -207,7 +178,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             </div>
           )}
 
-          {/* Read-only: deps (running view) */}
+          {/* Read-only deps */}
           {!editable && depTasks.length > 0 && (
             <div className={styles.fieldRow}>
               <label className={styles.fieldLabel}>Depends on</label>
@@ -224,21 +195,17 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             </div>
           )}
 
-          {/* Task output (read-only, if done) */}
+          {/* Output (done) */}
           {!editable && task.output && (
             <div className={styles.outputBlock}>
               <div className={styles.outputLabel}>
                 <CheckCircle2 className={styles.outputIcon} /> Output Summary
               </div>
               {task.output.relayedBrief && (
-                <p className={styles.outputText}>
-                  <strong>Relayed brief:</strong> {task.output.relayedBrief}
-                </p>
+                <p className={styles.outputText}><strong>Relayed brief:</strong> {task.output.relayedBrief}</p>
               )}
-              {task.output.summary && (
-                <p className={styles.outputText}>{task.output.summary}</p>
-              )}
-              {task.output.filesModified && task.output.filesModified.length > 0 && (
+              {task.output.summary && <p className={styles.outputText}>{task.output.summary}</p>}
+              {task.output.filesModified?.length > 0 && (
                 <ul className={styles.fileList}>
                   {task.output.filesModified.map(f => (
                     <li key={f} className={styles.fileItem}>{f}</li>
@@ -248,23 +215,12 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             </div>
           )}
 
-          {/* Timing (read-only) */}
+          {/* Timing */}
           {!editable && (task.startedAt || task.completedAt) && (
             <div className={styles.timing}>
               <Clock className={styles.timingIcon} />
-              {task.startedAt && (
-                <span>Started {new Date(task.startedAt).toLocaleTimeString()}</span>
-              )}
-              {task.completedAt && (
-                <span>· Completed {new Date(task.completedAt).toLocaleTimeString()}</span>
-              )}
-            </div>
-          )}
-
-          {/* Assigned session (read-only) */}
-          {!editable && assignedSession && (
-            <div className={styles.sessionInfo}>
-              Session: <span className={styles.sessionName}>{assignedSession.title}</span>
+              {task.startedAt && <span>Started {new Date(task.startedAt).toLocaleTimeString()}</span>}
+              {task.completedAt && <span>· Completed {new Date(task.completedAt).toLocaleTimeString()}</span>}
             </div>
           )}
         </div>
@@ -285,40 +241,21 @@ const styles = {
   `,
   cardRunning: css`
     border-color: var(--color-brand);
-    box-shadow: 0 0 0 1px var(--color-brand) inset, 0 0 12px rgba(255, 157, 0, 0.08);
+    box-shadow: 0 0 0 1px var(--color-brand) inset, 0 0 12px rgba(255,157,0,0.08);
   `,
-  cardDone: css`
-    border-color: var(--color-success);
-    opacity: 0.75;
-  `,
-  cardFailed: css`
-    border-color: var(--color-danger);
-  `,
+  cardDone:   css`border-color: var(--color-success); opacity: 0.75;`,
+  cardFailed: css`border-color: var(--color-danger);`,
   header: css`
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 10px 12px;
   `,
-  grip: css`
-    width: 14px;
-    height: 14px;
-    color: var(--text-tertiary);
-    cursor: grab;
-    flex-shrink: 0;
-  `,
-  statusIcon: css`
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
-  `,
+  grip: css`width:14px; height:14px; color:var(--text-tertiary); cursor:grab; flex-shrink:0;`,
+  statusIcon: css`width:14px; height:14px; flex-shrink:0;`,
   spin: css`
     animation: spin 1.2s linear infinite;
-
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to   { transform: rotate(360deg); }
-    }
+    @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
   `,
   title: css`
     flex: 1;
@@ -341,32 +278,26 @@ const styles = {
     outline: none;
     font-family: inherit;
     transition: border-color 0.15s;
-
     &::placeholder { color: var(--text-tertiary); }
     &:focus { border-bottom-color: var(--color-brand); }
   `,
-  agentChip: css`
+  sessionChip: css`
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
     font-size: 10px;
     font-weight: 600;
-    color: var(--text-secondary);
-    border: 1px solid;
+    color: var(--text-tertiary);
+    border: 1px solid var(--border-color);
     border-radius: 99px;
     padding: 1px 6px;
     white-space: nowrap;
     flex-shrink: 0;
-    max-width: 100px;
+    max-width: 120px;
     overflow: hidden;
     text-overflow: ellipsis;
   `,
-  agentDot: css`
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  `,
+  chipIcon: css`width:9px; height:9px; flex-shrink:0;`,
   statusLabel: css`
     font-size: 10px;
     font-weight: 700;
@@ -375,181 +306,77 @@ const styles = {
     flex-shrink: 0;
   `,
   expandBtn: css`
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--text-tertiary);
-    padding: 2px;
-    display: flex;
-    align-items: center;
-    transition: color 0.15s;
-    flex-shrink: 0;
-
+    background: transparent; border: none; cursor: pointer;
+    color: var(--text-tertiary); padding: 2px;
+    display: flex; align-items: center; transition: color 0.15s; flex-shrink: 0;
     &:hover { color: var(--text-primary); }
   `,
   deleteBtn: css`
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--color-danger);
-    padding: 2px;
-    display: flex;
-    align-items: center;
-    opacity: 0.6;
-    transition: opacity 0.15s;
-    flex-shrink: 0;
-
+    background: transparent; border: none; cursor: pointer;
+    color: var(--color-danger); padding: 2px;
+    display: flex; align-items: center; opacity: 0.6;
+    transition: opacity 0.15s; flex-shrink: 0;
     &:hover { opacity: 1; }
   `,
-  expandIcon: css`
-    width: 13px;
-    height: 13px;
-  `,
+  expandIcon: css`width:13px; height:13px;`,
   body: css`
     padding: 10px 14px 12px;
     border-top: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    display: flex; flex-direction: column; gap: 10px;
     background-color: var(--bg-primary);
   `,
-  descText: css`
-    font-size: var(--font-size-xs);
-    color: var(--text-secondary);
-    line-height: 1.5;
-    margin: 0;
-  `,
+  descText: css`font-size:var(--font-size-xs); color:var(--text-secondary); line-height:1.5; margin:0;`,
   descTextarea: css`
-    width: 100%;
-    box-sizing: border-box;
+    width: 100%; box-sizing: border-box;
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);
     padding: 8px 10px;
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    font-family: inherit;
-    resize: vertical;
-    outline: none;
-    line-height: 1.5;
+    font-size: var(--font-size-xs); color: var(--text-primary);
+    font-family: inherit; resize: vertical; outline: none; line-height: 1.5;
     transition: border-color 0.15s;
-
     &::placeholder { color: var(--text-tertiary); }
     &:focus { border-color: var(--color-brand); }
   `,
-  fieldRow: css`
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  `,
+  fieldRow: css`display:flex; flex-direction:column; gap:5px;`,
   fieldLabel: css`
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-tertiary);
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary);
   `,
   select: css`
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);
-    padding: 5px 8px;
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    outline: none;
-    cursor: pointer;
+    padding: 5px 8px; font-size: var(--font-size-xs);
+    color: var(--text-primary); outline: none; cursor: pointer;
     transition: border-color 0.15s;
-
     &:focus { border-color: var(--color-brand); }
   `,
-  depsGrid: css`
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  `,
+  depsGrid: css`display:flex; flex-direction:column; gap:5px;`,
   depCheckLabel: css`
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: var(--font-size-xs);
-    color: var(--text-secondary);
-    cursor: pointer;
-    user-select: none;
+    display:flex; align-items:center; gap:6px;
+    font-size:var(--font-size-xs); color:var(--text-secondary);
+    cursor:pointer; user-select:none;
   `,
-  depCheck: css`
-    accent-color: var(--color-brand);
-    cursor: pointer;
-  `,
-  depsPills: css`
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-  `,
-  depPill: css`
-    font-size: 10px;
-    border: 1px solid currentColor;
-    border-radius: 3px;
-    padding: 1px 6px;
-    opacity: 0.8;
-  `,
+  depCheck: css`accent-color: var(--color-brand); cursor:pointer;`,
+  depsPills: css`display:flex; flex-wrap:wrap; gap:5px;`,
+  depPill: css`font-size:10px; border:1px solid currentColor; border-radius:3px; padding:1px 6px; opacity:0.8;`,
   outputBlock: css`
     border: 1px solid var(--color-success);
     border-radius: var(--border-radius-sm);
     padding: 8px 10px;
-    background-color: rgba(16, 185, 129, 0.04);
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
+    background-color: rgba(16,185,129,0.04);
+    display: flex; flex-direction: column; gap: 5px;
   `,
   outputLabel: css`
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-success);
+    display:flex; align-items:center; gap:5px;
+    font-size:10px; font-weight:700; text-transform:uppercase;
+    letter-spacing:0.06em; color:var(--color-success);
   `,
-  outputIcon: css`
-    width: 11px;
-    height: 11px;
-  `,
-  outputText: css`
-    font-size: var(--font-size-xs);
-    color: var(--text-secondary);
-    line-height: 1.5;
-    margin: 0;
-  `,
-  fileList: css`
-    margin: 0;
-    padding-left: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  `,
-  fileItem: css`
-    font-size: 11px;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    color: var(--text-tertiary);
-  `,
-  timing: css`
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 10px;
-    color: var(--text-tertiary);
-  `,
-  timingIcon: css`
-    width: 11px;
-    height: 11px;
-  `,
-  sessionInfo: css`
-    font-size: 10px;
-    color: var(--text-tertiary);
-  `,
-  sessionName: css`
-    color: var(--text-secondary);
-    font-weight: 600;
-  `,
+  outputIcon: css`width:11px; height:11px;`,
+  outputText: css`font-size:var(--font-size-xs); color:var(--text-secondary); line-height:1.5; margin:0;`,
+  fileList: css`margin:0; padding-left:16px; display:flex; flex-direction:column; gap:2px;`,
+  fileItem: css`font-size:11px; font-family:'JetBrains Mono','Fira Code',monospace; color:var(--text-tertiary);`,
+  timing: css`display:flex; align-items:center; gap:5px; font-size:10px; color:var(--text-tertiary);`,
+  timingIcon: css`width:11px; height:11px;`,
 };

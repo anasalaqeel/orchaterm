@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { css, cx } from '@emotion/css';
 import { useDashboard } from '../context/DashboardContext';
-import { Workspace, Agent } from '../types';
+import { Workspace } from '../types';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { fetchOllamaModels } from '../services/ollamaRelay';
 import {
@@ -19,15 +19,12 @@ import {
 export const SettingsView: React.FC = () => {
   const {
     workspaces,
-    agents,
     theme,
     toggleTheme,
     exportSettings,
     importSettings,
     updateWorkspace,
     deleteWorkspace,
-    updateAgent,
-    deleteAgent,
     showToast,
     settings,
     updateSettings
@@ -102,11 +99,10 @@ export const SettingsView: React.FC = () => {
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
 
   // Tabs for settings sections
-  const [activeTab, setActiveTab] = useState<'general' | 'projects' | 'agents'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'projects'>('general');
 
   // Modals / forms state
   const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null);
-  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
 
   // New/Edit Workspace Form State
   const [projName, setProjName] = useState('');
@@ -114,15 +110,6 @@ export const SettingsView: React.FC = () => {
   const [projDesc, setProjDesc] = useState('');
   const [projColor, setProjColor] = useState('#3b82f6');
   const [projStatus, setProjStatus] = useState<'active' | 'paused' | 'idle'>('active');
-  const [projAgent, setProjAgent] = useState('');
-
-  // New/Edit Agent Form State
-  const [agentName, setAgentName] = useState('');
-  const [agentType, setAgentType] = useState<'terminal' | 'web' | 'ide-plugin' | 'other'>('terminal');
-  const [agentLaunchUrl, setAgentLaunchUrl] = useState('');
-  const [agentLaunchCommand, setAgentLaunchCommand] = useState('');
-  const [agentBestUsedFor, setAgentBestUsedFor] = useState('');
-  const [agentColor, setAgentColor] = useState('#3b82f6');
 
   // Export Settings Handler
   const handleExport = () => {
@@ -176,7 +163,6 @@ export const SettingsView: React.FC = () => {
     setProjDesc(w.description);
     setProjColor(w.color);
     setProjStatus(w.status);
-    setProjAgent(w.agentId || '');
   };
 
   const handleUpdateWorkspaceSubmit = (e: React.FormEvent) => {
@@ -193,7 +179,6 @@ export const SettingsView: React.FC = () => {
       description: projDesc,
       color: projColor,
       status: projStatus,
-      agentId: projAgent || null
     });
 
     setEditingWorkspace(null);
@@ -201,40 +186,6 @@ export const SettingsView: React.FC = () => {
     setProjPath('');
     setProjDesc('');
     showToast('Workspace updated successfully', 'success');
-  };
-
-  // AGENT CRUD
-  const handleEditAgentClick = (a: Agent) => {
-    setEditingAgent(a);
-    setAgentName(a.name);
-    setAgentType(a.type);
-    setAgentLaunchUrl(a.launchUrl || '');
-    setAgentLaunchCommand(a.launchCommand || '');
-    setAgentBestUsedFor(a.bestUsedFor || '');
-    setAgentColor(a.color || '#3b82f6');
-  };
-
-  const handleUpdateAgentSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingAgent) return;
-    if (!agentName.trim()) {
-      showToast('Agent name is required', 'error');
-      return;
-    }
-
-    updateAgent(editingAgent.id, {
-      name: agentName,
-      type: agentType,
-      launchUrl: agentType === 'web' ? agentLaunchUrl.trim() : null,
-      launchCommand: agentType === 'terminal' ? agentLaunchCommand.trim() : null,
-      bestUsedFor: agentBestUsedFor,
-      color: agentColor
-    });
-
-    setEditingAgent(null);
-    setAgentName('');
-    setAgentBestUsedFor('');
-    showToast('Agent updated successfully', 'success');
   };
 
   return (
@@ -267,16 +218,6 @@ export const SettingsView: React.FC = () => {
         >
           Workspaces ({workspaces.length})
           {activeTab === 'projects' && <span className={styles.tabActiveLine} />}
-        </button>
-        <button
-          onClick={() => setActiveTab('agents')}
-          className={cx(
-            styles.tabButton,
-            activeTab === 'agents' ? styles.tabButtonActive : styles.tabButtonInactive
-          )}
-        >
-          Agent Registry ({agents.length})
-          {activeTab === 'agents' && <span className={styles.tabActiveLine} />}
         </button>
       </div>
 
@@ -512,25 +453,22 @@ export const SettingsView: React.FC = () => {
                   <th className={styles.th}>Local Path</th>
                   <th className={styles.th}>Description</th>
                   <th className={styles.thW28}>Status</th>
-                  <th className={styles.thW36}>Assigned Agent</th>
                   <th className={styles.thW24}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {workspaces.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className={styles.tdEmpty}>
+                    <td colSpan={6} className={styles.tdEmpty}>
                       No project workspaces found.
                     </td>
                   </tr>
                 ) : (
-                  workspaces.map(p => {
-                    const agent = agents.find(a => a.id === p.agentId);
-                    return (
+                  workspaces.map(p => (
                       <tr key={p.id} className={styles.tr}>
                         <td className={styles.td}>
-                          <span 
-                            className={styles.colorTag} 
+                          <span
+                            className={styles.colorTag}
                             style={{ backgroundColor: p.color }}
                           />
                         </td>
@@ -544,9 +482,6 @@ export const SettingsView: React.FC = () => {
                           )}>
                             {p.status}
                           </span>
-                        </td>
-                        <td className={styles.tdAgent}>
-                          {agent ? agent.name : <span className={styles.italicMuted}>None</span>}
                         </td>
                         <td className={styles.td}>
                           <div className={styles.actionGroup}>
@@ -569,73 +504,6 @@ export const SettingsView: React.FC = () => {
                           </div>
                         </td>
                       </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* AGENTS MANAGEMENT TAB */}
-      {activeTab === 'agents' && (
-        <div>
-          <div className={styles.tableWrapper}>
-            <table className={styles.table}>
-              <thead>
-                <tr className={styles.thRow}>
-                  <th className={styles.thW12}>Tag</th>
-                  <th className={styles.th}>Agent Name</th>
-                  <th className={styles.th}>Type</th>
-                  <th className={styles.th}>Best Used For</th>
-                  <th className={styles.th}>Endpoint / Command</th>
-                  <th className={styles.thW24}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {agents.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className={styles.tdEmpty}>
-                      No registered agents found.
-                    </td>
-                  </tr>
-                ) : (
-                  agents.map(a => (
-                    <tr key={a.id} className={styles.tr}>
-                      <td className={styles.td}>
-                        <span 
-                          className={styles.colorTagFull} 
-                          style={{ backgroundColor: a.color }}
-                        />
-                      </td>
-                      <td className={styles.tdName}>{a.name}</td>
-                      <td className={styles.tdAgentType}>{a.type}</td>
-                      <td className={styles.tdDesc}>{a.bestUsedFor}</td>
-                      <td className={styles.tdAgentCmd}>
-                        {a.type === 'terminal' ? a.launchCommand : a.launchUrl || 'N/A'}
-                      </td>
-                      <td className={styles.td}>
-                        <div className={styles.actionGroup}>
-                          <button
-                            onClick={() => handleEditAgentClick(a)}
-                            className={styles.editButton}
-                          >
-                            <Edit2 className={styles.actionIcon} />
-                          </button>
-                          <button
-                            onClick={() => {
-                              setConfirmMessage(`Delete agent "${a.name}"? This cannot be undone.`);
-                              setConfirmAction(() => () => deleteAgent(a.id));
-                              setConfirmOpen(true);
-                            }}
-                            className={styles.deleteButton}
-                          >
-                            <Trash2 className={styles.actionIcon} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
                   ))
                 )}
               </tbody>
@@ -722,22 +590,6 @@ export const SettingsView: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className={styles.formLabel}>Assign Agent</label>
-                <select
-                  value={projAgent}
-                  onChange={(e) => setProjAgent(e.target.value)}
-                  className={styles.dialogSelect}
-                >
-                  <option value="">Unassigned</option>
-                  {agents.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               <div className={styles.modalButtons}>
                 <button
                   type="button"
@@ -751,105 +603,6 @@ export const SettingsView: React.FC = () => {
                   className={styles.modalSubmitButton}
                 >
                   Update Workspace
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* EDIT AGENT DIALOG */}
-      {editingAgent && (
-        <div className={styles.modalBackdrop}>
-          <div className={styles.modalContent}>
-            <h3 className={styles.modalTitle}>Modify Agent Settings</h3>
-            <form onSubmit={handleUpdateAgentSubmit} className={styles.formContainer}>
-              <div>
-                <label className={styles.formLabel}>Agent Name</label>
-                <input
-                  type="text"
-                  value={agentName}
-                  onChange={(e) => setAgentName(e.target.value)}
-                  className={styles.dialogInput}
-                  required
-                />
-              </div>
-
-              <div className={styles.grid2Col}>
-                <div>
-                  <label className={styles.formLabel}>Agent Type</label>
-                  <select
-                    value={agentType}
-                    onChange={(e) => setAgentType(e.target.value as Agent['type'])}
-                    className={styles.dialogSelect}
-                  >
-                    <option value="terminal">Terminal Binary</option>
-                    <option value="web">Web Browser Page</option>
-                    <option value="ide-plugin">IDE Plugin</option>
-                    <option value="other">Other Service</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className={styles.formLabel}>Accent Theme</label>
-                  <input
-                    type="color"
-                    value={agentColor}
-                    onChange={(e) => setAgentColor(e.target.value)}
-                    className={styles.colorInput}
-                  />
-                </div>
-              </div>
-
-              {agentType === 'terminal' && (
-                <div>
-                  <label className={styles.formLabel}>Terminal Launch Command</label>
-                  <input
-                    type="text"
-                    value={agentLaunchCommand}
-                    onChange={(e) => setAgentLaunchCommand(e.target.value)}
-                    className={styles.dialogInput}
-                    required
-                  />
-                </div>
-              )}
-
-              {agentType === 'web' && (
-                <div>
-                  <label className={styles.formLabel}>Browser Launch URL</label>
-                  <input
-                    type="url"
-                    value={agentLaunchUrl}
-                    onChange={(e) => setAgentLaunchUrl(e.target.value)}
-                    className={styles.dialogInput}
-                    required
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className={styles.formLabel}>Best Used For</label>
-                <textarea
-                  value={agentBestUsedFor}
-                  onChange={(e) => setAgentBestUsedFor(e.target.value)}
-                  rows={2}
-                  className={styles.dialogTextarea}
-                />
-              </div>
-
-              <div className={styles.modalButtons}>
-                <button
-                  type="button"
-                  onClick={() => setEditingAgent(null)}
-                  className={styles.modalCancelButton}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className={styles.modalSubmitButton}
-                >
-                  Update Settings
                 </button>
               </div>
             </form>

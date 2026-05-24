@@ -15,19 +15,17 @@ import {
 import { css, cx } from '@emotion/css';
 
 export const TaskLogView: React.FC = () => {
-  const { 
-    taskLogs, 
-    workspaces, 
-    agents, 
-    addTaskLog, 
-    updateTaskLog, 
+  const {
+    taskLogs,
+    workspaces,
+    addTaskLog,
+    updateTaskLog,
     deleteTaskLog,
-    showToast 
+    showToast
   } = useDashboard();
 
   // Filters state
   const [filterWorkspace, setFilterWorkspace] = useState<string>('all');
-  const [filterAgent, setFilterAgent] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Confirm delete dialog
@@ -37,16 +35,14 @@ export const TaskLogView: React.FC = () => {
   // Add Log Dialog state
   const [showAddModal, setShowAddModal] = useState(false);
   const [newLogWorkspace, setNewLogWorkspace] = useState('');
-  const [newLogAgent, setNewLogAgent] = useState('');
   const [newLogSummary, setNewLogSummary] = useState('');
   const [newLogStatus, setNewLogStatus] = useState<'in-progress' | 'done' | 'blocked'>('in-progress');
 
   // Filter logs
   const filteredLogs = taskLogs.filter(log => {
     const matchesWorkspace = filterWorkspace === 'all' || log.workspaceId === filterWorkspace;
-    const matchesAgent = filterAgent === 'all' || log.agentId === filterAgent;
     const matchesQuery = searchQuery === '' || log.summary.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesWorkspace && matchesAgent && matchesQuery;
+    return matchesWorkspace && matchesQuery;
   });
 
   const handleStatusChange = (id: string, currentStatus: TaskLog['status']) => {
@@ -74,13 +70,12 @@ export const TaskLogView: React.FC = () => {
 
     addTaskLog({
       workspaceId: newLogWorkspace,
-      agentId: newLogAgent || '',
+      groupId: null,
       summary: newLogSummary,
       status: newLogStatus
     });
 
     setNewLogWorkspace('');
-    setNewLogAgent('');
     setNewLogSummary('');
     setNewLogStatus('in-progress');
     setShowAddModal(false);
@@ -111,7 +106,6 @@ export const TaskLogView: React.FC = () => {
           onClick={() => {
             if (workspaces.length > 0) {
               setNewLogWorkspace(workspaces[0].id);
-              if (workspaces[0].agentId) setNewLogAgent(workspaces[0].agentId);
             }
             setShowAddModal(true);
           }}
@@ -136,21 +130,6 @@ export const TaskLogView: React.FC = () => {
             <option value="all">All Workspaces</option>
             {workspaces.map(w => (
               <option key={w.id} value={w.id}>{w.name}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Agent Selector */}
-        <div className={styles.filterWrapper}>
-          <label className={styles.filterLabel}>Filter Agent</label>
-          <select
-            value={filterAgent}
-            onChange={(e) => setFilterAgent(e.target.value)}
-            className={styles.selectInput}
-          >
-            <option value="all">All Agents</option>
-            {agents.map(a => (
-              <option key={a.id} value={a.id}>{a.name}</option>
             ))}
           </select>
         </div>
@@ -185,7 +164,6 @@ export const TaskLogView: React.FC = () => {
               <tr className={styles.tableHeaderRow}>
                 <th className={cx(styles.th, styles.thTime)}>Timestamp</th>
                 <th className={styles.th}>Workspace</th>
-                <th className={styles.th}>Agent Source</th>
                 <th className={styles.th}>Action Summary</th>
                 <th className={cx(styles.th, styles.thStatus)}>Status (Click to toggle)</th>
                 <th className={cx(styles.th, styles.thAction)}></th>
@@ -194,7 +172,7 @@ export const TaskLogView: React.FC = () => {
             <tbody className={styles.tbody}>
               {filteredLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className={styles.noEntriesCell}>
+                  <td colSpan={5} className={styles.noEntriesCell}>
                     <History className={styles.historyIcon} />
                     <p className={styles.noEntriesTitle}>No log entries found</p>
                     <p className={styles.noEntriesSubtitle}>Try resetting the workspace / agent filters or create a new entry.</p>
@@ -203,10 +181,9 @@ export const TaskLogView: React.FC = () => {
               ) : (
                 filteredLogs.map((log) => {
                   const workspaceObj = workspaces.find(w => w.id === log.workspaceId);
-                  const agentObj = agents.find(a => a.id === log.agentId);
 
                   return (
-                    <tr 
+                    <tr
                       key={log.id}
                       className={styles.tableRow}
                     >
@@ -219,26 +196,14 @@ export const TaskLogView: React.FC = () => {
                       <td className={styles.tdWorkspace}>
                         {workspaceObj ? (
                           <span className={styles.flexCenterGap8}>
-                            <span 
-                              className={styles.workspaceDot} 
+                            <span
+                              className={styles.workspaceDot}
                               style={{ backgroundColor: workspaceObj.color }}
                             />
                             <span>{workspaceObj.name}</span>
                           </span>
                         ) : (
                           <span className={styles.unknownText}>Unknown Workspace</span>
-                        )}
-                      </td>
-
-                      {/* Agent Name */}
-                      <td className={styles.tdAgent}>
-                        {agentObj ? (
-                          <span className={styles.flexCenterGap6}>
-                            <span className={styles.agentDot} style={{ backgroundColor: agentObj.color }} />
-                            <span>{agentObj.name}</span>
-                          </span>
-                        ) : (
-                          <span className={styles.unknownText}>Manual User Entry</span>
                         )}
                       </td>
 
@@ -316,35 +281,13 @@ export const TaskLogView: React.FC = () => {
                 <label className={styles.modalLabel}>Select Workspace</label>
                 <select
                   value={newLogWorkspace}
-                  onChange={(e) => {
-                    setNewLogWorkspace(e.target.value);
-                    const selected = workspaces.find(w => w.id === e.target.value);
-                    if (selected && selected.agentId) {
-                      setNewLogAgent(selected.agentId);
-                    } else {
-                      setNewLogAgent('');
-                    }
-                  }}
+                  onChange={(e) => setNewLogWorkspace(e.target.value)}
                   className={styles.modalSelect}
                   required
                 >
                   <option value="" disabled>-- Select Workspace --</option>
                   {workspaces.map(w => (
                     <option key={w.id} value={w.id}>{w.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className={styles.modalLabel}>Select Agent Source</label>
-                <select
-                  value={newLogAgent}
-                  onChange={(e) => setNewLogAgent(e.target.value)}
-                  className={styles.modalSelect}
-                >
-                  <option value="">Manual Entry (No Agent)</option>
-                  {agents.map(a => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
                   ))}
                 </select>
               </div>

@@ -7,10 +7,10 @@ export interface OrchestratorTask {
   title: string;
   /** Full task instructions. Sentinel instruction is appended automatically by the engine. */
   description: string;
-  /** Which PTY session this task runs in. */
+  /** Which PTY session this task runs in. Must be a member of the plan's group. */
   assignedSessionId: string;
-  /** Which registered Agent is in that session (for display only). */
-  assignedAgentId: string;
+  /** Tab title at time of assignment — for display only. */
+  assignedSessionTitle: string;
   /** IDs of tasks that must be 'done' before this task is dispatched. Empty = no deps. */
   dependsOn: string[];
   status: OrchestratorTaskStatus;
@@ -45,8 +45,9 @@ export interface OrchestratorPlan {
   status: OrchestratorPlanStatus;
   createdAt: number;
   completedAt?: number;
-  /** Optional: scopes this plan to a specific workspace. */
-  workspaceId?: string;
+  workspaceId: string;
+  /** Scopes this plan to a specific Agent Group. */
+  groupId: string;
 }
 
 // ── Per-session Buffer (in-memory only) ───────────────────────────────────────
