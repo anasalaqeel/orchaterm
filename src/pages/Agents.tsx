@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { css, cx, keyframes } from '@emotion/css';
 import { useDashboard } from '../context/DashboardContext';
 import { Agent } from '../types';
-import { ConfirmDialog } from './ConfirmDialog';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { 
   Terminal, 
   Globe, 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useDashboard } from '../context/DashboardContext';
+import { useDashboard } from '../../context/DashboardContext';
 import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
 import { css, cx } from '@emotion/css';
 

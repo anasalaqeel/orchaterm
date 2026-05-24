@@ -1,7 +1,8 @@
 import { readTextFile, writeTextFile, BaseDirectory, exists, mkdir } from '@tauri-apps/plugin-fs';
-import { AppData, Agent, AppSettings } from '../types';
+import { AppData, Agent, AppSettings, OrchestratorPlan } from '../types';
 
-const FILE_NAME = 'agentdeck_data.json';
+const FILE_NAME       = 'agentdeck_data.json';
+const PLANS_FILE_NAME = 'agentdeck_plans.json';
 
 // Cache mkdir so we don't call it on every read/write.
 let _dirReady = false;
@@ -18,6 +19,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   ollamaHost: 'http://localhost:11434',
   openaiApiKey: '',
   anthropicApiKey: '',
+  conductorOllamaModel: '',            // empty = user must pick from available models
+  conductorTaskTimeoutMinutes: 30,
 };
 
 const DEFAULT_AGENTS: Agent[] = [
@@ -109,5 +112,45 @@ export async function saveData(data: AppData): Promise<void> {
     await writeTextFile(FILE_NAME, jsonStr, { baseDir: BaseDirectory.AppData });
   } catch (err) {
     console.error('Error saving data to Tauri FS:', err);
+  }
+}
+
+/**
+ * Loads orchestrator plans from a separate file so they don't bloat the main data file.
+ */
+export async function loadPlans(): Promise<OrchestratorPlan[]> {
+  if (!isTauri()) {
+    const cached = localStorage.getItem('agentdeck_plans');
+    return cached ? JSON.parse(cached) : [];
+  }
+
+  try {
+    await ensureDir();
+    const fileExists = await exists(PLANS_FILE_NAME, { baseDir: BaseDirectory.AppData });
+    if (!fileExists) return [];
+    const raw = await readTextFile(PLANS_FILE_NAME, { baseDir: BaseDirectory.AppData });
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error('Error loading plans from Tauri FS:', err);
+    return [];
+  }
+}
+
+/**
+ * Saves orchestrator plans to a separate file.
+ */
+export async function savePlans(plans: OrchestratorPlan[]): Promise<void> {
+  if (!isTauri()) {
+    localStorage.setItem('agentdeck_plans', JSON.stringify(plans));
+    return;
+  }
+
+  try {
+    await ensureDir();
+    await writeTextFile(PLANS_FILE_NAME, JSON.stringify(plans, null, 2), {
+      baseDir: BaseDirectory.AppData,
+    });
+  } catch (err) {
+    console.error('Error saving plans to Tauri FS:', err);
   }
 }
