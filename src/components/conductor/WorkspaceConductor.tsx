@@ -133,6 +133,9 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
 
   useEffect(() => {
     const unsubState = orchestratorEngine.onStateChange((plan) => {
+      // Ignore engine events that belong to a different workspace
+      if (plan.workspaceId && plan.workspaceId !== workspaceId) return;
+
       setLiveTasks([...plan.tasks]);
       setEngineRunning(plan.status === 'running');
 

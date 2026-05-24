@@ -221,6 +221,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
   const switchTab = useCallback((sessionId: string) => {
     setActiveSessionId(sessionId);
+    // Give React one frame to flip visibility before measuring.
     requestAnimationFrame(() => {
       const ref = tabRefs.current.get(sessionId);
       if (ref?.current) ref.current.fit();
@@ -395,10 +396,21 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         ) : (
           sessions.map((session) => {
             const isActive = session.id === activeSessionId;
-            if (!isActive) return null;
             const tabRef = tabRefs.current.get(session.id) ?? null;
+            // All TerminalTab instances stay mounted so their PTY processes
+            // and xterm canvases remain intact. Inactive tabs are stacked
+            // behind the active one via visibility:hidden — they keep their
+            // layout dimensions, so the ResizeObserver inside each TerminalTab
+            // stays accurate and the terminal never needs to re-fit when
+            // switching back.
             return (
-              <div key={session.id} className={styles.viewportWrapper}>
+              <div
+                key={session.id}
+                className={cx(
+                  styles.viewportWrapper,
+                  !isActive && styles.viewportWrapperHidden,
+                )}
+              >
                 <TerminalTab
                   ref={tabRef}
                   sessionId={session.id}
@@ -711,8 +723,12 @@ const styles = {
     position: relative;
   `,
   viewportWrapper: css`
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    inset: 0;
+  `,
+  viewportWrapperHidden: css`
+    visibility: hidden;
+    pointer-events: none;
   `,
 
   /* Empty state */

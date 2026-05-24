@@ -213,7 +213,7 @@ export const DashboardView: React.FC = () => {
             <div className={s.rightPanelContent}>
               {rightPanel === 'workspace'
                 ? <WorkspacePanel workspace={activeProject} />
-                : <WorkspaceConductor workspaceId={activeProject.id} />
+                : <WorkspaceConductor key={activeProject.id} workspaceId={activeProject.id} />
               }
             </div>
           </div>
