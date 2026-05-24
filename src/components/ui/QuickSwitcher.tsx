@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useDashboard } from '../context/DashboardContext';
+import { useNavigate } from 'react-router';
+import { useDashboard } from '../../context/DashboardContext';
 import { Search, CornerDownLeft } from 'lucide-react';
 import { css, cx } from '@emotion/css';
 
 export const QuickSwitcher: React.FC = () => {
-  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, setActiveView, setViewMode, showToast } = useDashboard();
+  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, setViewMode, showToast } = useDashboard();
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -69,12 +71,10 @@ export const QuickSwitcher: React.FC = () => {
 
   const handleSelect = (id: string) => {
     setActiveWorkspaceId(id);
-    setActiveView('dashboard');
     setViewMode('grid');
+    navigate('/');
     const proj = workspaces.find(p => p.id === id);
-    if (proj) {
-      showToast(`Switched active workspace to ${proj.name}`, 'success');
-    }
+    if (proj) showToast(`Switched active workspace to ${proj.name}`, 'success');
     setIsOpen(false);
     setSearch('');
   };

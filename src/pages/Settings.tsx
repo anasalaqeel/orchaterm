@@ -2,15 +2,18 @@ import React, { useState, useRef, useEffect } from 'react';
 import { css, cx } from '@emotion/css';
 import { useDashboard } from '../context/DashboardContext';
 import { Workspace, Agent } from '../types';
-import { ConfirmDialog } from './ConfirmDialog';
-import { 
-  Sun, 
-  Moon, 
-  Download, 
-  Upload, 
-  Trash2, 
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { fetchOllamaModels } from '../services/ollamaRelay';
+import {
+  Sun,
+  Moon,
+  Download,
+  Upload,
+  Trash2,
   Edit2,
-  Settings
+  Settings,
+  RefreshCw,
+  Network,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -38,12 +41,47 @@ export const SettingsView: React.FC = () => {
   const [openaiApiKey, setOpenaiApiKey] = useState(settings.openaiApiKey);
   const [anthropicApiKey, setAnthropicApiKey] = useState(settings.anthropicApiKey);
 
+  // Conductor settings
+  const [conductorOllamaModel, setConductorOllamaModel] = useState(settings.conductorOllamaModel);
+  const [conductorTaskTimeoutMinutes, setConductorTaskTimeoutMinutes] = useState(
+    settings.conductorTaskTimeoutMinutes
+  );
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState('');
+
+  const loadOllamaModels = async () => {
+    setModelsLoading(true);
+    setModelsError('');
+    try {
+      const models = await fetchOllamaModels(ollamaHost || settings.ollamaHost);
+      setOllamaModels(models);
+      if (models.length > 0 && !conductorOllamaModel) {
+        setConductorOllamaModel(models[0]);
+      }
+    } catch (err: any) {
+      setModelsError(err?.message ?? 'Could not reach Ollama');
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
   useEffect(() => {
     setShellPath(settings.shellPath);
     setOllamaHost(settings.ollamaHost);
     setOpenaiApiKey(settings.openaiApiKey);
     setAnthropicApiKey(settings.anthropicApiKey);
+    setConductorOllamaModel(settings.conductorOllamaModel);
+    setConductorTaskTimeoutMinutes(settings.conductorTaskTimeoutMinutes);
   }, [settings]);
+
+  // Pre-load models when component mounts so the dropdown is ready
+  useEffect(() => {
+    if (settings.ollamaHost) {
+      loadOllamaModels();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSaveIntegrations = (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,8 +89,11 @@ export const SettingsView: React.FC = () => {
       shellPath,
       ollamaHost,
       openaiApiKey,
-      anthropicApiKey
+      anthropicApiKey,
+      conductorOllamaModel,
+      conductorTaskTimeoutMinutes,
     });
+    showToast('Settings saved', 'success');
   };
 
   // Confirm delete dialog
@@ -323,13 +364,18 @@ export const SettingsView: React.FC = () => {
               <div className={styles.grid2Col}>
                 <div>
                   <label className={styles.formLabel}>Terminal Shell Executable</label>
-                  <input
-                    type="text"
+                  <select
                     value={shellPath}
                     onChange={(e) => setShellPath(e.target.value)}
-                    placeholder="e.g. powershell.exe, cmd.exe, wsl, bash"
-                    className={styles.integrationInput}
-                  />
+                    className={styles.integrationSelect}
+                  >
+                    <option value="">— Select a shell —</option>
+                    <option value="powershell.exe">PowerShell (powershell.exe)</option>
+                    <option value="cmd.exe">Command Prompt (cmd.exe)</option>
+                    <option value="wsl.exe">WSL (wsl.exe)</option>
+                    <option value="bash">Git Bash (bash)</option>
+                    <option value="C:\Program Files\Git\bin\bash.exe">Git Bash — full path</option>
+                  </select>
                 </div>
                 <div>
                   <label className={styles.formLabel}>Ollama API Host</label>
@@ -375,6 +421,81 @@ export const SettingsView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+
+          {/* Conductor / Ollama card */}
+          <div className={styles.integrationsCard}>
+            <h3 className={styles.cardTitle}>
+              <Network className={cx(styles.cardTitleIcon, styles.settingsIcon)} />
+              <span>Conductor Settings</span>
+            </h3>
+            <p className={styles.cardDescription}>
+              Configure the Ollama model used as the orchestration relay and the per-task timeout.
+              The relay model must be running locally via Ollama — a small/fast model like
+              <code> llama3.2</code> or <code>mistral</code> is recommended.
+            </p>
+
+            <div className={styles.conductorRow}>
+              <div style={{ flex: 1 }}>
+                <label className={styles.formLabel}>Ollama Relay Model</label>
+                <div className={styles.modelPickerRow}>
+                  <select
+                    className={styles.integrationSelect}
+                    value={conductorOllamaModel}
+                    onChange={e => setConductorOllamaModel(e.target.value)}
+                    disabled={modelsLoading}
+                  >
+                    {ollamaModels.length === 0 ? (
+                      <option value=''>— click Refresh to load models —</option>
+                    ) : (
+                      <>
+                        <option value=''>— Select a model —</option>
+                        {ollamaModels.map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                  <button
+                    type='button'
+                    className={styles.refreshBtn}
+                    onClick={loadOllamaModels}
+                    disabled={modelsLoading}
+                    title='Refresh model list from Ollama'
+                  >
+                    <RefreshCw className={cx(styles.refreshIcon, modelsLoading && styles.spin)} />
+                  </button>
+                </div>
+                {modelsError && (
+                  <p className={styles.modelsError}>{modelsError}</p>
+                )}
+              </div>
+
+              <div style={{ width: 160 }}>
+                <label className={styles.formLabel}>Task Timeout (minutes)</label>
+                <input
+                  type='number'
+                  min={1}
+                  max={480}
+                  className={styles.integrationInput}
+                  value={conductorTaskTimeoutMinutes}
+                  onChange={e => setConductorTaskTimeoutMinutes(Number(e.target.value))}
+                />
+              </div>
+            </div>
+
+            <div className={styles.flexEndPt2}>
+              <button
+                type='button'
+                className={styles.amberButton}
+                onClick={() => {
+                  updateSettings({ conductorOllamaModel, conductorTaskTimeoutMinutes });
+                  showToast('Conductor settings saved', 'success');
+                }}
+              >
+                Save Conductor Settings
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1494,9 +1615,80 @@ const styles = {
     border-radius: var(--border-radius-sm);
     transition: background-color 0.2s ease-in-out;
     cursor: pointer;
-    
+
     &:hover {
       background-color: #3b82f6;
     }
-  `
+  `,
+
+  // ── Conductor section ─────────────────────────────────────────────────────
+  conductorRow: css`
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+  `,
+  modelPickerRow: css`
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  `,
+  integrationSelect: css`
+    flex: 1;
+    background-color: #193549;
+    border: 1px solid #1e3a5f;
+    border-radius: var(--border-radius-sm);
+    padding: 8px;
+    font-size: var(--font-size-xs);
+    color: #e2e8f0;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.15s;
+
+    &:focus { border-color: #3b82f6; }
+    &:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    body.light & {
+      background-color: #f8fafc;
+      border-color: #cbd5e1;
+      color: #0f172a;
+    }
+  `,
+  refreshBtn: css`
+    background-color: #1e293b;
+    border: 1px solid #334155;
+    border-radius: var(--border-radius-sm);
+    padding: 7px 8px;
+    cursor: pointer;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background-color 0.15s;
+
+    &:hover:not(:disabled) { color: #f1f5f9; background-color: #334155; }
+    &:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    body.light & {
+      background-color: #f8fafc;
+      border-color: #cbd5e1;
+      &:hover:not(:disabled) { background-color: #f1f5f9; color: #0f172a; }
+    }
+  `,
+  refreshIcon: css`
+    width: 14px;
+    height: 14px;
+  `,
+  spin: css`
+    animation: settingsSpin 1s linear infinite;
+    @keyframes settingsSpin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+  `,
+  modelsError: css`
+    font-size: 10px;
+    color: #fb7185;
+    margin-top: 4px;
+  `,
 };

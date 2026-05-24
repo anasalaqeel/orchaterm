@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDashboard } from '../context/DashboardContext';
-import { ConfirmDialog } from './ConfirmDialog';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { SavedPrompt } from '../types';
 import { 
   Search, 

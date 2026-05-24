@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { css, cx } from '@emotion/css';
 import { useDashboard } from '../context/DashboardContext';
 import { TaskLog } from '../types';
-import { TerminalContainer } from './TerminalContainer';
-import { AgentSandbox } from './AgentSandbox';
+import { TerminalContainer } from '../components/terminal/TerminalContainer';
+import { WorkspacePanel } from '../components/ui/WorkspacePanel';
 import { 
   Play, 
   AlertOctagon, 
@@ -177,16 +177,16 @@ export const DashboardView: React.FC = () => {
           </button>
         </div>
 
-        {/* Horizontal Split Area: Left half Terminals, Right half Sandbox */}
+        {/* Horizontal Split Area: Left 60% Terminals, Right 40% WorkspacePanel */}
         <div className={s.consoleSplit}>
-          {/* Left half: Terminals */}
+          {/* Left: Terminals */}
           <div className={s.consoleSplitLeft}>
             <TerminalContainer workspaceId={activeProject.id} workspacePath={activeProject.path} />
           </div>
 
-          {/* Right half: Agent Sandbox */}
+          {/* Right: Workspace context panel */}
           <div className={s.consoleSplitRight}>
-            <AgentSandbox />
+            <WorkspacePanel workspace={activeProject} />
           </div>
         </div>
       </div>
@@ -765,7 +765,7 @@ const s = {
     overflow: hidden;
   `,
   consoleSplitLeft: css`
-    width: 50%;
+    width: 62%;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -773,7 +773,7 @@ const s = {
     background: #070d14;
   `,
   consoleSplitRight: css`
-    width: 50%;
+    width: 38%;
     height: 100%;
     display: flex;
     flex-direction: column;

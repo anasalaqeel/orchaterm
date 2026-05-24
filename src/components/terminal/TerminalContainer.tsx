@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { TerminalTab, TerminalTabHandle } from './TerminalTab';
-import { useDashboard } from '../context/DashboardContext';
+import { useDashboard } from '../../context/DashboardContext';
 import { invoke } from '@tauri-apps/api/core';
 import { Plus, X, Terminal, Edit2, ChevronDown, Check } from 'lucide-react';
 import { css, cx } from '@emotion/css';
+import type { TerminalSession } from '../../types';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -11,15 +12,6 @@ interface ShellInfo {
   name: string;
   path: string;
   args: string[];
-}
-
-interface TerminalSession {
-  id: string;
-  title: string;
-  /** Shell executable for this tab. */
-  shell: string;
-  /** Extra args forwarded to spawn_pty (e.g. ["--", "bash"] for WSL bash). */
-  shellArgs: string[];
 }
 
 interface TerminalContainerProps {
@@ -41,7 +33,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   workspaceId,
   workspacePath,
 }) => {
-  const { settings } = useDashboard();
+  const { settings, addTerminalSession, removeTerminalSession, updateTerminalSession } = useDashboard();
 
   // ── Shell detection ──────────────────────────────────────────────────────
   const [availableShells, setAvailableShells] = useState<ShellInfo[]>([]);
@@ -102,6 +94,37 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
   // Monotonically increasing counter so tab names never collide after closes.
   const tabCounter = useRef(0);
+
+  // Track which session IDs we have registered in context so we can diff
+  // precisely — adding new ones and removing closed ones — without blowing
+  // away everything when the component unmounts (i.e. when the user navigates
+  // to Conductor). Sessions must persist in context so ConductorView's
+  // SessionRegistry can see them after navigation.
+  const registeredIds = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const currentIds = new Set(sessions.map(s => s.id));
+
+    // Remove sessions that were closed (in registered set but not in current list)
+    registeredIds.current.forEach(id => {
+      if (!currentIds.has(id)) {
+        removeTerminalSession(id);
+        registeredIds.current.delete(id);
+      }
+    });
+
+    // Add sessions that are new (in current list but not yet registered)
+    sessions.forEach(s => {
+      if (!registeredIds.current.has(s.id)) {
+        addTerminalSession({ ...s, workspaceId, assignedAgentId: null });
+        registeredIds.current.add(s.id);
+      }
+    });
+
+    // No cleanup on unmount — sessions intentionally stay in context so
+    // Conductor can assign agents to them after the user navigates away.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions.map(s => s.id).join(','), workspaceId]);
 
   // Refs for each mounted TerminalTab so we can call fit() on tab switch.
   const tabRefs = useRef<Map<string, React.RefObject<TerminalTabHandle | null>>>(new Map());
@@ -200,6 +223,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       setSessions((prev) =>
         prev.map((s) => (s.id === id ? { ...s, title: editingTitle.trim() } : s)),
       );
+      updateTerminalSession(id, { title: editingTitle.trim() });
     }
     setEditingSessionId(null);
   };
