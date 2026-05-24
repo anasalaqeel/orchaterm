@@ -5,6 +5,7 @@ import { TaskLog } from '../types';
 import { TerminalContainer } from '../components/terminal/TerminalContainer';
 import { WorkspacePanel } from '../components/ui/WorkspacePanel';
 import { WorkspaceConductor } from '../components/conductor/WorkspaceConductor';
+import { GroupChat } from '../components/ui/GroupChat';
 import {
   AlertOctagon,
   Clock,
@@ -14,7 +15,8 @@ import {
   Copy,
   Edit2,
   ArrowLeft,
-  Network
+  Network,
+  MessageSquare,
 } from 'lucide-react';
 
 export const DashboardView: React.FC = () => {
@@ -49,8 +51,8 @@ export const DashboardView: React.FC = () => {
   const [logStatus, setLogStatus] = useState<'in-progress' | 'done' | 'blocked'>('in-progress');
 
 
-  // Right panel tab state — 'workspace' shows WorkspacePanel, 'conductor' shows WorkspaceConductor
-  const [rightPanel, setRightPanel] = useState<'workspace' | 'conductor'>('workspace');
+  // Right panel tab state
+  const [rightPanel, setRightPanel] = useState<'workspace' | 'conductor' | 'chat'>('workspace');
 
   const activeProject = workspaces.find(p => p.id === activeWorkspaceId) || workspaces[0];
 
@@ -104,7 +106,7 @@ export const DashboardView: React.FC = () => {
 
     addTaskLog({
       workspaceId: activeProject.id,
-      groupId: null,
+      spaceId: null,
       summary: logSummary,
       status: logStatus,
     });
@@ -183,14 +185,20 @@ export const DashboardView: React.FC = () => {
                 <Network className={s.rightTabIcon} />
                 Conductor
               </button>
+              <button
+                className={cx(s.rightTab, rightPanel === 'chat' && s.rightTabActive)}
+                onClick={() => setRightPanel('chat')}
+              >
+                <MessageSquare className={s.rightTabIcon} />
+                Chat
+              </button>
             </div>
 
             {/* Panel content */}
             <div className={s.rightPanelContent}>
-              {rightPanel === 'workspace'
-                ? <WorkspacePanel workspace={activeProject} />
-                : <WorkspaceConductor key={activeProject.id} workspaceId={activeProject.id} />
-              }
+              {rightPanel === 'workspace' && <WorkspacePanel workspace={activeProject} />}
+              {rightPanel === 'conductor' && <WorkspaceConductor key={activeProject.id} workspaceId={activeProject.id} />}
+              {rightPanel === 'chat'      && <GroupChat key={activeProject.id} workspaceId={activeProject.id} />}
             </div>
           </div>
         </div>

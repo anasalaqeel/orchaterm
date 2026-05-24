@@ -99,6 +99,7 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
   const {
     plans, addPlan, updatePlan, deletePlan,
     terminalSessions, settings, showToast,
+    spaces, activeSpaceId,
   } = useDashboard();
 
   const [tab,           setTab]           = useState<Tab>('build');
@@ -109,9 +110,18 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
   const [showProtocol,  setShowProtocol]  = useState(false);
   const [protocolCopied, setProtocolCopied] = useState(false);
 
-  // ── Workspace-scoped slices ────────────────────────────────────────────────
+  // ── Workspace + group-scoped slices ───────────────────────────────────────
 
-  const workspacePlans    = plans.filter(p => p.workspaceId === workspaceId);
+  const activeSpace = spaces.find(g => g.id === activeSpaceId);
+
+  // When a group is active, show only plans tagged to that group.
+  // Otherwise show all workspace plans.
+  const workspacePlans = plans.filter(p => {
+    if (p.workspaceId !== workspaceId) return false;
+    if (activeSpaceId) return p.spaceId === activeSpaceId;
+    return true;
+  });
+
   const workspaceSessions = terminalSessions.filter(s => s.workspaceId === workspaceId);
   const historyPlans      = workspacePlans.filter(p => p.status === 'done'  || p.status === 'failed');
 
@@ -162,7 +172,7 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
   const handleNewPlan = () => {
     const blank: OrchestratorPlan = {
       id: uuidv4(), goal: '', tasks: [], status: 'draft',
-      createdAt: Date.now(), workspaceId, groupId: '',
+      createdAt: Date.now(), workspaceId, spaceId: activeSpaceId ?? '',
     };
     addPlan(blank);
     setActivePlanId(blank.id);
@@ -250,6 +260,15 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Group scope indicator ── */}
+      {activeSpace && (
+        <div className={s.spaceScopeBanner} style={{ borderLeftColor: activeSpace.color }}>
+          <span className={s.spaceScopeDot} style={{ backgroundColor: activeSpace.color }} />
+          <span className={s.spaceScopeLabel}>Scoped to:</span>
+          <span className={s.spaceScopeName}>{activeSpace.name}</span>
         </div>
       )}
 
@@ -350,7 +369,7 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
                 plan={activePlan}
                 sessions={workspaceSessions}
                 workspaceId={workspaceId}
-                groupId={activePlan.groupId}
+                spaceId={activePlan.spaceId}
                 onSave={updated => updatePlan(updated.id, updated)}
                 onApproveAndRun={handleApproveAndRun}
               />
@@ -634,6 +653,32 @@ const s = {
   modalBtnIcon: css`
     width: 13px;
     height: 13px;
+  `,
+
+  /* ── Group scope banner ── */
+  spaceScopeBanner: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-left: 3px solid;
+    background: rgba(0,0,0,0.2);
+    font-size: 11px;
+    flex-shrink: 0;
+  `,
+  spaceScopeDot: css`
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  `,
+  spaceScopeLabel: css`
+    color: #475569;
+    font-weight: 600;
+  `,
+  spaceScopeName: css`
+    color: #94a3b8;
+    font-weight: 700;
   `,
 
   /* ── Plan selector row ── */

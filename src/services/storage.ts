@@ -25,7 +25,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 const DEFAULT_DATA: AppData = {
   workspaces: [],
-  agentGroups: [],
+  spaces: [],
   taskLogs: [],
   savedPrompts: [],
   settings: DEFAULT_SETTINGS,
@@ -35,17 +35,43 @@ export function isTauri(): boolean {
   return typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 }
 
+/** Migrate old persisted data shapes to the current schema. */
+function migrate(parsed: any): AppData {
+  // agents → removed (pre-Space era)
+  if (parsed.agents) delete parsed.agents;
+  // agentGroups → spaces
+  if (parsed.agentGroups && !parsed.spaces) {
+    parsed.spaces = parsed.agentGroups;
+    delete parsed.agentGroups;
+  }
+  // groupId → spaceId on taskLogs
+  if (Array.isArray(parsed.taskLogs)) {
+    parsed.taskLogs = parsed.taskLogs.map((l: any) => {
+      if ('groupId' in l && !('spaceId' in l)) {
+        const { groupId, ...rest } = l;
+        return { ...rest, spaceId: groupId };
+      }
+      return l;
+    });
+  }
+  // groupId → spaceId on savedPrompts
+  if (Array.isArray(parsed.savedPrompts)) {
+    parsed.savedPrompts = parsed.savedPrompts.map((p: any) => {
+      if ('groupId' in p && !('spaceId' in p)) {
+        const { groupId, ...rest } = p;
+        return { ...rest, spaceId: groupId };
+      }
+      return p;
+    });
+  }
+  return { ...DEFAULT_DATA, ...parsed };
+}
+
 export async function loadData(): Promise<AppData> {
   if (!isTauri()) {
     const cached = localStorage.getItem('agentdeck_data');
     if (!cached) return DEFAULT_DATA;
-    const parsed = JSON.parse(cached);
-    // Migrate old data that still has `agents` array instead of `agentGroups`
-    if (parsed.agents && !parsed.agentGroups) {
-      parsed.agentGroups = [];
-      delete parsed.agents;
-    }
-    return { ...DEFAULT_DATA, ...parsed };
+    return migrate(JSON.parse(cached));
   }
 
   try {
@@ -56,13 +82,7 @@ export async function loadData(): Promise<AppData> {
       return DEFAULT_DATA;
     }
     const raw = await readTextFile(FILE_NAME, { baseDir: BaseDirectory.AppData });
-    const parsed = JSON.parse(raw);
-    // Migrate old data
-    if (parsed.agents && !parsed.agentGroups) {
-      parsed.agentGroups = [];
-      delete parsed.agents;
-    }
-    return { ...DEFAULT_DATA, ...parsed };
+    return migrate(JSON.parse(raw));
   } catch (err) {
     console.error('Error loading data from Tauri FS:', err);
     return DEFAULT_DATA;
@@ -88,7 +108,16 @@ export async function saveData(data: AppData): Promise<void> {
 export async function loadPlans(): Promise<OrchestratorPlan[]> {
   if (!isTauri()) {
     const cached = localStorage.getItem('agentdeck_plans');
-    return cached ? JSON.parse(cached) : [];
+    if (!cached) return [];
+    // Migrate groupId → spaceId on plans
+    const plans = JSON.parse(cached);
+    return plans.map((p: any) => {
+      if ('groupId' in p && !('spaceId' in p)) {
+        const { groupId, ...rest } = p;
+        return { ...rest, spaceId: groupId };
+      }
+      return p;
+    });
   }
 
   try {
@@ -96,7 +125,14 @@ export async function loadPlans(): Promise<OrchestratorPlan[]> {
     const fileExists = await exists(PLANS_FILE_NAME, { baseDir: BaseDirectory.AppData });
     if (!fileExists) return [];
     const raw = await readTextFile(PLANS_FILE_NAME, { baseDir: BaseDirectory.AppData });
-    return JSON.parse(raw);
+    const plans = JSON.parse(raw);
+    return plans.map((p: any) => {
+      if ('groupId' in p && !('spaceId' in p)) {
+        const { groupId, ...rest } = p;
+        return { ...rest, spaceId: groupId };
+      }
+      return p;
+    });
   } catch (err) {
     console.error('Error loading plans from Tauri FS:', err);
     return [];

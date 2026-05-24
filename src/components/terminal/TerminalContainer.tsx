@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { TerminalTab, TerminalTabHandle } from './TerminalTab';
 import { useDashboard } from '../../context/DashboardContext';
 import { invoke } from '@tauri-apps/api/core';
@@ -102,6 +103,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
   // ── Color picker state ───────────────────────────────────────────────────
   const [colorPickerOpenId, setColorPickerOpenId] = useState<string | null>(null);
+  const [colorPickerPos, setColorPickerPos]       = useState<{ top: number; left: number } | null>(null);
   const colorPickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -116,8 +118,10 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   }, [colorPickerOpenId]);
 
   // ── Drag-to-reorder state ────────────────────────────────────────────────
-  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragId, setDragId]     = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  // Ref keeps the dragged ID stable across renders so handlers never read a stale closure.
+  const dragIdRef = useRef<string | null>(null);
 
   // ── Context sync ─────────────────────────────────────────────────────────
   const tabRefs = useRef<Map<string, React.RefObject<TerminalTabHandle | null>>>(new Map());
@@ -267,28 +271,34 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   // ── Drag-to-reorder logic ─────────────────────────────────────────────────
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
+    // Write to ref immediately — state update is async and closures could be stale.
+    dragIdRef.current = id;
     setDragId(id);
     e.dataTransfer.effectAllowed = 'move';
-    // Slight delay so the browser renders the ghost before we hide anything.
-    requestAnimationFrame(() => setDragId(id));
+    // Required by some browsers to enable the drop event.
+    e.dataTransfer.setData('text/plain', id);
   };
 
   const handleDragOver = (e: React.DragEvent, id: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (id !== dragId) setDragOverId(id);
+    if (id !== dragIdRef.current) setDragOverId(id);
   };
 
   const handleDrop = (e: React.DragEvent, targetId: string) => {
     e.preventDefault();
-    if (!dragId || dragId === targetId) {
+    const fromId = dragIdRef.current;
+    if (!fromId || fromId === targetId) {
+      dragIdRef.current = null;
       setDragId(null);
       setDragOverId(null);
       return;
     }
 
+    // Capture fromId in local var so the functional updater never touches the ref.
+    const capturedFromId = fromId;
     setSessions((prev) => {
-      const from = prev.findIndex((s) => s.id === dragId);
+      const from = prev.findIndex((s) => s.id === capturedFromId);
       const to   = prev.findIndex((s) => s.id === targetId);
       if (from === -1 || to === -1) return prev;
 
@@ -297,17 +307,18 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       next.splice(to, 0, moved);
       // Re-assign order fields and sync to context.
       return next.map((s, i) => {
-        const updated = { ...s, order: i };
         if (s.order !== i) updateTerminalSession(s.id, { order: i });
-        return updated;
+        return { ...s, order: i };
       });
     });
 
+    dragIdRef.current = null;
     setDragId(null);
     setDragOverId(null);
   };
 
   const handleDragEnd = () => {
+    dragIdRef.current = null;
     setDragId(null);
     setDragOverId(null);
   };
@@ -347,10 +358,15 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 {/* Color dot */}
                 <div
                   className={styles.colorDotWrapper}
-                  style={{ position: 'relative' }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setColorPickerOpenId(isColorPickerOpen ? null : session.id);
+                    if (isColorPickerOpen) {
+                      setColorPickerOpenId(null);
+                    } else {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setColorPickerPos({ top: rect.bottom + 8, left: rect.left - 4 });
+                      setColorPickerOpenId(session.id);
+                    }
                   }}
                 >
                   <span
@@ -359,40 +375,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                     title="Change tab color"
                   />
 
-                  {/* Color picker popover */}
-                  {isColorPickerOpen && (
-                    <div
-                      ref={colorPickerRef}
-                      className={styles.colorPickerPopover}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className={styles.colorPickerLabel}>Tab color</div>
-                      <div className={styles.colorSwatches}>
-                        {TAB_COLOR_PRESETS.map((c) => (
-                          <button
-                            key={c}
-                            className={cx(
-                              styles.colorSwatch,
-                              session.color === c && styles.colorSwatchActive,
-                            )}
-                            style={{ backgroundColor: c }}
-                            onClick={() => setTabColor(session.id, c)}
-                            title={c}
-                          />
-                        ))}
-                        {/* Reset to default */}
-                        {session.color && (
-                          <button
-                            className={styles.colorSwatchReset}
-                            onClick={() => setTabColor(session.id, null)}
-                            title="Reset to default"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {isEditing ? (
@@ -432,7 +414,13 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setColorPickerOpenId(isColorPickerOpen ? null : session.id);
+                          if (isColorPickerOpen) {
+                            setColorPickerOpenId(null);
+                          } else {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setColorPickerPos({ top: rect.bottom + 8, left: rect.left - 4 });
+                            setColorPickerOpenId(session.id);
+                          }
                         }}
                         className={styles.tabActionBtn}
                         title="Change tab color"
@@ -509,6 +497,46 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Color picker portal — rendered at document.body to escape overflow clip */}
+      {colorPickerOpenId && colorPickerPos && (() => {
+        const pickerSession = sessions.find(s => s.id === colorPickerOpenId);
+        if (!pickerSession) return null;
+        return createPortal(
+          <div
+            ref={colorPickerRef}
+            className={styles.colorPickerPopover}
+            style={{ top: colorPickerPos.top, left: colorPickerPos.left }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={styles.colorPickerLabel}>Tab color</div>
+            <div className={styles.colorSwatches}>
+              {TAB_COLOR_PRESETS.map((c) => (
+                <button
+                  key={c}
+                  className={cx(
+                    styles.colorSwatch,
+                    pickerSession.color === c && styles.colorSwatchActive,
+                  )}
+                  style={{ backgroundColor: c }}
+                  onClick={() => setTabColor(pickerSession.id, c)}
+                  title={c}
+                />
+              ))}
+              {pickerSession.color && (
+                <button
+                  className={styles.colorSwatchReset}
+                  onClick={() => setTabColor(pickerSession.id, null)}
+                  title="Reset to default"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>,
+          document.body,
+        );
+      })()}
 
       {/* Terminal Viewports */}
       <div className={styles.viewports}>
@@ -629,6 +657,7 @@ const styles = {
     flex-shrink: 0;
     display: flex;
     align-items: center;
+    cursor: pointer;
   `,
   colorDot: css`
     display: block;
@@ -647,12 +676,10 @@ const styles = {
     box-shadow: 0 0 0 2px rgba(255,255,255,0.1);
   `,
 
-  /* Color picker popover */
+  /* Color picker popover — rendered as a portal on document.body */
   colorPickerPopover: css`
-    position: absolute;
-    top: calc(100% + 8px);
-    left: -4px;
-    z-index: 300;
+    position: fixed;
+    z-index: 9999;
     background-color: #0b1520;
     border: 1px solid #1a2e40;
     border-radius: 10px;

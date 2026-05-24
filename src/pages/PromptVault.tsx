@@ -80,7 +80,7 @@ export const PromptVaultView: React.FC = () => {
       title,
       content,
       workspaceId: promptWorkspaceId,
-      groupId: null,
+      spaceId: null,
       tags
     });
 
