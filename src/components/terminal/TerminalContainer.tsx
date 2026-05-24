@@ -89,6 +89,9 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   // ── Session state ────────────────────────────────────────────────────────
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  // Always-current ref so closeTab's useCallback([]) closure never goes stale.
+  const activeSessionIdRef = useRef<string | null>(null);
+  activeSessionIdRef.current = activeSessionId;
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
 
@@ -121,10 +124,19 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       }
     });
 
-    // No cleanup on unmount — sessions intentionally stay in context so
-    // Conductor can assign agents to them after the user navigates away.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions.map(s => s.id).join(','), workspaceId]);
+
+  // Remove all registered sessions from context when the component unmounts.
+  // This prevents stale (terminated) sessions from accumulating across mounts
+  // when the user switches view modes or workspaces.
+  useEffect(() => {
+    return () => {
+      registeredIds.current.forEach(id => removeTerminalSession(id));
+      registeredIds.current.clear();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Refs for each mounted TerminalTab so we can call fit() on tab switch.
   const tabRefs = useRef<Map<string, React.RefObject<TerminalTabHandle | null>>>(new Map());
@@ -149,7 +161,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     tabCounter.current = 1;
     const defaultId = crypto.randomUUID();
     tabRefs.current.set(defaultId, React.createRef<TerminalTabHandle | null>());
-    setSessions([{ id: defaultId, title: `${shellName} 1`, shell: shellPath, shellArgs }]);
+    setSessions([{ id: defaultId, title: `${shellName} 1`, shell: shellPath, shellArgs, workspaceId, assignedAgentId: null }]);
     setActiveSessionId(defaultId);
     setEditingSessionId(null);
 
@@ -180,10 +192,12 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       title: `${shellName} ${tabCounter.current}`,
       shell: shellPath,
       shellArgs,
+      workspaceId,
+      assignedAgentId: null,
     };
     setSessions((prev) => [...prev, newSession]);
     setActiveSessionId(newId);
-  }, [settings.shellPath]);
+  }, [settings.shellPath, workspaceId]);
 
   const closeTab = useCallback(
     (sessionId: string, e: React.MouseEvent) => {
@@ -193,13 +207,16 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
       setSessions((prev) => {
         const next = prev.filter((s) => s.id !== sessionId);
-        if (activeSessionId === sessionId) {
+        // Use ref so this callback is never stale during rapid double-closes.
+        if (activeSessionIdRef.current === sessionId) {
           setActiveSessionId(next.length > 0 ? next[next.length - 1].id : null);
         }
         return next;
       });
     },
-    [activeSessionId],
+    // Intentionally empty — activeSessionIdRef is always current.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
 
   const switchTab = useCallback((sessionId: string) => {

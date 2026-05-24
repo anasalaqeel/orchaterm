@@ -45,6 +45,8 @@ export interface OrchestratorPlan {
   status: OrchestratorPlanStatus;
   createdAt: number;
   completedAt?: number;
+  /** Optional: scopes this plan to a specific workspace. */
+  workspaceId?: string;
 }
 
 // ── Per-session Buffer (in-memory only) ───────────────────────────────────────

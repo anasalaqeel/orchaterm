@@ -3,34 +3,44 @@ import { css, cx } from '@emotion/css';
 import { useDashboard } from '../../context/DashboardContext';
 import {
   Cpu, History, Sparkles, Settings,
-  Sun, Moon, Blocks, LayoutDashboard, Network,
+  Sun, Moon, Blocks, LayoutDashboard,
 } from 'lucide-react';
 
 // ── Route definitions ─────────────────────────────────────────────────────────
-// Single source of truth for every nav entry.
-// To add a page: add one object here — nothing else needs changing.
+// Overview is handled separately because its active state depends on viewMode,
+// not just the route (route '/' is shared by both grid and console views).
 
 const NAV_ITEMS = [
-  { to: '/',          label: 'Overview',     icon: LayoutDashboard, end: true },
-  { to: '/conductor', label: 'Conductor',    icon: Network },
-  { to: '/agents',    label: 'Agents',       icon: Cpu },
-  { to: '/logs',      label: 'Task Log',     icon: History },
-  { to: '/prompts',   label: 'Prompt Vault', icon: Sparkles },
-  { to: '/settings',  label: 'Settings',     icon: Settings },
+  { to: '/agents',  label: 'Agents',       icon: Cpu },
+  { to: '/logs',    label: 'Task Log',     icon: History },
+  { to: '/prompts', label: 'Prompt Vault', icon: Sparkles },
+  { to: '/settings',label: 'Settings',     icon: Settings },
 ] as const;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function Sidebar() {
-  const { theme, toggleTheme, workspaces, activeWorkspaceId, setActiveWorkspaceId, setViewMode } = useDashboard();
+  const {
+    theme, toggleTheme,
+    workspaces, activeWorkspaceId, setActiveWorkspaceId,
+    viewMode, setViewMode,
+  } = useDashboard();
+
   const navigate    = useNavigate();
   const onDashboard = useMatch('/');
 
+  // A workspace button is "active" when we're on '/' AND it's the active
+  // workspace AND we're in console mode (viewing its terminal).
   const openWorkspace = (id: string) => {
     setActiveWorkspaceId(id);
     setViewMode('console');
     navigate('/');
   };
+
+  // Overview is active only when we're on '/' in grid mode.
+  // When in console mode the workspace button (above) is the active indicator,
+  // not the Overview nav item.
+  const isOverviewActive = !!onDashboard && viewMode === 'grid';
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cx(s.navBtn, isActive && s.navBtnActive);
@@ -56,7 +66,7 @@ export function Sidebar() {
             <p className={s.empty}>No workspaces yet.</p>
           )}
           {workspaces.map(w => {
-            const isActive = !!onDashboard && w.id === activeWorkspaceId;
+            const isActive = !!onDashboard && viewMode === 'console' && w.id === activeWorkspaceId;
             return (
               <button
                 key={w.id}
@@ -72,21 +82,34 @@ export function Sidebar() {
 
         <div className={s.divider} />
 
-        {/* Navigation — NavLink handles active state automatically */}
+        {/* Navigation */}
         <span className={s.sectionLabel}>Navigation</span>
         <nav className={s.nav}>
-          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+
+          {/* Overview — must be handled outside the generic map so we can
+              apply viewMode-aware active state instead of route-only matching. */}
+          <NavLink
+            to="/"
+            end
+            className={cx(s.navBtn, isOverviewActive && s.navBtnActive)}
+            onClick={() => setViewMode('grid')}
+          >
+            <LayoutDashboard className={s.navIcon} />
+            <span>Overview</span>
+          </NavLink>
+
+          {/* Standard nav items — their routes are unique so isActive is reliable */}
+          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
-              end={end}
               className={navLinkClass}
-              onClick={() => to === '/' && setViewMode('grid')}
             >
               <Icon className={s.navIcon} />
               <span>{label}</span>
             </NavLink>
           ))}
+
         </nav>
 
       </div>
