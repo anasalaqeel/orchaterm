@@ -25,7 +25,6 @@ import {
   OrchestratorTask,
   OrchestratorTaskOutput,
   ConductorLogEntry,
-  SessionRegistryEntry,
 } from '../types';
 import { bufferWatcher } from './bufferWatcher';
 import {
@@ -43,8 +42,8 @@ export interface EngineConfig {
   ollamaModel: string;
   /** Minutes a task can run before being auto-failed. */
   taskTimeoutMinutes: number;
-  /** Registry mapping sessionId → agent display info. */
-  sessionRegistry: Map<string, SessionRegistryEntry>;
+  /** Maps sessionId → terminal tab title (for display in logs and relay prompts). */
+  sessionTitles: Map<string, string>;
 }
 
 // ── Sentinel instruction template ───────────────────────────────────────────────
@@ -271,12 +270,12 @@ export class OrchestratorEngine {
       const completedContexts: CompletedTaskContext[] = parentTasks.map(t => ({
         taskTitle:          t.title,
         taskDescription:    t.description,
-        agentName:          this.config.sessionRegistry.get(t.assignedSessionId)?.agentName ?? 'Agent',
-        agentBestUsedFor:   this.config.sessionRegistry.get(t.assignedSessionId)?.agentName ?? '',
+        agentName:          this.config.sessionTitles.get(t.assignedSessionId) ?? t.assignedSessionTitle,
+        agentBestUsedFor:   '',
         output:             t.output!,
       }));
 
-      const nextAgentInfo = this.config.sessionRegistry.get(task.assignedSessionId);
+      const nextSessionTitle = this.config.sessionTitles.get(task.assignedSessionId) ?? task.assignedSessionTitle;
 
       try {
         const ollamaOnline = await checkOllamaOnline(this.config.ollamaHost);
@@ -288,8 +287,8 @@ export class OrchestratorEngine {
             goal:                   this.plan.goal,
             completedTask:          completedContexts[0],
             nextTaskDescription:    task.description,
-            nextAgentName:          nextAgentInfo?.agentName ?? 'Agent',
-            nextAgentBestUsedFor:   nextAgentInfo?.agentName ?? '',
+            nextAgentName:          nextSessionTitle,
+            nextAgentBestUsedFor:   '',
             ollamaHost:             this.config.ollamaHost,
             model:                  this.config.ollamaModel,
           });
@@ -298,8 +297,8 @@ export class OrchestratorEngine {
             goal:                   this.plan.goal,
             completedTasks:         completedContexts,
             nextTaskDescription:    task.description,
-            nextAgentName:          nextAgentInfo?.agentName ?? 'Agent',
-            nextAgentBestUsedFor:   nextAgentInfo?.agentName ?? '',
+            nextAgentName:          nextSessionTitle,
+            nextAgentBestUsedFor:   '',
             ollamaHost:             this.config.ollamaHost,
             model:                  this.config.ollamaModel,
           });
@@ -482,5 +481,5 @@ export const orchestratorEngine = new OrchestratorEngine({
   ollamaHost: 'http://localhost:11434',
   ollamaModel: 'llama3.2',
   taskTimeoutMinutes: 30,
-  sessionRegistry: new Map(),
+  sessionTitles: new Map(),
 });

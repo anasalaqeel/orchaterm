@@ -2,7 +2,7 @@ import { NavLink, useNavigate, useMatch } from 'react-router';
 import { css, cx } from '@emotion/css';
 import { useDashboard } from '../../context/DashboardContext';
 import {
-  Cpu, History, Sparkles, Settings,
+  History, Sparkles, Settings,
   Sun, Moon, Blocks, LayoutDashboard,
 } from 'lucide-react';
 
@@ -11,7 +11,6 @@ import {
 // not just the route (route '/' is shared by both grid and console views).
 
 const NAV_ITEMS = [
-  { to: '/agents',  label: 'Agents',       icon: Cpu },
   { to: '/logs',    label: 'Task Log',     icon: History },
   { to: '/prompts', label: 'Prompt Vault', icon: Sparkles },
   { to: '/settings',label: 'Settings',     icon: Settings },

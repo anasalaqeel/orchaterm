@@ -1,4 +1,4 @@
-// ── Workspace & Agent domain types ───────────────────────────────────────────
+// ── Workspace & domain types ──────────────────────────────────────────────────
 
 export interface Workspace {
   id: string;
@@ -8,26 +8,33 @@ export interface Workspace {
   color: string;          // hex color for visual tags (e.g. "#3b82f6")
   status: 'active' | 'paused' | 'idle';
   currentTask: string;    // free text of what's happening right now
-  agentId: string | null; // currently assigned agent ID
   createdAt: string;
   updatedAt: string;
 }
 
-export interface Agent {
+// ── Agent Group ───────────────────────────────────────────────────────────────
+// Replaces the old Agent catalog. A group is a named collection of terminal
+// tabs that the user has designated as their AI agent terminals for a task.
+// Ollama orchestrates terminals within a group; groups are isolated from each other.
+
+export interface AgentGroup {
   id: string;
-  name: string;           // e.g. "Claude Code", "Antigravity", "Hermes"
-  type: 'terminal' | 'web' | 'ide-plugin' | 'other';
-  launchUrl: string | null;     // URL to open in browser
-  launchCommand: string | null; // Terminal command to run (via Tauri shell plugin)
-  bestUsedFor: string;    // e.g. "Multi-agent orchestration, large refactors"
-  assignedWorkspaceId: string | null;
+  name: string;
+  workspaceId: string;
+  /** Hex colour shown as a dot in the sidebar. e.g. '#ff9d00' */
   color: string;
+  /** IDs of TerminalSession tabs that are members of this group.
+   *  Session IDs are ephemeral — regenerated on app relaunch.
+   *  The user re-adds tabs each session via the group panel. */
+  sessionIds: string[];
+  createdAt: number;
 }
 
 export interface TaskLog {
   id: string;
   workspaceId: string;
-  agentId: string;
+  /** Which Agent Group this log entry belongs to. null = not group-specific. */
+  groupId: string | null;
   summary: string;        // one-liner summary of handoff/work
   timestamp: string;
   status: 'in-progress' | 'done' | 'blocked';
@@ -36,7 +43,8 @@ export interface TaskLog {
 export interface SavedPrompt {
   id: string;
   workspaceId: string;
-  agentId: string;
+  /** Which Agent Group this prompt belongs to. null = not group-specific. */
+  groupId: string | null;
   title: string;
   content: string;        // full prompt text
   tags: string[];
@@ -56,7 +64,7 @@ export interface AppSettings {
 // Global App Data State structure stored as flat JSON on disk
 export interface AppData {
   workspaces: Workspace[];
-  agents: Agent[];
+  agentGroups: AgentGroup[];
   taskLogs: TaskLog[];
   savedPrompts: SavedPrompt[];
   settings?: AppSettings;

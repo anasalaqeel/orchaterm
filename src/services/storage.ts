@@ -1,5 +1,5 @@
 import { readTextFile, writeTextFile, BaseDirectory, exists, mkdir } from '@tauri-apps/plugin-fs';
-import { AppData, Agent, AppSettings, OrchestratorPlan } from '../types';
+import { AppData, AppSettings, OrchestratorPlan } from '../types';
 
 const FILE_NAME       = 'agentdeck_data.json';
 const PLANS_FILE_NAME = 'agentdeck_plans.json';
@@ -19,86 +19,56 @@ const DEFAULT_SETTINGS: AppSettings = {
   ollamaHost: 'http://localhost:11434',
   openaiApiKey: '',
   anthropicApiKey: '',
-  conductorOllamaModel: '',            // empty = user must pick from available models
+  conductorOllamaModel: '',
   conductorTaskTimeoutMinutes: 30,
 };
 
-const DEFAULT_AGENTS: Agent[] = [
-  {
-    id: 'agent-1',
-    name: 'Claude Code',
-    type: 'terminal',
-    launchUrl: null,
-    launchCommand: 'claude',
-    bestUsedFor: 'Interactive CLI agent, quick bug-fixing, and workspace questions',
-    assignedWorkspaceId: null,
-    color: '#d97706' // Amber
-  },
-  {
-    id: 'agent-2',
-    name: 'Antigravity',
-    type: 'terminal',
-    launchUrl: null,
-    launchCommand: 'antigravity',
-    bestUsedFor: 'Multi-agent orchestration, complex refactoring, and directory analysis',
-    assignedWorkspaceId: null,
-    color: '#2563eb' // Blue
-  },
-  {
-    id: 'agent-3',
-    name: 'Hermes',
-    type: 'terminal',
-    launchUrl: null,
-    launchCommand: 'hermes',
-    bestUsedFor: 'Offline-capable local coding and general explanation',
-    assignedWorkspaceId: null,
-    color: '#16a34a' // Green
-  }
-];
-
 const DEFAULT_DATA: AppData = {
   workspaces: [],
-  agents: DEFAULT_AGENTS,
+  agentGroups: [],
   taskLogs: [],
   savedPrompts: [],
-  settings: DEFAULT_SETTINGS
+  settings: DEFAULT_SETTINGS,
 };
 
-
-// Check if running inside Tauri
 export function isTauri(): boolean {
   return typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 }
 
-/**
- * Loads data from Tauri's AppData directory, falling back to localStorage if not running in Tauri
- */
 export async function loadData(): Promise<AppData> {
   if (!isTauri()) {
     const cached = localStorage.getItem('agentdeck_data');
-    return cached ? JSON.parse(cached) : DEFAULT_DATA;
+    if (!cached) return DEFAULT_DATA;
+    const parsed = JSON.parse(cached);
+    // Migrate old data that still has `agents` array instead of `agentGroups`
+    if (parsed.agents && !parsed.agentGroups) {
+      parsed.agentGroups = [];
+      delete parsed.agents;
+    }
+    return { ...DEFAULT_DATA, ...parsed };
   }
 
   try {
     await ensureDir();
-
     const fileExists = await exists(FILE_NAME, { baseDir: BaseDirectory.AppData });
     if (!fileExists) {
-      // Write initial default data
       await saveData(DEFAULT_DATA);
       return DEFAULT_DATA;
     }
     const raw = await readTextFile(FILE_NAME, { baseDir: BaseDirectory.AppData });
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    // Migrate old data
+    if (parsed.agents && !parsed.agentGroups) {
+      parsed.agentGroups = [];
+      delete parsed.agents;
+    }
+    return { ...DEFAULT_DATA, ...parsed };
   } catch (err) {
     console.error('Error loading data from Tauri FS:', err);
     return DEFAULT_DATA;
   }
 }
 
-/**
- * Saves data to Tauri's AppData directory, falling back to localStorage if not running in Tauri
- */
 export async function saveData(data: AppData): Promise<void> {
   if (!isTauri()) {
     localStorage.setItem('agentdeck_data', JSON.stringify(data));
@@ -107,17 +77,14 @@ export async function saveData(data: AppData): Promise<void> {
 
   try {
     await ensureDir();
-
-    const jsonStr = JSON.stringify(data, null, 2);
-    await writeTextFile(FILE_NAME, jsonStr, { baseDir: BaseDirectory.AppData });
+    await writeTextFile(FILE_NAME, JSON.stringify(data, null, 2), {
+      baseDir: BaseDirectory.AppData,
+    });
   } catch (err) {
     console.error('Error saving data to Tauri FS:', err);
   }
 }
 
-/**
- * Loads orchestrator plans from a separate file so they don't bloat the main data file.
- */
 export async function loadPlans(): Promise<OrchestratorPlan[]> {
   if (!isTauri()) {
     const cached = localStorage.getItem('agentdeck_plans');
@@ -136,9 +103,6 @@ export async function loadPlans(): Promise<OrchestratorPlan[]> {
   }
 }
 
-/**
- * Saves orchestrator plans to a separate file.
- */
 export async function savePlans(plans: OrchestratorPlan[]): Promise<void> {
   if (!isTauri()) {
     localStorage.setItem('agentdeck_plans', JSON.stringify(plans));

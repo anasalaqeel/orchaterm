@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Workspace, Agent, TaskLog, SavedPrompt, AppData, AppSettings, OrchestratorPlan, TerminalSession } from '../types';
-import { loadData, saveData, loadPlans, savePlans, isTauri } from '../services/storage';
-import { Command } from '@tauri-apps/plugin-shell';
-import { openUrl } from '@tauri-apps/plugin-opener';
+import {
+  Workspace, AgentGroup, TaskLog, SavedPrompt, AppData, AppSettings,
+  OrchestratorPlan, TerminalSession,
+} from '../types';
+import { loadData, saveData, loadPlans, savePlans } from '../services/storage';
 
 export interface ToastInfo {
   id: string;
@@ -11,14 +12,22 @@ export interface ToastInfo {
 }
 
 export interface DashboardContextType {
+  // ── Core state ──────────────────────────────────────────────────────────────
   workspaces: Workspace[];
-  agents: Agent[];
+  agentGroups: AgentGroup[];
   taskLogs: TaskLog[];
   savedPrompts: SavedPrompt[];
+
+  // ── Navigation / view state ─────────────────────────────────────────────────
   activeWorkspaceId: string | null;
   setActiveWorkspaceId: (id: string | null) => void;
   viewMode: 'grid' | 'console';
   setViewMode: (mode: 'grid' | 'console') => void;
+  /** The active Agent Group in the console view. Scopes Conductor + Chat. */
+  activeGroupId: string | null;
+  setActiveGroupId: (id: string | null) => void;
+
+  // ── UI helpers ──────────────────────────────────────────────────────────────
   toast: ToastInfo | null;
   setToast: (toast: ToastInfo | null) => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
@@ -26,41 +35,40 @@ export interface DashboardContextType {
   toggleTheme: () => void;
   isLoaded: boolean;
 
-  // Workspace CRUD
+  // ── Workspace CRUD ──────────────────────────────────────────────────────────
   addWorkspace: (workspace: Omit<Workspace, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   updateWorkspace: (id: string, updates: Partial<Workspace>) => Promise<void>;
   deleteWorkspace: (id: string) => Promise<void>;
 
-  // Agent CRUD
-  addAgent: (agent: Omit<Agent, 'id'>) => Promise<void>;
-  updateAgent: (id: string, updates: Partial<Agent>) => Promise<void>;
-  deleteAgent: (id: string) => Promise<void>;
+  // ── Agent Group CRUD ────────────────────────────────────────────────────────
+  addAgentGroup: (group: Omit<AgentGroup, 'id' | 'createdAt'>) => Promise<void>;
+  updateAgentGroup: (id: string, updates: Partial<AgentGroup>) => Promise<void>;
+  deleteAgentGroup: (id: string) => Promise<void>;
 
-  // Task Log CRUD
+  // ── Task Log CRUD ───────────────────────────────────────────────────────────
   addTaskLog: (log: Omit<TaskLog, 'id' | 'timestamp'>) => Promise<void>;
   updateTaskLog: (id: string, updates: Partial<TaskLog>) => Promise<void>;
   deleteTaskLog: (id: string) => Promise<void>;
 
-  // Prompt CRUD
+  // ── Prompt CRUD ─────────────────────────────────────────────────────────────
   addSavedPrompt: (prompt: Omit<SavedPrompt, 'id' | 'createdAt' | 'usedAt'>) => Promise<void>;
   updateSavedPrompt: (id: string, updates: Partial<SavedPrompt>) => Promise<void>;
   deleteSavedPrompt: (id: string) => Promise<void>;
-
-  // Custom functions
   copyPromptToClipboard: (promptId: string) => Promise<void>;
-  launchAgent: (agentId: string) => Promise<void>;
-  exportSettings: () => string;
-  importSettings: (jsonData: string) => Promise<boolean>;
+
+  // ── Settings ────────────────────────────────────────────────────────────────
   settings: AppSettings;
   updateSettings: (updates: Partial<AppSettings>) => Promise<void>;
+  exportSettings: () => string;
+  importSettings: (jsonData: string) => Promise<boolean>;
 
-  // Orchestrator plans (persisted)
+  // ── Orchestrator plans (persisted) ──────────────────────────────────────────
   plans: OrchestratorPlan[];
   addPlan: (plan: OrchestratorPlan) => Promise<void>;
   updatePlan: (id: string, updates: Partial<OrchestratorPlan>) => Promise<void>;
   deletePlan: (id: string) => Promise<void>;
 
-  // Terminal sessions (ephemeral — reset each app launch, not persisted)
+  // ── Terminal sessions (ephemeral — not persisted, reset each launch) ────────
   terminalSessions: TerminalSession[];
   addTerminalSession: (session: TerminalSession) => void;
   removeTerminalSession: (sessionId: string) => void;
@@ -70,16 +78,17 @@ export interface DashboardContextType {
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
 
 export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
-  const [savedPrompts, setSavedPrompts] = useState<SavedPrompt[]>([]);
+  const [workspaces, setWorkspaces]       = useState<Workspace[]>([]);
+  const [agentGroups, setAgentGroups]     = useState<AgentGroup[]>([]);
+  const [taskLogs, setTaskLogs]           = useState<TaskLog[]>([]);
+  const [savedPrompts, setSavedPrompts]   = useState<SavedPrompt[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'console'>('grid');
-  const [toast, setToast] = useState<ToastInfo | null>(null);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [isLoaded, setIsLoaded] = useState<boolean>(false);
-  const [settings, setSettings] = useState<AppSettings>({
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [viewMode, setViewMode]           = useState<'grid' | 'console'>('grid');
+  const [toast, setToast]                 = useState<ToastInfo | null>(null);
+  const [theme, setTheme]                 = useState<'dark' | 'light'>('dark');
+  const [isLoaded, setIsLoaded]           = useState<boolean>(false);
+  const [settings, setSettings]           = useState<AppSettings>({
     shellPath: 'powershell.exe',
     ollamaHost: 'http://localhost:11434',
     openaiApiKey: '',
@@ -87,21 +96,20 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     conductorOllamaModel: '',
     conductorTaskTimeoutMinutes: 30,
   });
-  const [plans, setPlans] = useState<OrchestratorPlan[]>([]);
-  // Terminal sessions are ephemeral — they are NOT persisted to disk.
-  const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
+  const [plans, setPlans]                         = useState<OrchestratorPlan[]>([]);
+  const [terminalSessions, setTerminalSessions]   = useState<TerminalSession[]>([]);
 
-  // Initialize and load data from storage
+  // ── Load from storage on mount ───────────────────────────────────────────────
   useEffect(() => {
-    const initData = async () => {
+    const init = async () => {
       try {
         const data = await loadData();
         setWorkspaces(data.workspaces || []);
-        setAgents(data.agents || []);
+        setAgentGroups(data.agentGroups || []);
         setTaskLogs(data.taskLogs || []);
         setSavedPrompts(data.savedPrompts || []);
-        
-        if (data.workspaces && data.workspaces.length > 0) {
+
+        if (data.workspaces?.length > 0) {
           setActiveWorkspaceId(data.workspaces[0].id);
         }
         if (data.settings) {
@@ -110,25 +118,19 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
         const savedPlans = await loadPlans();
         setPlans(savedPlans);
-        
-        // Load theme from localStorage
+
         const savedTheme = localStorage.getItem('agentdeck_theme');
-        if (savedTheme === 'light') {
-          setTheme('light');
-        } else {
-          setTheme('dark');
-        }
+        setTheme(savedTheme === 'light' ? 'light' : 'dark');
       } catch (err) {
         console.error('Error loading initial data', err);
       } finally {
         setIsLoaded(true);
       }
     };
-    initData();
+    init();
   }, []);
 
-  // Sync theme with DOM — both the body.light class (used by Emotion selectors)
-  // and the <html data-theme> attribute (used by CSS custom-property selectors).
+  // ── Sync theme ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const root = window.document.body;
     if (theme === 'light') {
@@ -141,280 +143,173 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  // ── Auto-clear toast ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ id: crypto.randomUUID(), message, type });
+  };
+
+  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+
+  // ── Persist helper ───────────────────────────────────────────────────────────
   const persist = async (
-    updatedWorkspaces: Workspace[],
-    updatedAgents: Agent[],
-    updatedLogs: TaskLog[],
-    updatedPrompts: SavedPrompt[],
-    updatedSettings?: AppSettings
+    ws: Workspace[],
+    groups: AgentGroup[],
+    logs: TaskLog[],
+    prompts: SavedPrompt[],
+    s?: AppSettings,
   ) => {
     const data: AppData = {
-      workspaces: updatedWorkspaces,
-      agents: updatedAgents,
-      taskLogs: updatedLogs,
-      savedPrompts: updatedPrompts,
-      settings: updatedSettings || settings,
+      workspaces: ws,
+      agentGroups: groups,
+      taskLogs: logs,
+      savedPrompts: prompts,
+      settings: s ?? settings,
     };
     await saveData(data);
   };
 
+  // ── Settings ─────────────────────────────────────────────────────────────────
   const updateSettings = async (updates: Partial<AppSettings>) => {
-    const nextSettings = { ...settings, ...updates };
-    setSettings(nextSettings);
-    await persist(workspaces, agents, taskLogs, savedPrompts, nextSettings);
+    const next = { ...settings, ...updates };
+    setSettings(next);
+    await persist(workspaces, agentGroups, taskLogs, savedPrompts, next);
     showToast('Settings saved', 'success');
   };
 
-  const toggleTheme = () => {
-    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
-  };
-
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    const id = crypto.randomUUID();
-    setToast({ id, message, type });
-  };
-
-  // Clear toast automatically
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => {
-        setToast(null);
-      }, 3500);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
-
-  // WORKSPACE CRUD
+  // ── Workspace CRUD ───────────────────────────────────────────────────────────
   const addWorkspace = async (w: Omit<Workspace, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newProj: Workspace = {
+    const next: Workspace = {
       ...w,
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    const nextWorkspaces = [...workspaces, newProj];
-    setWorkspaces(nextWorkspaces);
-    
-    // Auto set active workspace if none was selected
-    if (!activeWorkspaceId) {
-      setActiveWorkspaceId(newProj.id);
-    }
-
-    await persist(nextWorkspaces, agents, taskLogs, savedPrompts);
+    const nextWs = [...workspaces, next];
+    setWorkspaces(nextWs);
+    if (!activeWorkspaceId) setActiveWorkspaceId(next.id);
+    await persist(nextWs, agentGroups, taskLogs, savedPrompts);
     showToast(`Workspace "${w.name}" created`, 'success');
   };
 
   const updateWorkspace = async (id: string, updates: Partial<Workspace>) => {
-    const nextWorkspaces = workspaces.map(w => {
-      if (w.id === id) {
-        return { ...w, ...updates, updatedAt: new Date().toISOString() };
-      }
-      return w;
-    });
-    setWorkspaces(nextWorkspaces);
-    await persist(nextWorkspaces, agents, taskLogs, savedPrompts);
+    const next = workspaces.map(w =>
+      w.id === id ? { ...w, ...updates, updatedAt: new Date().toISOString() } : w,
+    );
+    setWorkspaces(next);
+    await persist(next, agentGroups, taskLogs, savedPrompts);
   };
 
   const deleteWorkspace = async (id: string) => {
-    const nextWorkspaces = workspaces.filter(w => w.id !== id);
-    setWorkspaces(nextWorkspaces);
-    
-    // If deleted workspace was active, switch active workspace
+    const nextWs = workspaces.filter(w => w.id !== id);
+    setWorkspaces(nextWs);
     if (activeWorkspaceId === id) {
-      setActiveWorkspaceId(nextWorkspaces.length > 0 ? nextWorkspaces[0].id : null);
+      setActiveWorkspaceId(nextWs.length > 0 ? nextWs[0].id : null);
     }
 
-    // Clean up agent assignments and logs/prompts referring to this workspace
-    const nextAgents = agents.map(a => 
-      a.assignedWorkspaceId === id ? { ...a, assignedWorkspaceId: null } : a
-    );
-    setAgents(nextAgents);
+    // Cascade-delete groups belonging to this workspace
+    const nextGroups = agentGroups.filter(g => g.workspaceId !== id);
+    setAgentGroups(nextGroups);
 
-    const nextLogs = taskLogs.filter(l => l.workspaceId !== id);
-    setTaskLogs(nextLogs);
-
+    const nextLogs    = taskLogs.filter(l => l.workspaceId !== id);
     const nextPrompts = savedPrompts.filter(p => p.workspaceId !== id);
+    setTaskLogs(nextLogs);
     setSavedPrompts(nextPrompts);
 
-    await persist(nextWorkspaces, nextAgents, nextLogs, nextPrompts);
-    showToast('Workspace deleted and references cleared', 'info');
+    await persist(nextWs, nextGroups, nextLogs, nextPrompts);
+    showToast('Workspace deleted', 'info');
   };
 
-  // AGENT CRUD
-  const addAgent = async (a: Omit<Agent, 'id'>) => {
-    const newAgent: Agent = {
-      ...a,
-      id: crypto.randomUUID(),
-    };
-    const nextAgents = [...agents, newAgent];
-    setAgents(nextAgents);
-    await persist(workspaces, nextAgents, taskLogs, savedPrompts);
-    showToast(`Agent "${a.name}" registered`, 'success');
+  // ── Agent Group CRUD ─────────────────────────────────────────────────────────
+  const addAgentGroup = async (g: Omit<AgentGroup, 'id' | 'createdAt'>) => {
+    const next: AgentGroup = { ...g, id: crypto.randomUUID(), createdAt: Date.now() };
+    const nextGroups = [...agentGroups, next];
+    setAgentGroups(nextGroups);
+    await persist(workspaces, nextGroups, taskLogs, savedPrompts);
+    showToast(`Group "${g.name}" created`, 'success');
   };
 
-  const updateAgent = async (id: string, updates: Partial<Agent>) => {
-    const nextAgents = agents.map(a => {
-      if (a.id === id) {
-        return { ...a, ...updates };
-      }
-      return a;
-    });
-    setAgents(nextAgents);
-    await persist(workspaces, nextAgents, taskLogs, savedPrompts);
+  const updateAgentGroup = async (id: string, updates: Partial<AgentGroup>) => {
+    const next = agentGroups.map(g => g.id === id ? { ...g, ...updates } : g);
+    setAgentGroups(next);
+    await persist(workspaces, next, taskLogs, savedPrompts);
   };
 
-  const deleteAgent = async (id: string) => {
-    const nextAgents = agents.filter(a => a.id !== id);
-    setAgents(nextAgents);
-
-    // Remove reference from workspaces using this agent
-    const nextWorkspaces = workspaces.map(w => 
-      w.agentId === id ? { ...w, agentId: null } : w
-    );
-    setWorkspaces(nextWorkspaces);
-
-    await persist(nextWorkspaces, nextAgents, taskLogs, savedPrompts);
-    showToast('Agent deleted', 'info');
+  const deleteAgentGroup = async (id: string) => {
+    const next = agentGroups.filter(g => g.id !== id);
+    setAgentGroups(next);
+    if (activeGroupId === id) setActiveGroupId(null);
+    await persist(workspaces, next, taskLogs, savedPrompts);
+    showToast('Group deleted', 'info');
   };
 
-  // TASK LOG CRUD
+  // ── Task Log CRUD ─────────────────────────────────────────────────────────────
   const addTaskLog = async (l: Omit<TaskLog, 'id' | 'timestamp'>) => {
-    const newLog: TaskLog = {
-      ...l,
-      id: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
-    };
-    const nextLogs = [newLog, ...taskLogs]; // prepends new logs
+    const next: TaskLog = { ...l, id: crypto.randomUUID(), timestamp: new Date().toISOString() };
+    const nextLogs = [next, ...taskLogs];
     setTaskLogs(nextLogs);
-    await persist(workspaces, agents, nextLogs, savedPrompts);
-    showToast('Task log entry added', 'success');
+    await persist(workspaces, agentGroups, nextLogs, savedPrompts);
   };
 
   const updateTaskLog = async (id: string, updates: Partial<TaskLog>) => {
-    const nextLogs = taskLogs.map(l => {
-      if (l.id === id) {
-        return { ...l, ...updates };
-      }
-      return l;
-    });
-    setTaskLogs(nextLogs);
-    await persist(workspaces, agents, nextLogs, savedPrompts);
+    const next = taskLogs.map(l => l.id === id ? { ...l, ...updates } : l);
+    setTaskLogs(next);
+    await persist(workspaces, agentGroups, next, savedPrompts);
   };
 
   const deleteTaskLog = async (id: string) => {
-    const nextLogs = taskLogs.filter(l => l.id !== id);
-    setTaskLogs(nextLogs);
-    await persist(workspaces, agents, nextLogs, savedPrompts);
-    showToast('Task log entry removed', 'info');
+    const next = taskLogs.filter(l => l.id !== id);
+    setTaskLogs(next);
+    await persist(workspaces, agentGroups, next, savedPrompts);
   };
 
-  // PROMPT CRUD
+  // ── Prompt CRUD ───────────────────────────────────────────────────────────────
   const addSavedPrompt = async (pr: Omit<SavedPrompt, 'id' | 'createdAt' | 'usedAt'>) => {
-    const newPrompt: SavedPrompt = {
-      ...pr,
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      usedAt: null,
+    const next: SavedPrompt = {
+      ...pr, id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(), usedAt: null,
     };
-    const nextPrompts = [newPrompt, ...savedPrompts];
+    const nextPrompts = [next, ...savedPrompts];
     setSavedPrompts(nextPrompts);
-    await persist(workspaces, agents, taskLogs, nextPrompts);
+    await persist(workspaces, agentGroups, taskLogs, nextPrompts);
     showToast(`Prompt "${pr.title}" saved`, 'success');
   };
 
   const updateSavedPrompt = async (id: string, updates: Partial<SavedPrompt>) => {
-    const nextPrompts = savedPrompts.map(p => {
-      if (p.id === id) {
-        return { ...p, ...updates };
-      }
-      return p;
-    });
-    setSavedPrompts(nextPrompts);
-    await persist(workspaces, agents, taskLogs, nextPrompts);
+    const next = savedPrompts.map(p => p.id === id ? { ...p, ...updates } : p);
+    setSavedPrompts(next);
+    await persist(workspaces, agentGroups, taskLogs, next);
   };
 
   const deleteSavedPrompt = async (id: string) => {
-    const nextPrompts = savedPrompts.filter(p => p.id !== id);
-    setSavedPrompts(nextPrompts);
-    await persist(workspaces, agents, taskLogs, nextPrompts);
+    const next = savedPrompts.filter(p => p.id !== id);
+    setSavedPrompts(next);
+    await persist(workspaces, agentGroups, taskLogs, next);
     showToast('Prompt removed', 'info');
   };
 
-  // CUSTOM FUNCTIONS
   const copyPromptToClipboard = async (promptId: string) => {
     const pr = savedPrompts.find(p => p.id === promptId);
-    if (!pr) {
-      showToast('Prompt not found', 'error');
-      return;
-    }
+    if (!pr) { showToast('Prompt not found', 'error'); return; }
     try {
       await navigator.clipboard.writeText(pr.content);
-      
-      // Update usedAt timestamp
-      const nextPrompts = savedPrompts.map(p => {
-        if (p.id === promptId) {
-          return { ...p, usedAt: new Date().toISOString() };
-        }
-        return p;
-      });
-      setSavedPrompts(nextPrompts);
-      await persist(workspaces, agents, taskLogs, nextPrompts);
+      const next = savedPrompts.map(p =>
+        p.id === promptId ? { ...p, usedAt: new Date().toISOString() } : p,
+      );
+      setSavedPrompts(next);
+      await persist(workspaces, agentGroups, taskLogs, next);
       showToast('Prompt copied to clipboard!', 'success');
-    } catch (err) {
-      console.error('Failed to copy prompt to clipboard:', err);
+    } catch {
       showToast('Failed to copy to clipboard', 'error');
     }
   };
 
-  const launchAgent = async (agentId: string) => {
-    const agent = agents.find(a => a.id === agentId);
-    if (!agent) {
-      showToast('Agent not found', 'error');
-      return;
-    }
-    
-    // Tauri execution wrapper
-    if (!isTauri()) {
-      showToast(`[Mock] Launching ${agent.name} (Non-Tauri Mode)`, 'info');
-      return;
-    }
-
-    if (agent.type === 'terminal') {
-      const command = agent.launchCommand;
-      if (!command) {
-        showToast('No launch command configured for this agent', 'error');
-        return;
-      }
-      try {
-        showToast(`Launching terminal command for ${agent.name}...`, 'info');
-        const shellExe = settings.shellPath || 'cmd.exe';
-        const cmd = Command.create('run-cmd', ['/c', `start ${shellExe} /k ${command}`]);
-        await cmd.execute();
-        showToast(`Terminal window opened for ${agent.name}`, 'success');
-      } catch (err: any) {
-        console.error('Failed to execute command via Tauri shell plugin:', err);
-        showToast(`Launch failed: ${err.message || err}`, 'error');
-      }
-    } else if (agent.type === 'web') {
-      const url = agent.launchUrl;
-      if (!url) {
-        showToast('No launch URL configured for this agent', 'error');
-        return;
-      }
-      try {
-        showToast(`Opening browser for ${agent.name}...`, 'info');
-        await openUrl(url);
-        showToast(`Opened browser successfully`, 'success');
-      } catch (err: any) {
-        console.error('Failed to open URL via Tauri opener plugin:', err);
-        showToast(`Failed to open URL: ${err.message || err}`, 'error');
-      }
-    } else {
-      showToast(`Launching ${agent.name} is not configured`, 'info');
-    }
-  };
-
-  // PLAN CRUD
+  // ── Plan CRUD ─────────────────────────────────────────────────────────────────
   const addPlan = async (plan: OrchestratorPlan) => {
     const next = [plan, ...plans];
     setPlans(next);
@@ -433,14 +328,12 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     await savePlans(next);
   };
 
-  // TERMINAL SESSION MANAGEMENT (ephemeral — no persistence)
+  // ── Terminal sessions (ephemeral) ─────────────────────────────────────────────
   const addTerminalSession = (session: TerminalSession) => {
-    // Upsert — if the session ID already exists (e.g. the user re-opened the
-    // workspace console without closing tabs), update it rather than duplicating.
     setTerminalSessions(prev =>
       prev.some(s => s.id === session.id)
         ? prev.map(s => s.id === session.id ? { ...s, ...session } : s)
-        : [...prev, session]
+        : [...prev, session],
     );
   };
 
@@ -450,23 +343,18 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const updateTerminalSession = (sessionId: string, updates: Partial<TerminalSession>) => {
     setTerminalSessions(prev =>
-      prev.map(s => s.id === sessionId ? { ...s, ...updates } : s)
+      prev.map(s => s.id === sessionId ? { ...s, ...updates } : s),
     );
   };
 
+  // ── Export / Import ───────────────────────────────────────────────────────────
   const exportSettings = (): string => {
-    // Strip sensitive API keys so they are never leaked via export.
-    const safeSettings = {
-      ...settings,
-      openaiApiKey: '',
-      anthropicApiKey: '',
-    };
     const data: AppData = {
       workspaces,
-      agents,
+      agentGroups,
       taskLogs,
       savedPrompts,
-      settings: safeSettings,
+      settings: { ...settings, openaiApiKey: '', anthropicApiKey: '' },
     };
     return JSON.stringify(data, null, 2);
   };
@@ -478,40 +366,32 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         showToast('Invalid JSON file format', 'error');
         return false;
       }
-      
-      // Structural validation — filter out malformed items to prevent crashes.
       const isObj = (v: any) => v !== null && typeof v === 'object';
-      const importedWorkspaces = Array.isArray(parsed.workspaces)
-        ? parsed.workspaces.filter((w: any) => isObj(w) && typeof w.id === 'string' && typeof w.name === 'string')
+      const importedWs = Array.isArray(parsed.workspaces)
+        ? parsed.workspaces.filter((w: any) => isObj(w) && typeof w.id === 'string')
         : [];
-      const importedAgents = Array.isArray(parsed.agents)
-        ? parsed.agents.filter((a: any) => isObj(a) && typeof a.id === 'string' && typeof a.name === 'string')
+      const importedGroups = Array.isArray(parsed.agentGroups)
+        ? parsed.agentGroups.filter((g: any) => isObj(g) && typeof g.id === 'string')
         : [];
       const importedLogs = Array.isArray(parsed.taskLogs)
-        ? parsed.taskLogs.filter((l: any) => isObj(l) && typeof l.id === 'string' && typeof l.summary === 'string')
+        ? parsed.taskLogs.filter((l: any) => isObj(l) && typeof l.id === 'string')
         : [];
       const importedPrompts = Array.isArray(parsed.savedPrompts)
-        ? parsed.savedPrompts.filter((p: any) => isObj(p) && typeof p.id === 'string' && typeof p.title === 'string')
+        ? parsed.savedPrompts.filter((p: any) => isObj(p) && typeof p.id === 'string')
         : [];
       const importedSettings = isObj(parsed.settings) ? { ...settings, ...parsed.settings } : settings;
-      
-      setWorkspaces(importedWorkspaces);
-      setAgents(importedAgents);
+
+      setWorkspaces(importedWs);
+      setAgentGroups(importedGroups);
       setTaskLogs(importedLogs);
       setSavedPrompts(importedPrompts);
       setSettings(importedSettings);
-      
-      if (importedWorkspaces.length > 0) {
-        setActiveWorkspaceId(importedWorkspaces[0].id);
-      } else {
-        setActiveWorkspaceId(null);
-      }
+      setActiveWorkspaceId(importedWs.length > 0 ? importedWs[0].id : null);
 
-      await persist(importedWorkspaces, importedAgents, importedLogs, importedPrompts, importedSettings);
+      await persist(importedWs, importedGroups, importedLogs, importedPrompts, importedSettings);
       showToast('Settings imported successfully!', 'success');
       return true;
-    } catch (err) {
-      console.error('Import error:', err);
+    } catch {
       showToast('Failed to parse settings JSON', 'error');
       return false;
     }
@@ -519,46 +399,20 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   return (
     <DashboardContext.Provider value={{
-      workspaces,
-      agents,
-      taskLogs,
-      savedPrompts,
-      activeWorkspaceId,
-      setActiveWorkspaceId,
-      toast,
-      setToast,
-      showToast,
-      theme,
-      toggleTheme,
+      workspaces, agentGroups, taskLogs, savedPrompts,
+      activeWorkspaceId, setActiveWorkspaceId,
+      viewMode, setViewMode,
+      activeGroupId, setActiveGroupId,
+      toast, setToast, showToast,
+      theme, toggleTheme,
       isLoaded,
-      addWorkspace,
-      updateWorkspace,
-      deleteWorkspace,
-      addAgent,
-      updateAgent,
-      deleteAgent,
-      addTaskLog,
-      updateTaskLog,
-      deleteTaskLog,
-      addSavedPrompt,
-      updateSavedPrompt,
-      deleteSavedPrompt,
-      copyPromptToClipboard,
-      launchAgent,
-      exportSettings,
-      importSettings,
-      settings,
-      updateSettings,
-      viewMode,
-      setViewMode,
-      plans,
-      addPlan,
-      updatePlan,
-      deletePlan,
-      terminalSessions,
-      addTerminalSession,
-      removeTerminalSession,
-      updateTerminalSession,
+      addWorkspace, updateWorkspace, deleteWorkspace,
+      addAgentGroup, updateAgentGroup, deleteAgentGroup,
+      addTaskLog, updateTaskLog, deleteTaskLog,
+      addSavedPrompt, updateSavedPrompt, deleteSavedPrompt, copyPromptToClipboard,
+      settings, updateSettings, exportSettings, importSettings,
+      plans, addPlan, updatePlan, deletePlan,
+      terminalSessions, addTerminalSession, removeTerminalSession, updateTerminalSession,
     }}>
       {children}
     </DashboardContext.Provider>
@@ -566,9 +420,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 };
 
 export const useDashboard = () => {
-  const context = useContext(DashboardContext);
-  if (context === undefined) {
-    throw new Error('useDashboard must be used within a DashboardProvider');
-  }
-  return context;
+  const ctx = useContext(DashboardContext);
+  if (!ctx) throw new Error('useDashboard must be used within a DashboardProvider');
+  return ctx;
 };

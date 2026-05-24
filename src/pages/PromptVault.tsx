@@ -17,21 +17,19 @@ import {
 import { css, cx, keyframes } from '@emotion/css';
 
 export const PromptVaultView: React.FC = () => {
-  const { 
-    savedPrompts, 
-    workspaces, 
-    agents, 
-    addSavedPrompt, 
-    updateSavedPrompt, 
+  const {
+    savedPrompts,
+    workspaces,
+    addSavedPrompt,
+    updateSavedPrompt,
     deleteSavedPrompt,
     copyPromptToClipboard,
-    showToast 
+    showToast
   } = useDashboard();
 
   // Filter states
   const [search, setSearch] = useState('');
   const [filterWorkspace, setFilterWorkspace] = useState('all');
-  const [filterAgent, setFilterAgent] = useState('all');
 
   // Expanded cards state
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
@@ -50,7 +48,6 @@ export const PromptVaultView: React.FC = () => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [promptWorkspaceId, setPromptWorkspaceId] = useState('');
-  const [promptAgentId, setPromptAgentId] = useState('');
   const [tagInput, setTagInput] = useState('');
 
   const toggleExpand = (id: string) => {
@@ -64,7 +61,6 @@ export const PromptVaultView: React.FC = () => {
     setTitle('');
     setContent('');
     setPromptWorkspaceId('');
-    setPromptAgentId('');
     setTagInput('');
   };
 
@@ -84,7 +80,7 @@ export const PromptVaultView: React.FC = () => {
       title,
       content,
       workspaceId: promptWorkspaceId,
-      agentId: promptAgentId,
+      groupId: null,
       tags
     });
 
@@ -98,7 +94,6 @@ export const PromptVaultView: React.FC = () => {
     setTitle(prompt.title);
     setContent(prompt.content);
     setPromptWorkspaceId(prompt.workspaceId);
-    setPromptAgentId(prompt.agentId);
     setTagInput(prompt.tags.join(', '));
     setShowEditModal(true);
   };
@@ -120,7 +115,6 @@ export const PromptVaultView: React.FC = () => {
       title,
       content,
       workspaceId: promptWorkspaceId,
-      agentId: promptAgentId,
       tags
     });
 
@@ -145,13 +139,12 @@ export const PromptVaultView: React.FC = () => {
   // Filter calculations
   const filteredPrompts = savedPrompts.filter(p => {
     const matchesWorkspace = filterWorkspace === 'all' || p.workspaceId === filterWorkspace;
-    const matchesAgent = filterAgent === 'all' || p.agentId === filterAgent;
-    const matchesSearch = 
+    const matchesSearch =
       p.title.toLowerCase().includes(search.toLowerCase()) ||
       p.content.toLowerCase().includes(search.toLowerCase()) ||
       p.tags.some(tag => tag.toLowerCase().includes(search.toLowerCase()));
 
-    return matchesWorkspace && matchesAgent && matchesSearch;
+    return matchesWorkspace && matchesSearch;
   });
 
   const formatRelativeTime = (isoString: string | null) => {
@@ -178,7 +171,6 @@ export const PromptVaultView: React.FC = () => {
           onClick={() => {
             resetForm();
             if (workspaces.length > 0) setPromptWorkspaceId(workspaces[0].id);
-            if (agents.length > 0) setPromptAgentId(agents[0].id);
             setShowAddModal(true);
           }}
           className={styles.savePromptBtn}
@@ -202,21 +194,6 @@ export const PromptVaultView: React.FC = () => {
             <option value="all">All Workspaces</option>
             {workspaces.map(w => (
               <option key={w.id} value={w.id}>{w.name}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Agent Filter */}
-        <div className={styles.filterGroup}>
-          <label className={styles.filterLabel}>Filter Agent</label>
-          <select
-            value={filterAgent}
-            onChange={(e) => setFilterAgent(e.target.value)}
-            className={styles.filterSelect}
-          >
-            <option value="all">All Agents</option>
-            {agents.map(a => (
-              <option key={a.id} value={a.id}>{a.name}</option>
             ))}
           </select>
         </div>
@@ -254,7 +231,6 @@ export const PromptVaultView: React.FC = () => {
           {filteredPrompts.map((prompt) => {
             const isExpanded = !!expandedIds[prompt.id];
             const workspaceObj = workspaces.find(w => w.id === prompt.workspaceId);
-            const agentObj = agents.find(a => a.id === prompt.agentId);
 
             return (
               <div
@@ -274,17 +250,11 @@ export const PromptVaultView: React.FC = () => {
                       </h4>
                       {/* Workspace indicator badge */}
                       {workspaceObj && (
-                        <span 
+                        <span
                           className={styles.workspaceBadge}
                           style={{ backgroundColor: workspaceObj.color }}
                         >
                           {workspaceObj.name}
-                        </span>
-                      )}
-                      {/* Agent indicator badge */}
-                      {agentObj && (
-                        <span className={styles.agentBadge}>
-                          {agentObj.name}
                         </span>
                       )}
                     </div>
@@ -385,36 +355,19 @@ export const PromptVaultView: React.FC = () => {
                 />
               </div>
 
-              <div className={styles.formGrid}>
-                <div>
-                  <label className={styles.fieldLabel}>Associate Workspace</label>
-                  <select
-                    value={promptWorkspaceId}
-                    onChange={(e) => setPromptWorkspaceId(e.target.value)}
-                    className={styles.input}
-                    required
-                  >
-                    <option value="" disabled>-- Select Workspace --</option>
-                    {workspaces.map(w => (
-                      <option key={w.id} value={w.id}>{w.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className={styles.fieldLabel}>Associate Agent</label>
-                  <select
-                    value={promptAgentId}
-                    onChange={(e) => setPromptAgentId(e.target.value)}
-                    className={styles.input}
-                    required
-                  >
-                    <option value="" disabled>-- Select Agent --</option>
-                    {agents.map(a => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className={styles.fieldLabel}>Associate Workspace</label>
+                <select
+                  value={promptWorkspaceId}
+                  onChange={(e) => setPromptWorkspaceId(e.target.value)}
+                  className={styles.input}
+                  required
+                >
+                  <option value="" disabled>-- Select Workspace --</option>
+                  {workspaces.map(w => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -493,34 +446,18 @@ export const PromptVaultView: React.FC = () => {
                 />
               </div>
 
-              <div className={styles.formGrid}>
-                <div>
-                  <label className={styles.fieldLabel}>Associate Workspace</label>
-                  <select
-                    value={promptWorkspaceId}
-                    onChange={(e) => setPromptWorkspaceId(e.target.value)}
-                    className={styles.input}
-                    required
-                  >
-                    {workspaces.map(w => (
-                      <option key={w.id} value={w.id}>{w.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className={styles.fieldLabel}>Associate Agent</label>
-                  <select
-                    value={promptAgentId}
-                    onChange={(e) => setPromptAgentId(e.target.value)}
-                    className={styles.input}
-                    required
-                  >
-                    {agents.map(a => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className={styles.fieldLabel}>Associate Workspace</label>
+                <select
+                  value={promptWorkspaceId}
+                  onChange={(e) => setPromptWorkspaceId(e.target.value)}
+                  className={styles.input}
+                  required
+                >
+                  {workspaces.map(w => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div>

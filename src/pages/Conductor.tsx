@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { css, cx } from '@emotion/css';
 import { v4 as uuidv4 } from 'uuid';
 import { useDashboard } from '../context/DashboardContext';
@@ -9,7 +9,6 @@ import {
 } from '../types';
 import { orchestratorEngine } from '../services/orchestratorEngine';
 import { SENTINEL_START, SENTINEL_END, PLAN_START, PLAN_END } from '../services/sentinelParser';
-import { SessionRegistry } from '../components/conductor/SessionRegistry';
 import { PlanBuilder } from '../components/conductor/PlanBuilder';
 import { PipelineBoard, PipelineSummary } from '../components/conductor/PipelineBoard';
 import { ConductorLog } from '../components/conductor/ConductorLog';
@@ -75,7 +74,6 @@ export const ConductorView: React.FC = () => {
     addPlan,
     updatePlan,
     deletePlan,
-    agents,
     terminalSessions,
     settings,
     activeWorkspaceId,
@@ -154,6 +152,7 @@ export const ConductorView: React.FC = () => {
   const handleNewPlan = () => {
     const blank: OrchestratorPlan = {
       id: uuidv4(), goal: '', tasks: [], status: 'draft', createdAt: Date.now(),
+      workspaceId: activeWorkspaceId ?? '', groupId: '',
     };
     addPlan(blank);
     setActivePlanId(blank.id);
@@ -172,22 +171,6 @@ export const ConductorView: React.FC = () => {
 
   // ── Run controls ──────────────────────────────────────────────────────────────
 
-  const buildSessionRegistry = useCallback(() => {
-    return new Map(
-      workspaceSessions
-        .filter(s => s.assignedAgentId)
-        .map(s => {
-          const agent = agents.find(a => a.id === s.assignedAgentId);
-          return [s.id, {
-            sessionId:  s.id,
-            agentId:    s.assignedAgentId!,
-            agentName:  agent?.name  ?? 'Unknown',
-            agentColor: agent?.color ?? '#475569',
-          }];
-        })
-    );
-  }, [workspaceSessions, agents]);
-
   const handleApproveAndRun = async (plan: OrchestratorPlan) => {
     await updatePlan(plan.id, plan);
     setActivePlanId(plan.id);
@@ -196,10 +179,10 @@ export const ConductorView: React.FC = () => {
     setLiveTasks([]);
 
     orchestratorEngine.updateConfig({
-      ollamaHost:             settings.ollamaHost,
-      ollamaModel:            settings.conductorOllamaModel,
-      taskTimeoutMinutes:     settings.conductorTaskTimeoutMinutes,
-      sessionRegistry:        buildSessionRegistry(),
+      ollamaHost:         settings.ollamaHost,
+      ollamaModel:        settings.conductorOllamaModel,
+      taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
+      sessionTitles:      new Map(workspaceSessions.map(s => [s.id, s.title])),
     });
     // Stop any existing plan (paused/failed/etc.) before starting the new one.
     orchestratorEngine.stop();
@@ -371,15 +354,13 @@ export const ConductorView: React.FC = () => {
           {/* ── Build tab ── */}
           {tab === 'build' && (
             <div className={styles.buildLayout}>
-              {activeWorkspaceId && (
-                <SessionRegistry workspaceId={activeWorkspaceId} />
-              )}
               {activePlan ? (
                 <PlanBuilder
                   key={activePlan.id}
                   plan={activePlan}
                   sessions={workspaceSessions}
-                  agents={agents}
+                  workspaceId={activePlan.workspaceId}
+                  groupId={activePlan.groupId}
                   onSave={updated => updatePlan(updated.id, updated)}
                   onApproveAndRun={handleApproveAndRun}
                 />
@@ -398,7 +379,7 @@ export const ConductorView: React.FC = () => {
               {liveTasks.length > 0 ? (
                 <>
                   <PipelineSummary tasks={liveTasks} />
-                  <PipelineBoard tasks={liveTasks} sessions={workspaceSessions} agents={agents} />
+                  <PipelineBoard tasks={liveTasks} sessions={workspaceSessions} />
                   <div className={styles.runBottom}>
                     <div className={styles.logSection}>
                       <div className={styles.sectionLabel}>Orchestrator Log</div>
@@ -437,7 +418,6 @@ export const ConductorView: React.FC = () => {
                     key={p.id}
                     plan={p}
                     sessions={workspaceSessions}
-                    agents={agents}
                   />
                 ))
               )}
@@ -504,8 +484,7 @@ const TabBtn: React.FC<{
 const HistoryCard: React.FC<{
   plan: OrchestratorPlan;
   sessions: ReturnType<typeof Array.prototype.filter>;
-  agents: any[];
-}> = ({ plan, sessions, agents }) => {
+}> = ({ plan, sessions }) => {
   const [open, setOpen] = useState(false);
   const color = STATUS_COLORS[plan.status] ?? 'var(--text-tertiary)';
   const done  = plan.tasks.filter(t => t.status === 'done').length;
@@ -550,7 +529,6 @@ const HistoryCard: React.FC<{
                 task={task}
                 allTasks={plan.tasks}
                 sessions={sessions}
-                agents={agents}
                 editable={false}
               />
             </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { TerminalTab, TerminalTabHandle } from './TerminalTab';
 import { useDashboard } from '../../context/DashboardContext';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, X, Terminal, Edit2, ChevronDown, Check } from 'lucide-react';
+import { Plus, X, Terminal, Edit2, ChevronDown, Check, Palette } from 'lucide-react';
 import { css, cx } from '@emotion/css';
 import type { TerminalSession } from '../../types';
 
@@ -19,9 +19,21 @@ interface TerminalContainerProps {
   workspacePath: string;
 }
 
+// ── Constants ──────────────────────────────────────────────────────────────────
+
+const TAB_COLOR_PRESETS = [
+  '#ff9d00', // amber  (default)
+  '#10b981', // emerald
+  '#3b82f6', // blue
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#ef4444', // red
+  '#06b6d4', // cyan
+  '#84cc16', // lime
+];
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-/** Returns just the basename without extension for display in tab titles. */
 function shellBasename(path: string): string {
   const part = path.replace(/\\/g, '/').split('/').pop() ?? path;
   return part.replace(/\.(exe|cmd|bat|sh)$/i, '');
@@ -40,9 +52,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const [selectedShell, setSelectedShell] = useState<ShellInfo | null>(null);
   const [shellPickerOpen, setShellPickerOpen] = useState(false);
   const shellPickerRef = useRef<HTMLDivElement>(null);
-
-  // Keep a ref so workspace-change effect always reads the latest value without
-  // needing to be listed as a dependency.
   const selectedShellRef = useRef<ShellInfo | null>(null);
   selectedShellRef.current = selectedShell;
 
@@ -51,9 +60,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       .then((shells) => {
         if (shells.length === 0) return;
         setAvailableShells(shells);
-
-        // Prefer the shell the user configured in Settings, otherwise pick the
-        // first one the OS reports.
         const preferred = shells.find(
           (s) =>
             s.path === settings.shellPath ||
@@ -62,7 +68,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         setSelectedShell(preferred ?? shells[0]);
       })
       .catch(() => {
-        // Fallback: at least offer the configured shell path.
         const fallback: ShellInfo = {
           name: shellBasename(settings.shellPath) || 'Shell',
           path: settings.shellPath || 'powershell',
@@ -74,7 +79,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Close shell picker on outside click.
   useEffect(() => {
     if (!shellPickerOpen) return;
     const close = (e: MouseEvent) => {
@@ -89,47 +93,52 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   // ── Session state ────────────────────────────────────────────────────────
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  // Always-current ref so closeTab's useCallback([]) closure never goes stale.
   const activeSessionIdRef = useRef<string | null>(null);
   activeSessionIdRef.current = activeSessionId;
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
-
-  // Monotonically increasing counter so tab names never collide after closes.
   const tabCounter = useRef(0);
-
-  // Track which session IDs we have registered in context so we can diff
-  // precisely — adding new ones and removing closed ones — without blowing
-  // away everything when the component unmounts (i.e. when the user navigates
-  // to Conductor). Sessions must persist in context so ConductorView's
-  // SessionRegistry can see them after navigation.
   const registeredIds = useRef<Set<string>>(new Set());
+
+  // ── Color picker state ───────────────────────────────────────────────────
+  const [colorPickerOpenId, setColorPickerOpenId] = useState<string | null>(null);
+  const colorPickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!colorPickerOpenId) return;
+    const close = (e: MouseEvent) => {
+      if (colorPickerRef.current && !colorPickerRef.current.contains(e.target as Node)) {
+        setColorPickerOpenId(null);
+      }
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [colorPickerOpenId]);
+
+  // ── Drag-to-reorder state ────────────────────────────────────────────────
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  // ── Context sync ─────────────────────────────────────────────────────────
+  const tabRefs = useRef<Map<string, React.RefObject<TerminalTabHandle | null>>>(new Map());
 
   useEffect(() => {
     const currentIds = new Set(sessions.map(s => s.id));
-
-    // Remove sessions that were closed (in registered set but not in current list)
     registeredIds.current.forEach(id => {
       if (!currentIds.has(id)) {
         removeTerminalSession(id);
         registeredIds.current.delete(id);
       }
     });
-
-    // Add sessions that are new (in current list but not yet registered)
     sessions.forEach(s => {
       if (!registeredIds.current.has(s.id)) {
-        addTerminalSession({ ...s, workspaceId, assignedAgentId: null });
+        addTerminalSession({ ...s, workspaceId });
         registeredIds.current.add(s.id);
       }
     });
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions.map(s => s.id).join(','), workspaceId]);
 
-  // Remove all registered sessions from context when the component unmounts.
-  // This prevents stale (terminated) sessions from accumulating across mounts
-  // when the user switches view modes or workspaces.
   useEffect(() => {
     return () => {
       registeredIds.current.forEach(id => removeTerminalSession(id));
@@ -138,10 +147,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Refs for each mounted TerminalTab so we can call fit() on tab switch.
-  const tabRefs = useRef<Map<string, React.RefObject<TerminalTabHandle | null>>>(new Map());
-
-  // ── Workspace change: kill old sessions, create a fresh default tab ──────
+  // ── Workspace change ─────────────────────────────────────────────────────
   const prevWorkspaceId = useRef(workspaceId);
 
   useEffect(() => {
@@ -161,7 +167,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     tabCounter.current = 1;
     const defaultId = crypto.randomUUID();
     tabRefs.current.set(defaultId, React.createRef<TerminalTabHandle | null>());
-    setSessions([{ id: defaultId, title: `${shellName} 1`, shell: shellPath, shellArgs, workspaceId, assignedAgentId: null }]);
+    setSessions([{ id: defaultId, title: `${shellName} 1`, shell: shellPath, shellArgs, workspaceId, color: null, order: 0 }]);
     setActiveSessionId(defaultId);
     setEditingSessionId(null);
 
@@ -193,7 +199,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       shell: shellPath,
       shellArgs,
       workspaceId,
-      assignedAgentId: null,
+      color: null,
+      order: tabCounter.current - 1,
     };
     setSessions((prev) => [...prev, newSession]);
     setActiveSessionId(newId);
@@ -204,24 +211,20 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       e.stopPropagation();
       invoke('kill_pty', { sessionId }).catch(() => {});
       tabRefs.current.delete(sessionId);
-
       setSessions((prev) => {
         const next = prev.filter((s) => s.id !== sessionId);
-        // Use ref so this callback is never stale during rapid double-closes.
         if (activeSessionIdRef.current === sessionId) {
           setActiveSessionId(next.length > 0 ? next[next.length - 1].id : null);
         }
         return next;
       });
     },
-    // Intentionally empty — activeSessionIdRef is always current.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
   const switchTab = useCallback((sessionId: string) => {
     setActiveSessionId(sessionId);
-    // Give React one frame to flip visibility before measuring.
     requestAnimationFrame(() => {
       const ref = tabRefs.current.get(sessionId);
       if (ref?.current) ref.current.fit();
@@ -251,6 +254,64 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     else if (e.key === 'Escape') setEditingSessionId(null);
   };
 
+  // ── Color picker logic ────────────────────────────────────────────────────
+
+  const setTabColor = (sessionId: string, color: string | null) => {
+    setSessions((prev) =>
+      prev.map((s) => (s.id === sessionId ? { ...s, color } : s)),
+    );
+    updateTerminalSession(sessionId, { color });
+    setColorPickerOpenId(null);
+  };
+
+  // ── Drag-to-reorder logic ─────────────────────────────────────────────────
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDragId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    // Slight delay so the browser renders the ghost before we hide anything.
+    requestAnimationFrame(() => setDragId(id));
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (id !== dragId) setDragOverId(id);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    if (!dragId || dragId === targetId) {
+      setDragId(null);
+      setDragOverId(null);
+      return;
+    }
+
+    setSessions((prev) => {
+      const from = prev.findIndex((s) => s.id === dragId);
+      const to   = prev.findIndex((s) => s.id === targetId);
+      if (from === -1 || to === -1) return prev;
+
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      // Re-assign order fields and sync to context.
+      return next.map((s, i) => {
+        const updated = { ...s, order: i };
+        if (s.order !== i) updateTerminalSession(s.id, { order: i });
+        return updated;
+      });
+    });
+
+    setDragId(null);
+    setDragOverId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDragId(null);
+    setDragOverId(null);
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -259,21 +320,80 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       <div className={styles.header}>
         <div className={styles.tabsList}>
           {sessions.map((session) => {
-            const isActive = session.id === activeSessionId;
-            const isEditing = session.id === editingSessionId;
+            const isActive   = session.id === activeSessionId;
+            const isEditing  = session.id === editingSessionId;
+            const isDragging = session.id === dragId;
+            const isDragOver = session.id === dragOverId;
+            const tabColor   = session.color ?? '#ff9d00';
+            const isColorPickerOpen = session.id === colorPickerOpenId;
 
             return (
               <div
                 key={session.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, session.id)}
+                onDragOver={(e)  => handleDragOver(e, session.id)}
+                onDrop={(e)      => handleDrop(e, session.id)}
+                onDragEnd={handleDragEnd}
                 onClick={() => switchTab(session.id)}
-                className={cx(styles.tab, isActive ? styles.activeTab : styles.inactiveTab)}
+                className={cx(
+                  styles.tab,
+                  isActive   ? styles.activeTab    : styles.inactiveTab,
+                  isDragging && styles.tabDragging,
+                  isDragOver && styles.tabDragOver,
+                )}
+                style={isActive ? { borderTopColor: tabColor } : undefined}
               >
-                <Terminal
-                  className={cx(
-                    styles.tabIcon,
-                    isActive ? styles.activeTabIcon : styles.inactiveTabIcon,
+                {/* Color dot */}
+                <div
+                  className={styles.colorDotWrapper}
+                  style={{ position: 'relative' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setColorPickerOpenId(isColorPickerOpen ? null : session.id);
+                  }}
+                >
+                  <span
+                    className={cx(styles.colorDot, isActive && styles.colorDotActive)}
+                    style={{ backgroundColor: session.color ?? (isActive ? '#ff9d00' : '#334155') }}
+                    title="Change tab color"
+                  />
+
+                  {/* Color picker popover */}
+                  {isColorPickerOpen && (
+                    <div
+                      ref={colorPickerRef}
+                      className={styles.colorPickerPopover}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className={styles.colorPickerLabel}>Tab color</div>
+                      <div className={styles.colorSwatches}>
+                        {TAB_COLOR_PRESETS.map((c) => (
+                          <button
+                            key={c}
+                            className={cx(
+                              styles.colorSwatch,
+                              session.color === c && styles.colorSwatchActive,
+                            )}
+                            style={{ backgroundColor: c }}
+                            onClick={() => setTabColor(session.id, c)}
+                            title={c}
+                          />
+                        ))}
+                        {/* Reset to default */}
+                        {session.color && (
+                          <button
+                            className={styles.colorSwatchReset}
+                            onClick={() => setTabColor(session.id, null)}
+                            title="Reset to default"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   )}
-                />
+                </div>
 
                 {isEditing ? (
                   <input
@@ -298,13 +418,28 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
                 <div className={cx(styles.tabActions, 'tab-actions-btn-group')}>
                   {!isEditing && (
-                    <button
-                      onClick={(e) => startRename(session.id, session.title, e)}
-                      className={styles.tabActionBtn}
-                      title="Rename tab"
-                    >
-                      <Edit2 className={styles.tinyIcon} />
-                    </button>
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startRename(session.id, session.title, e);
+                        }}
+                        className={styles.tabActionBtn}
+                        title="Rename tab"
+                      >
+                        <Edit2 className={styles.tinyIcon} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setColorPickerOpenId(isColorPickerOpen ? null : session.id);
+                        }}
+                        className={styles.tabActionBtn}
+                        title="Change tab color"
+                      >
+                        <Palette className={styles.tinyIcon} />
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={(e) => closeTab(session.id, e)}
@@ -321,7 +456,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
         {/* Right-side controls: shell picker + new-tab button */}
         <div className={styles.headerRight}>
-          {/* Shell picker */}
           {availableShells.length > 0 && (
             <div ref={shellPickerRef} className={styles.shellPickerWrapper}>
               <button
@@ -330,9 +464,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 title="Select shell for new tabs"
               >
                 <Terminal className={styles.shellPickerIcon} />
-                <span className={styles.shellPickerLabel}>
-                  {selectedShell?.name ?? '…'}
-                </span>
+                <span className={styles.shellPickerLabel}>{selectedShell?.name ?? '…'}</span>
                 <ChevronDown
                   className={cx(
                     styles.shellPickerChevron,
@@ -345,13 +477,13 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 <div className={styles.shellDropdown}>
                   <div className={styles.shellDropdownHeader}>Open new tab with</div>
                   {availableShells.map((shell) => {
-                    const isActive = shell.path === selectedShell?.path;
+                    const isShellActive = shell.path === selectedShell?.path;
                     return (
                       <button
                         key={shell.path}
                         className={cx(
                           styles.shellDropdownItem,
-                          isActive && styles.shellDropdownItemActive,
+                          isShellActive && styles.shellDropdownItemActive,
                         )}
                         onClick={() => {
                           setSelectedShell(shell);
@@ -362,7 +494,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                         <Terminal className={styles.shellItemIcon} />
                         <span className={styles.shellItemName}>{shell.name}</span>
                         <span className={styles.shellItemPath}>{shell.path}</span>
-                        {isActive && <Check className={styles.shellItemCheck} />}
+                        {isShellActive && <Check className={styles.shellItemCheck} />}
                       </button>
                     );
                   })}
@@ -371,7 +503,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
             </div>
           )}
 
-          {/* New Tab button — uses currently selected shell */}
           <button onClick={() => createNewTab()} className={styles.newTabBtn}>
             <Plus className={styles.smallIcon} />
             <span>New Tab</span>
@@ -385,9 +516,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
           <div className={styles.emptyState}>
             <Terminal className={styles.emptyIcon} />
             <p className={styles.emptyTitle}>No active terminal sessions</p>
-            <p className={styles.emptyDesc}>
-              Pick a shell and launch a session for this workspace.
-            </p>
+            <p className={styles.emptyDesc}>Pick a shell and launch a session for this workspace.</p>
             <button onClick={() => createNewTab()} className={styles.launchBtn}>
               <Plus className={styles.smallIcon} />
               <span>Launch Terminal Session</span>
@@ -397,12 +526,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
           sessions.map((session) => {
             const isActive = session.id === activeSessionId;
             const tabRef = tabRefs.current.get(session.id) ?? null;
-            // All TerminalTab instances stay mounted so their PTY processes
-            // and xterm canvases remain intact. Inactive tabs are stacked
-            // behind the active one via visibility:hidden — they keep their
-            // layout dimensions, so the ResizeObserver inside each TerminalTab
-            // stays accurate and the terminal never needs to re-fit when
-            // switching back.
             return (
               <div
                 key={session.id}
@@ -463,8 +586,8 @@ const styles = {
   tab: css`
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
+    gap: 7px;
+    padding: 8px 10px;
     font-size: 12px;
     font-weight: 700;
     border-top-left-radius: 8px;
@@ -474,6 +597,7 @@ const styles = {
     transition: all 150ms ease;
     user-select: none;
     flex-shrink: 0;
+    position: relative;
 
     &:hover .tab-actions-btn-group {
       opacity: 1;
@@ -481,7 +605,7 @@ const styles = {
   `,
   activeTab: css`
     background-color: #070d14;
-    border-top-color: #ff9d00;
+    /* border-top-color is set inline via tabColor */
     color: #f1f5f9;
   `,
   inactiveTab: css`
@@ -492,18 +616,107 @@ const styles = {
       color: #94a3b8;
     }
   `,
-  tabIcon: css`
-    width: 13px;
-    height: 13px;
+  tabDragging: css`
+    opacity: 0.4;
+    cursor: grabbing;
+  `,
+  tabDragOver: css`
+    box-shadow: -3px 0 0 0 #ff9d00;
+  `,
+
+  /* Color dot */
+  colorDotWrapper: css`
     flex-shrink: 0;
-    transition: color 150ms ease;
+    display: flex;
+    align-items: center;
   `,
-  activeTabIcon: css`
-    color: #ff9d00;
+  colorDot: css`
+    display: block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+    &:hover {
+      transform: scale(1.4);
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.15);
+    }
   `,
-  inactiveTabIcon: css`
+  colorDotActive: css`
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.1);
+  `,
+
+  /* Color picker popover */
+  colorPickerPopover: css`
+    position: absolute;
+    top: calc(100% + 8px);
+    left: -4px;
+    z-index: 300;
+    background-color: #0b1520;
+    border: 1px solid #1a2e40;
+    border-radius: 10px;
+    padding: 10px 12px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+    animation: popIn 120ms ease-out;
+
+    @keyframes popIn {
+      from { opacity: 0; transform: scale(0.92) translateY(-4px); }
+      to   { opacity: 1; transform: scale(1)    translateY(0); }
+    }
+  `,
+  colorPickerLabel: css`
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     color: #475569;
+    margin-bottom: 8px;
+    white-space: nowrap;
   `,
+  colorSwatches: css`
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  `,
+  colorSwatch: css`
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 120ms ease, border-color 120ms ease;
+    flex-shrink: 0;
+    padding: 0;
+    &:hover {
+      transform: scale(1.25);
+    }
+  `,
+  colorSwatchActive: css`
+    border-color: rgba(255, 255, 255, 0.8);
+    transform: scale(1.15);
+  `,
+  colorSwatchReset: css`
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #64748b;
+    font-size: 9px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+    transition: all 120ms ease;
+    &:hover {
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+  `,
+
   renameInput: css`
     background-color: #0f172a;
     border: 1px solid #334155;
@@ -561,7 +774,7 @@ const styles = {
     }
   `,
 
-  /* ── Right-side header controls ── */
+  /* Right-side header controls */
   headerRight: css`
     display: flex;
     align-items: center;
@@ -570,7 +783,6 @@ const styles = {
     padding: 6px 0;
   `,
 
-  /* Shell picker button */
   shellPickerWrapper: css`
     position: relative;
   `,
@@ -616,7 +828,6 @@ const styles = {
     transform: rotate(180deg);
   `,
 
-  /* Shell dropdown */
   shellDropdown: css`
     position: absolute;
     top: calc(100% + 6px);
@@ -654,10 +865,7 @@ const styles = {
     cursor: pointer;
     transition: background 100ms ease;
     text-align: left;
-
-    &:hover {
-      background-color: #122030;
-    }
+    &:hover { background-color: #122030; }
   `,
   shellDropdownItemActive: css`
     background-color: rgba(255, 157, 0, 0.08);
@@ -693,7 +901,6 @@ const styles = {
     flex-shrink: 0;
   `,
 
-  /* New tab button */
   newTabBtn: css`
     display: flex;
     align-items: center;
@@ -715,7 +922,6 @@ const styles = {
     }
   `,
 
-  /* Viewports */
   viewports: css`
     flex: 1;
     background-color: #070d14;
@@ -731,7 +937,6 @@ const styles = {
     pointer-events: none;
   `,
 
-  /* Empty state */
   emptyState: css`
     position: absolute;
     inset: 0;
@@ -774,9 +979,7 @@ const styles = {
     border: none;
     cursor: pointer;
     transition: background-color 150ms ease;
-    &:hover {
-      background-color: #ffb733;
-    }
+    &:hover { background-color: #ffb733; }
   `,
   tinyIcon: css`
     width: 10px;
