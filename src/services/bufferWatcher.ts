@@ -40,26 +40,44 @@ interface PtyPayload {
 class BufferWatcher {
   private entries = new Map<string, WatchEntry>();
 
-  // ── Internal: get or create a listening entry ──────────────────────────────
+  /**
+   * In-flight `listen()` promises. Guards against a TOCTOU race where two
+   * concurrent callers both see `entries.get(sessionId)` as undefined before
+   * either resolves the `await listen(...)`, which would register two Tauri
+   * event listeners for the same session.
+   */
+  private pending = new Map<string, Promise<WatchEntry>>();
+
+  // ── Internal: get or create a listening entry ──────────────────────────
 
   private async ensureListening(sessionId: string): Promise<WatchEntry> {
     const existing = this.entries.get(sessionId);
     if (existing) return existing;
 
-    const buffer: SessionBuffer = {
-      sessionId,
-      buffer: '',
-      lastActivity: Date.now(),
-      mode: 'idle',
-    };
+    // A concurrent caller is already registering a listener — reuse its promise.
+    const inFlight = this.pending.get(sessionId);
+    if (inFlight) return inFlight;
 
-    const unlisten = await listen<PtyPayload>(`pty-data-${sessionId}`, (event) => {
-      this.onData(sessionId, event.payload.data);
-    });
+    const promise = (async () => {
+      const buffer: SessionBuffer = {
+        sessionId,
+        buffer: '',
+        lastActivity: Date.now(),
+        mode: 'idle',
+      };
 
-    const entry: WatchEntry = { buffer, unlisten };
-    this.entries.set(sessionId, entry);
-    return entry;
+      const unlisten = await listen<PtyPayload>(`pty-data-${sessionId}`, (event) => {
+        this.onData(sessionId, event.payload.data);
+      });
+
+      const entry: WatchEntry = { buffer, unlisten };
+      this.entries.set(sessionId, entry);
+      this.pending.delete(sessionId);
+      return entry;
+    })();
+
+    this.pending.set(sessionId, promise);
+    return promise;
   }
 
   // ── Internal: handle incoming pty-data chunk ───────────────────────────────
@@ -180,6 +198,9 @@ class BufferWatcher {
     if (!entry) return;
     entry.unlisten();
     this.entries.delete(sessionId);
+    // Also remove any in-flight pending promise for this session so a future
+    // ensureListening() call starts fresh.
+    this.pending.delete(sessionId);
   }
 
   /**

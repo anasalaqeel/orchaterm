@@ -1,6 +1,6 @@
 # AgentDeck — User Guide
 
-> **Version:** 0.1.0 (Beta)  
+> **Version:** 0.1.0 (Beta)
 > **Platform:** Windows / macOS / Linux (Tauri desktop app)
 
 ---
@@ -9,22 +9,24 @@
 
 1. [What is AgentDeck?](#1-what-is-agentdeck)
 2. [Key Concepts](#2-key-concepts)
-3. [First-Time Setup](#3-first-time-setup)
-4. [Workspaces](#4-workspaces)
-5. [Agent Registry](#5-agent-registry)
-6. [The Terminal (Working with Agents)](#6-the-terminal-working-with-agents)
-7. [The Conductor — Overview](#7-the-conductor--overview)
-8. [Session Registry — Mapping Terminals to Agents](#8-session-registry--mapping-terminals-to-agents)
-9. [Plan Builder — Creating a Task Plan](#9-plan-builder--creating-a-task-plan)
-10. [Generate Plan with Agent](#10-generate-plan-with-agent)
-11. [Running the Pipeline](#11-running-the-pipeline)
-12. [Manual Override](#12-manual-override)
-13. [Orchestrator Log](#13-orchestrator-log)
-14. [History Tab](#14-history-tab)
-15. [Settings](#15-settings)
-16. [Sentinel Protocol Reference](#16-sentinel-protocol-reference)
-17. [Keyboard Shortcuts](#17-keyboard-shortcuts)
-18. [Troubleshooting](#18-troubleshooting)
+3. [App Layout](#3-app-layout)
+4. [First-Time Setup (Step by Step)](#4-first-time-setup-step-by-step)
+5. [Working with Workspaces](#5-working-with-workspaces)
+6. [Registering Agents](#6-registering-agents)
+7. [The Terminal](#7-the-terminal)
+8. [The Conductor — Full Walkthrough](#8-the-conductor--full-walkthrough)
+   - [Step 1: Assign agents to sessions (in workspace)](#step-1-assign-agents-to-your-terminal-sessions)
+   - [Step 2: Build a Plan](#step-2-build-a-plan)
+   - [Step 3: Generate a Plan with an Agent](#step-3-generate-a-plan-with-an-agent)
+   - [Step 4: Approve & Run](#step-4-approve--run)
+   - [Step 5: Monitor the Pipeline](#step-5-monitor-the-pipeline)
+9. [Manual Override](#9-manual-override)
+10. [Orchestrator Log](#10-orchestrator-log)
+11. [History Tab](#11-history-tab)
+12. [Settings Reference](#12-settings-reference)
+13. [Sentinel Protocol Reference](#13-sentinel-protocol-reference)
+14. [Keyboard Shortcuts](#14-keyboard-shortcuts)
+15. [Troubleshooting](#15-troubleshooting)
 
 ---
 
@@ -34,10 +36,10 @@ AgentDeck solves a real problem: when you run multiple AI coding agents (Claude 
 
 AgentDeck acts as the **orchestration layer** between your agents:
 
-- Each agent runs in its **own real terminal session** — exactly as you'd use it normally.
+- Each agent runs in its **own real terminal session** inside AgentDeck — exactly as you'd use it normally.
 - You define a **task plan** with dependencies (e.g. Agent A must finish before Agent B starts).
-- When Agent A finishes a task, it outputs a structured **sentinel signal**. AgentDeck detects this automatically.
-- A local **Ollama model** (small, fast) reads the output and writes a concise brief for Agent B.
+- When Agent A finishes, it outputs a structured **sentinel signal**. AgentDeck detects this automatically.
+- A local **Ollama model** reads the output and writes a concise brief for Agent B.
 - AgentDeck dispatches Agent B's task automatically, injecting the brief as context.
 
 You watch it all happen in the **Pipeline board**, with a live log, and can intervene at any time via **Manual Override**.
@@ -48,365 +50,511 @@ You watch it all happen in the **Pipeline board**, with a live log, and can inte
 
 | Term | What it means |
 |------|---------------|
-| **Workspace** | A project directory you're working on. Keeps your agents, logs, and prompts organized. |
+| **Workspace** | A project directory. Keeps terminals, logs, and prompts organized per project. |
 | **Agent** | A registered AI tool (Claude Code, Antigravity, etc.) with a name, color, and launch command. |
-| **Terminal Session** | A real PTY terminal opened inside AgentDeck. Each session runs one agent. |
-| **Session Registry** | The mapping between terminal sessions and agents. Required before running the Conductor. |
-| **Plan** | A directed acyclic graph (DAG) of tasks, each assigned to a session/agent, with optional dependencies. |
-| **Wave** | A group of tasks that can all run at the same time (all their dependencies are resolved). |
+| **Terminal Session** | A real PTY terminal opened inside AgentDeck. Each tab runs one agent. |
+| **Session Registry** | Mapping of terminal sessions → agents. Required before the Conductor can dispatch tasks. |
+| **Plan** | A set of tasks with optional dependencies between them. Runs as a directed graph. |
+| **Wave** | A group of tasks with no unmet dependencies — they can all run in parallel. |
 | **Sentinel** | A structured block agents output when they complete a task. AgentDeck detects it automatically. |
-| **Ollama Relay** | A local small LLM that reads one agent's output and writes a brief for the next agent. Falls back to pass-through if Ollama is offline. |
-| **Conductor** | The main orchestration UI where you build plans, run pipelines, and monitor progress. |
+| **Ollama Relay** | A local LLM that reads one agent's output and writes a handoff brief for the next agent. Falls back to pass-through if Ollama is offline. |
+| **Conductor** | The main orchestration UI — build plans, run pipelines, monitor progress. |
 
 ---
 
-## 3. First-Time Setup
+## 3. App Layout
 
-### Step 1 — Install Ollama (recommended)
+The app has a **left sidebar** and a **main content area**.
 
-AgentDeck uses a local Ollama model as the relay between agents. Without it, task outputs are passed verbatim (still works, just less refined).
+### Sidebar
 
 ```
-# Install from https://ollama.com
-ollama pull llama3.2        # fast, good quality
-# or
-ollama pull mistral         # alternative
+┌─────────────────────┐
+│  ⬛ AgentDeck        │
+│     Developer Hub   │
+├─────────────────────┤
+│  WORKSPACES         │
+│  ● My Project       │  ← click to open terminal for this workspace
+│  ● Another Project  │
+├─────────────────────┤
+│  NAVIGATION         │
+│  🗂 Overview         │  → workspace cards + add workspace
+│  🌐 Conductor        │  → orchestration
+│  🖥 Agents           │  → register AI agents
+│  📋 Task Log         │  → manual activity log
+│  ✨ Prompt Vault     │  → saved prompts library
+│  ⚙️ Settings         │  → shell, Ollama, API keys
+├─────────────────────┤
+│  v0.1.0 (Beta)  🌙  │
+└─────────────────────┘
 ```
 
-Leave Ollama running in the background (`ollama serve`).
+### Overview page (`/`) — two modes
 
-### Step 2 — Configure Settings
+- **Grid mode** — shown when you click **Overview** in the nav. Displays workspace cards and a **"+ Add Workspace"** button.
+- **Console mode** — shown when you **click a workspace name in the sidebar**. Splits the screen into a left terminal panel and a right context panel.
 
-Open **Settings** (bottom of the sidebar):
+Switch between them: click a workspace in the sidebar (→ console), or click **Overview** in the nav (→ grid).
 
-1. **Terminal Shell Executable** — Set to your preferred shell:
-   - Windows: `powershell.exe` or `cmd.exe`
-   - WSL/Mac/Linux: `bash` or `zsh`
-
-2. **Ollama API Host** — Default is `http://localhost:11434`. Change only if Ollama runs on a different port.
-
-3. **Conductor Settings** — Click **Refresh** next to "Ollama Relay Model" to load your installed models. Pick a small/fast one (e.g. `llama3.2:latest`). Set a task timeout (default 30 minutes).
-
-4. Click **Save Integration Settings** and **Save Conductor Settings**.
-
-### Step 3 — Create a Workspace
-
-Click **+** on the Workspaces section in the sidebar, or go to **Settings → Workspaces** and create one with your project name and directory path.
-
-### Step 4 — Register Your Agents
-
-Go to **Settings → Agent Registry → +** and add each AI tool you use:
-
-- **Claude Code**: Type = `terminal`, Launch Command = `claude`
-- **Antigravity**: Type = `terminal`, Launch Command = `antigravity`  
-- **Multiple Claude Code sessions**: Register each as a separate agent with a distinct name and color (e.g. "Claude A" in blue, "Claude B" in green).
-
----
-
-## 4. Workspaces
-
-Workspaces are the top-level containers for your projects. Each workspace has:
-
-- A **name** and **local path** (the directory Claude Code or other agents will work in)
-- A **color** for visual identification
-- A **status** (Active / Paused / Idle)
-- An optional **default agent** assignment
-
-Click a workspace in the sidebar to open its **Dashboard view**, where you can open terminals, see running agents, and navigate to the Conductor.
-
----
-
-## 5. Agent Registry
-
-The Agent Registry (Settings → Agents tab) stores information about the AI tools you use. Each entry has:
-
-- **Name** — displayed throughout the UI (e.g. "Claude Code")
-- **Type** — `terminal` for CLI tools, `web` for browser-based tools
-- **Launch Command** — the terminal command to start the agent (e.g. `claude --dangerously-skip-permissions`)
-- **Color** — used for visual tagging in the pipeline board and session registry
-- **Best Used For** — descriptive text (shown in tooltips)
-
-Agents in the registry are available for assignment in the Session Registry and displayed in all plan-related views.
-
----
-
-## 6. The Terminal (Working with Agents)
-
-Each workspace has a built-in terminal panel. You can open multiple terminal tabs, each running a separate agent session.
-
-### Opening terminals
-
-1. Open a workspace from the sidebar.
-2. Switch to **Console view** (the terminal panel appears).
-3. Click **+** to open a new terminal tab.
-4. Inside the terminal, launch your agent (e.g. type `claude` and press Enter for Claude Code).
-
-### Tab management
-
-- **Rename** a tab by double-clicking its name.
-- **Close** a tab with the × button.
-- Each terminal is a fully functional PTY — paste, arrow keys, Ctrl+C, everything works normally.
-
-> **Important:** Terminal sessions are **ephemeral** — they reset each time you restart AgentDeck. You must open your agent terminals before using the Conductor.
-
----
-
-## 7. The Conductor — Overview
-
-Click **Conductor** in the sidebar to enter the orchestration interface.
-
-The Conductor has three areas:
-
-| Area | What it does |
-|------|-------------|
-| **Left sidebar** | Lists your plans. + creates a new plan. 📖 opens the Protocol Instructions. |
-| **Plan Builder tab** | Create and edit task plans. Wire dependencies. Generate plans using a capable agent. |
-| **Pipeline tab** | Real-time pipeline view. Waves of parallel tasks, live status, SVG dependency arrows. |
-| **History tab** | Completed and failed plans with full task detail and output summaries. |
-
----
-
-## 8. Session Registry — Mapping Terminals to Agents
-
-Before you can run a plan, AgentDeck needs to know **which terminal session contains which agent**.
-
-At the top of the Plan Builder, you'll see the **Session Registry**:
+### Console mode layout
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ 🔗 SESSION REGISTRY   Assign each terminal to its agent     │
-├──────────────────────────────────┬──────────────────────────┤
-│ ● Terminal 1                     │  [Claude Code A    ▼]    │
-│ ● Terminal 2                     │  [Claude Code B    ▼]    │
-│ ● Terminal 3                     │  [— Unassigned —   ▼]    │
-└──────────────────────────────────┴──────────────────────────┘
+┌────────────────────────────┬────────────────────────────┐
+│                            │  [Workspace] [Conductor]   │ ← right panel tabs
+│    Terminal Tabs            │                            │
+│    ┌────┬────┬────┐        │  Workspace tab:            │
+│    │ PS1│ PS2│ +  │        │   · Terminal Sessions      │
+│    └────┴────┴────┘        │   · Current Task           │
+│                            │   · Default Agent          │
+│    (active terminal)       │   · Conductor Status       │
+│                            │   · Recent Task Logs       │
+│                            │                            │
+│                            │  Conductor tab:            │
+│                            │   · Plan selector          │
+│                            │   · Build/Pipeline/History │
+└────────────────────────────┴────────────────────────────┘
 ```
 
-1. For each open terminal session, select the agent that's running in it from the dropdown.
-2. Sessions without an assignment will not receive tasks.
-3. You can reassign sessions at any time (changes take effect on the next task dispatch).
-
-> **Tip:** The colored dot next to a session name shows the assigned agent's color once selected.
+The **Conductor is workspace-scoped**: each workspace has its own plans and conductor context, accessible via the right panel tab.
 
 ---
 
-## 9. Plan Builder — Creating a Task Plan
+## 4. First-Time Setup (Step by Step)
 
-### Manual plan creation
+### Step 1 — Configure Settings
 
-1. Click **+** in the Conductor sidebar to create a new plan.
-2. Fill in the **Plan Goal** — a plain-English description of what you want to achieve overall.
-3. Add tasks using **+ Add Task**. For each task:
-   - **Title** — short name (e.g. "Set up database schema")
-   - **Description** — full instructions the agent will receive. Be specific — this is exactly what gets sent to the agent's terminal.
-   - **Assign to session** — pick which terminal (and therefore which agent) handles this task.
-   - **Depends on** — check any tasks that must complete before this one starts. Tasks with no dependencies run in the first wave.
+Click **Settings** at the bottom of the sidebar.
 
-4. Review the dependency checkboxes carefully — circular dependencies will prevent dispatch.
+**Integration Settings:**
+- **Terminal Shell Executable** — the shell AgentDeck will open in terminals:
+  - Windows: type `powershell.exe` or `cmd.exe`
+  - WSL / Linux / macOS: `bash` or `zsh` or `/bin/zsh`
+- **Ollama API Host** — leave as `http://localhost:11434` unless Ollama runs on a different port.
+- **API Keys** — Optional. Enter your Anthropic/OpenAI keys if your agents need them from environment.
 
-5. Click **Save Draft** to save without running, or **Approve & Run** (or `Ctrl+Enter`) to approve and immediately start the pipeline.
+Click **Save Integration Settings**.
 
-### Understanding waves
+**Conductor Settings:**
+- Click **Refresh** next to "Ollama Relay Model" — this loads your locally installed Ollama models.
+- Select a model from the dropdown (e.g. `llama3.2:latest` or `mistral:latest`). If you have no models yet, install one (see below).
+- Set the **Task Timeout** — how many minutes a task can run before being auto-failed (default: 30).
 
-Tasks are automatically grouped into **waves** in the Pipeline view:
+Click **Save Conductor Settings**.
 
-- **Wave 1**: tasks with no dependencies (run immediately in parallel)
-- **Wave 2**: tasks that only depend on Wave 1 tasks (start when their specific dep is done)
-- **Wave N**: and so on...
-
-Tasks in the same wave can run simultaneously on different sessions. Tasks in the same wave assigned to the same session run sequentially (that session finishes one before starting the next).
+> **Install Ollama (recommended):** Download from https://ollama.com, then run:
+> ```
+> ollama pull llama3.2
+> ```
+> Leave Ollama running (`ollama serve`). Without it, handoffs between agents fall back to raw pass-through — the pipeline still works, just less refined.
 
 ---
 
-## 10. Generate Plan with Agent
+### Step 2 — Create a Workspace
 
-Instead of manually creating tasks, you can ask a capable agent (Claude Code, etc.) to write the plan for you.
+A workspace maps to one of your project directories on disk.
 
-### How it works
+1. Click **Overview** in the sidebar nav.
+2. Click **+ Add Workspace** (the card with a "+" icon in the grid).
+3. Fill in:
+   - **Name** — e.g. `My API Project`
+   - **Path** — the full local path to your project directory, e.g. `C:\Users\you\projects\myapi`
+   - **Description** — optional, free text
+   - **Color** — pick a color for visual identification
+   - **Status** — leave as `active`
+   - **Default Agent** — optional, you can assign one after registering agents
+4. Click **Create Workspace**.
 
-1. Set your **Plan Goal** in the Plan Builder.
-2. In the **Generate Plan with Agent** section, pick a session from the dropdown.
-3. The prompt textarea is auto-filled with a complete instruction that includes:
-   - Your goal
-   - A list of all registered sessions with their real IDs
-   - The exact JSON format required
-   - The sentinel markers the agent must wrap the output in
-4. Edit the prompt if needed, then click **Generate**.
+The workspace appears in the sidebar immediately.
 
-AgentDeck sends the prompt to the agent's terminal and watches for the plan JSON wrapped in:
+---
+
+### Step 3 — Register Your Agents
+
+An agent entry represents one AI tool you use (Claude Code, Antigravity, etc.).
+
+1. Click **Agents** in the sidebar nav.
+2. Click **+ Add Agent**.
+3. Fill in:
+   - **Name** — e.g. `Claude Code` or `Claude A` (if you run multiple)
+   - **Type** — `terminal` for CLI tools, `web` for browser-based tools
+   - **Launch Command** — the command you type in a terminal to start the agent:
+     - Claude Code: `claude` or `claude --dangerously-skip-permissions`
+     - Antigravity: `antigravity`
+   - **Best Used For** — short description (shown in tooltips in the Conductor)
+   - **Color** — used in the pipeline board and session registry for visual tagging
+4. Click **Save Agent**.
+
+Repeat for every agent you want to orchestrate. If you want to run two Claude Code sessions in parallel, register them as separate agents — e.g. `Claude A` (blue) and `Claude B` (green).
+
+---
+
+### Step 4 — Open Your Project's Terminal
+
+1. Click your workspace name in the **sidebar** (under Workspaces). This switches to console mode.
+2. The terminal panel opens with one tab already created.
+3. In the terminal, launch your agent — e.g. type `claude` and press Enter.
+4. Open additional terminal tabs by clicking **+ New Tab** (top right of the terminal header).
+5. Launch a separate agent in each tab.
+
+You're now ready to use the Conductor.
+
+---
+
+## 5. Working with Workspaces
+
+### Grid view
+
+Click **Overview** in the nav. You'll see a card for each workspace showing:
+- Status badge (Active / Paused / Idle)
+- Current task note (editable inline — click the pencil icon)
+- Assigned agent (click to reassign from a dropdown)
+- Quick access to recent prompts and task logs
+
+### Console view (terminal)
+
+Click a workspace name in the **sidebar**. The terminal panel fills the main area.
+
+- The terminal opens with a default tab using the shell configured in Settings.
+- Use the **shell picker** (top-right dropdown) to choose which shell to use for new tabs.
+- **Double-click** a tab title to rename it.
+- Click **×** to close a tab.
+
+> **Note:** Terminal sessions are **ephemeral** — they reset each time you restart AgentDeck. You must reopen agent terminals each launch.
+
+### Editing / deleting workspaces
+
+Go to **Settings** → scroll to the Workspaces section. Click the edit ✏ or delete 🗑 icon next to any workspace.
+
+---
+
+## 6. Registering Agents
+
+All agent management is on the **Agents** page (`/agents`).
+
+| Field | Description |
+|-------|-------------|
+| **Name** | Displayed throughout the UI. Make unique names if running multiple instances of the same tool. |
+| **Type** | `terminal` = CLI. `web` = browser. `ide-plugin` / `other` = informational only. |
+| **Launch Command** | Terminal command to start the agent (for `terminal` type). |
+| **Launch URL** | URL to open in the browser (for `web` type). |
+| **Best Used For** | Descriptive text shown in Conductor tooltips. |
+| **Color** | Hex color. Used for the colored dots in the pipeline board and session registry. |
+
+Click the **Launch ▶** button on an agent card to open a new external terminal window running that agent's launch command (requires the shell path to be set in Settings).
+
+To edit or delete an agent, click the ✏ or 🗑 icon on its card.
+
+---
+
+## 7. The Terminal
+
+### Shell detection
+
+When you open a workspace terminal, AgentDeck automatically detects available shells on your system and shows them in the **shell picker dropdown** (top-right of the terminal header). The preferred shell is the one configured in Settings.
+
+### Opening a terminal
+
+Click a workspace in the sidebar. The terminal panel opens with one default tab.
+
+### Managing tabs
+
+| Action | How |
+|--------|-----|
+| New tab | Click **+ New Tab** or select a shell from the shell picker dropdown |
+| Switch tab | Click the tab title |
+| Rename tab | Double-click the tab title |
+| Close tab | Click **×** on the tab |
+
+### Using the terminal
+
+The terminal is a fully functional PTY — paste, arrow keys, Ctrl+C, colors, all work normally. Type your agent's launch command and press Enter to start it.
+
+### Navigating away
+
+Switching to the **right panel** (Workspace ↔ Conductor tabs) or clicking nav items does **not** close the terminals — they keep running. Switching to **Grid mode** (clicking Overview in the nav) unmounts the terminal panel; your agent processes keep running in the OS but the sessions are cleared from the registry. Reopen the workspace to get fresh terminal sessions.
+
+> **Note:** Terminal sessions are ephemeral (not persisted to disk). Each time you switch to grid mode or restart the app, session assignments reset — you'll need to reassign agents to tabs when you return to console mode.
+
+---
+
+## 8. The Conductor — Full Walkthrough
+
+The Conductor is **embedded in the workspace console view** as a right-panel tab. Every workspace has its own Conductor with its own set of plans — there's no shared global plan list.
+
+**Two ways to open the Conductor:**
+- Click your workspace in the sidebar → click the **[Conductor]** tab in the right panel.
+- Click **Conductor** in the sidebar nav — if a workspace is open, it activates the Conductor tab directly.
+
+```
+┌────────────────────────────┬────────────────────────────────────────┐
+│   Terminal Tabs            │  [Workspace]     [Conductor] ← active  │
+│                            ├────────────────────────────────────────┤
+│   (active terminal)        │  🌐 [Plan goal dropdown ▼] [📖] [+]    │
+│                            ├──────────┬───────────┬─────────────────┤
+│                            │  Build   │ Pipeline  │ History         │
+│                            ├──────────┴───────────┴─────────────────┤
+│                            │  <tab content>                         │
+│                            │                                        │
+└────────────────────────────┴────────────────────────────────────────┘
+```
+
+The **plan selector** at the top lists plans for this workspace only. The **three tabs** below handle creation, live monitoring, and history:
+
+| Tab | Purpose |
+|-----|---------|
+| **Build** | Create or edit the plan. Wire dependencies. Generate with an agent. |
+| **Pipeline** | Live execution view — waves, task cards, log, manual override. |
+| **History** | Completed and failed plans with full task detail. |
+
+---
+
+### Step 1: Assign agents to your terminal sessions
+
+Agent assignment is done in the **Workspace tab** (same right panel, left tab).
+
+1. Click your workspace in the sidebar to open the console view.
+2. Open terminal tabs and launch your agents in each one.
+3. Click the **[Workspace]** tab in the right panel — find the **Terminal Sessions** section:
+
+```
+TERMINAL SESSIONS                        1/2 assigned
+┌──────────────────────────────────────────────────┐
+│ ● PowerShell 1       [Claude A          ▼]       │
+│ ● PowerShell 2       [Claude B          ▼]       │
+└──────────────────────────────────────────────────┘
+```
+
+4. For each open tab, select the agent running in it from the dropdown.
+5. The colored dot next to each session name updates to reflect the assigned agent's color.
+6. Switch to the **[Conductor]** tab — the same assignment is visible in the Session Registry at the top of the Build tab.
+
+> **Sessions left as "Unassigned" will not receive any tasks.**
+
+---
+
+### Step 2: Build a Plan
+
+1. In the Conductor tab, click **+** (top right of the plan selector row) to create a new plan.
+2. Fill in the **Plan Goal** — a plain-English description of what you want to accomplish overall.
+3. Click **+ Add Task** for each task in your plan. Per task:
+   - **Title** — short name (e.g. `Set up database schema`)
+   - **Description** — the full instructions sent verbatim to the agent. Be specific and complete — this is exactly what the agent receives in its terminal.
+   - **Assign to session** — pick which terminal session (and therefore which agent) handles this task.
+   - **Depends on** — check any tasks that must finish before this one starts. Leave unchecked for tasks that can run immediately (Wave 1).
+
+4. Click **Save Draft** to save without running.
+
+**Dependency example:**
+
+```
+Task A (no deps)  ──┐
+                    ├──► Task C (depends on A and B)  ──► Task D
+Task B (no deps)  ──┘
+```
+
+Tasks A and B run in parallel (Wave 1). Task C waits for both to finish (Wave 2). Task D waits for C (Wave 3).
+
+---
+
+### Step 3: Generate a Plan with an Agent
+
+Instead of building tasks manually, you can ask a capable agent to write the plan for you.
+
+1. Set the **Plan Goal** in the Plan Builder.
+2. Scroll to **Generate Plan with Agent** and select a session from the dropdown.
+3. The prompt is auto-filled with your goal, all registered sessions (with their real IDs), and the exact JSON format required.
+4. Click **Generate** — AgentDeck sends the prompt to that terminal and watches for the response.
+
+When the agent outputs the plan JSON wrapped in the sentinel markers:
 ```
 ###AGENTDECK_PLAN_START###
 [...JSON array...]
 ###AGENTDECK_PLAN_END###
 ```
 
-When the agent outputs this block, AgentDeck automatically:
-- Validates the JSON structure
-- Maps session IDs to agents
-- Populates the task list in the Plan Builder
+AgentDeck automatically validates it and populates the task list. You can then review, edit, and approve.
 
-You can then review, edit, and approve the generated plan.
+- **Copy Prompt** — copies the prompt to clipboard so you can paste it manually.
+- **Cancel** — stops watching for a response.
 
-**Copy prompt** — copies the prompt to clipboard so you can paste it manually if preferred.  
-**Cancel** — stops watching for the plan response (clears the buffer watcher).
-
-> **Note:** Use a capable agent for plan generation (Claude Code, not the Ollama relay model). The Ollama relay is only used for handoffs during execution.
+> **Use a capable agent** for plan generation (Claude Code works well). The Ollama relay model is only used for handoffs during execution, not for plan creation.
 
 ---
 
-## 11. Running the Pipeline
+### Step 4: Approve & Run
 
-### Starting a run
+Once your plan is ready:
 
-1. Complete the Session Registry (all sessions mapped to agents).
-2. Build or generate a plan in the Plan Builder.
-3. Click **Approve & Run** (or `Ctrl+Enter`).
+1. Confirm the Session Registry is filled in (all sessions assigned to agents).
+2. Click **Approve & Run** (or press `Ctrl+Enter` / `Cmd+Enter`).
 
 AgentDeck will:
-1. Lock the plan (no more editing)
-2. Switch to the Pipeline tab automatically
-3. Dispatch the first wave of tasks — injecting each task's description + sentinel instructions into the agent's terminal
-4. Watch the terminal buffers for the sentinel completion signal
-5. When a task completes, relay the output to the next agent via Ollama and dispatch the next wave
-
-### Pipeline tab
-
-```
-Wave 1        →        Wave 2        →        Wave 3
-──────────             ──────────             ──────────
-[DONE] Task A ────────►[RUNNING] C  ────────►[PENDING] E
-[DONE] Task B ────────►[DONE]    D
-```
-
-- **Color-coded wave headers**: grey (pending), orange (running), green (done), red (failed)
-- **SVG arrows**: solid arrows = source task is done; dashed = source still running or pending
-- **Task cards**: click to expand and see output summary, files modified, timing
-
-### Progress bar
-
-The summary bar at the top of the Pipeline tab fills green as tasks complete. It turns red if any task fails.
-
-### Pause / Resume / Stop
-
-| Button | Shortcut | Effect |
-|--------|----------|--------|
-| **Pause** | `P` | Stops dispatching new tasks. Currently running tasks continue until they finish or time out. |
-| **Resume** | `R` | Re-enables the dispatcher. Any tasks whose deps are now resolved get dispatched. |
-| **Stop** | `S` | Immediately cancels all timeout timers. Does NOT kill the agent processes — the terminals keep running. |
-| **Clear** | — | After a plan finishes, removes it from the Pipeline view (does not delete from history). |
+1. Validate the plan (all tasks have titles and assigned sessions).
+2. Lock it from further editing.
+3. Switch to the **Pipeline tab** automatically.
+4. Dispatch the first wave — inject each task's description + sentinel instructions into the assigned terminal.
+5. Watch for sentinel completion signals.
+6. When a task completes, relay its output to the next agent via Ollama and dispatch the next wave.
 
 ---
 
-## 12. Manual Override
+### Step 5: Monitor the Pipeline
 
-During a run, the **Manual Override** panel (right side of the Pipeline tab) lets you intervene without stopping the whole pipeline.
+The **Pipeline tab** shows all tasks grouped into waves:
 
-### Inject message into session
+```
+Wave 1              Wave 2              Wave 3
+──────────          ──────────          ──────────
+✅ Task A ─────────► 🔄 Task C ─────────► ⏳ Task D
+✅ Task B ─────────►
+```
 
-Pick a session from the dropdown and type a message. Click **Send** or press `Ctrl+Enter` inside the message box. The text is written directly to that terminal — as if you typed it.
+**Task card colors:**
+- **Grey** — pending (waiting for dependencies)
+- **Orange** — running (agent is working)
+- **Green** — done (sentinel detected)
+- **Red** — failed (timeout or manual fail)
 
-Use this to:
-- Answer an agent's question
-- Provide clarification mid-task
-- Give additional context
+Click any task card to expand it and see output summary, files modified, and timing.
 
-### Task override controls
+**Progress bar** at the top fills green as tasks complete. It turns red if any task fails.
 
-Pick a task from the dropdown (only running or pending tasks are listed):
+**Run controls** (top-right of the tab bar when a plan is active):
 
-| Button | Effect |
-|--------|--------|
-| **Force Done** | Marks the task as complete immediately. The engine treats it as successful and dispatches dependents. No output is collected — the next agent gets no brief (or the existing output if any was captured). |
-| **Fail** | Marks the task as failed. All tasks that depend on it become blocked. The plan status changes to `failed` if no other tasks can run. |
-| **Retry** | Resets a failed task back to `pending`. The dispatcher will re-dispatch it on the next cycle. The task description + sentinel instructions are re-injected into the terminal. |
+| Control | Shortcut | What it does |
+|---------|----------|--------------|
+| **Pause** | `P` | Stops dispatching new tasks. Running tasks continue until done. |
+| **Resume** | `R` | Re-enables dispatch. Pending tasks whose deps are resolved get dispatched. |
+| **Stop** | `S` | Cancels all timers and marks running tasks failed. Does NOT kill agent processes. |
+| **Clear** | — | After a plan finishes, removes it from the Pipeline view (history is kept). |
 
 ---
 
-## 13. Orchestrator Log
+## 9. Manual Override
 
-The Orchestrator Log (left side of the Pipeline tab) shows a real-time chronological feed of all engine events.
+During a run, the **Manual Override** panel appears on the right side of the Pipeline tab.
 
-### Log entry types
+### Inject a message into a session
+
+1. Pick a session from the **Session** dropdown.
+2. Type your message in the text box.
+3. Click **Send** or press `Ctrl+Enter`.
+
+The text is written directly to that terminal — as if you typed it yourself. Use this to answer agent questions, provide clarification, or give extra context mid-task.
+
+### Override a task
+
+Pick a task from the **Task** dropdown (only running or pending tasks are listed):
+
+| Button | What it does |
+|--------|--------------|
+| **Force Done** | Marks the task complete immediately. Dependent tasks get dispatched on the next cycle. No output is collected — the handoff brief will be minimal. |
+| **Fail** | Marks the task failed. Tasks that depend on it become blocked. If nothing else can run, the plan transitions to `failed`. |
+| **Retry** | Resets a failed task back to `pending`. The engine re-dispatches it — the full task description + sentinel instructions are re-injected into the terminal. |
+
+---
+
+## 10. Orchestrator Log
+
+The **Orchestrator Log** (left side of the Pipeline tab) shows a real-time chronological feed of every engine event.
 
 | Badge | Color | Meaning |
 |-------|-------|---------|
-| `DISPATCH` | Orange | A task was sent to a terminal session |
+| `DISPATCH` | Orange | A task was sent to a terminal |
 | `SENTINEL` | Green | An agent output the completion signal |
-| `RELAY` | Purple | Ollama processed the output and generated a brief |
-| `TIMEOUT` | Yellow | A task exceeded its timeout limit |
-| `ERROR` | Red | An internal error (Ollama offline, bad JSON, etc.) |
-| `INFO` | Grey | General engine state changes |
+| `RELAY` | Purple | Ollama processed the output and wrote a brief |
+| `TIMEOUT` | Yellow | A task exceeded its time limit |
+| `ERROR` | Red | An internal error (e.g. Ollama offline, bad JSON) |
+| `INFO` | Grey | General engine state changes (start, pause, stop) |
 | `OVERRIDE` | Pink | A manual override action was taken |
 
-The log auto-scrolls to the bottom. Scroll up to read history — it won't snap back while you're reading.
+The log auto-scrolls to the latest entry. Scroll up to read history — it stops auto-scrolling while you're reading.
 
 ---
 
-## 14. History Tab
+## 11. History Tab
 
-The History tab shows all plans that have reached a terminal state (`done` or `failed`).
+The **History tab** shows all plans that reached a terminal state (`done` or `failed`). Plans are stored in `agentdeck_plans.json` on disk and survive restarts.
 
 Each plan card shows:
-- **Goal** and final **status**
-- **Task completion count** (e.g. 4/5 tasks)
-- **Duration** (from plan start to completion)
-- **Date**
+- Goal text and final status
+- Task completion count (e.g. `4/5`)
+- Total duration
+- Date
 
-Click any plan card to **expand** it and see:
-- Every task in the plan with its final status
-- Output summaries from the sentinel blocks
-- Files modified by each agent
-- Timing (started, completed)
-
-History is persisted to disk in `agentdeck_plans.json` and survives app restarts.
+Click a card to **expand** it and see every task with its:
+- Final status
+- Output summary (from the sentinel block)
+- Files modified
+- Start and completion timestamps
 
 ---
 
-## 15. Settings
+## 12. Settings Reference
 
-### General tab
+Click **Settings** in the sidebar.
 
-| Setting | Description |
-|---------|-------------|
-| **Theme** | Dark (default) or Light |
-| **Export / Import** | Backup and restore all workspaces, agents, prompts, and logs as JSON |
-| **Terminal Shell** | Path to your shell executable |
-| **Ollama API Host** | URL where Ollama is listening (default: `http://localhost:11434`) |
-| **API Keys** | OpenAI and Anthropic keys (stored locally, not transmitted to any server) |
+### Integration Settings
 
-### Conductor section
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Terminal Shell Executable | `powershell.exe` | Shell used to open new terminal tabs. Type the full path or just the executable name if it's on your PATH. |
+| Ollama API Host | `http://localhost:11434` | URL where Ollama is listening. Change only if Ollama runs on a custom port or remote host. |
+| OpenAI API Key | — | Stored locally, never sent to any external server by AgentDeck. |
+| Anthropic API Key | — | Same. |
 
-| Setting | Description |
-|---------|-------------|
-| **Ollama Relay Model** | The model used to relay context between agents. Click **Refresh** to load your installed models. Recommended: `llama3.2` or `mistral`. |
-| **Task Timeout (minutes)** | How long a task can run before being auto-failed. Default: 30 minutes. |
+Click **Save Integration Settings** after changing any of these.
 
-### Workspaces tab
+### Conductor Settings
 
-Edit or delete existing workspaces. Change name, path, color, status, or default agent assignment.
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Ollama Relay Model | `llama3.2` | The model used to generate handoff briefs between agents. Click **Refresh** to load your installed models from Ollama. |
+| Task Timeout (minutes) | 30 | How long a task can run before being auto-failed. Increase for tasks that are expected to take a long time. |
 
-### Agent Registry tab
+Click **Save Conductor Settings** after changing these.
 
-Edit or delete registered agents. Change name, type, launch command, color, and description.
+### Theme
+
+Click the 🌙 / ☀ button in the sidebar footer to toggle between dark and light mode. The preference is saved automatically.
+
+### Export / Import
+
+- **Export** — downloads all your workspaces, agents, prompts, and logs as a JSON file. API keys are stripped from the export.
+- **Import** — loads a previously exported JSON file and replaces all current data.
+
+### Workspaces (edit/delete)
+
+Scroll to the Workspaces section in Settings. Edit the name, path, color, status, or default agent assignment. Use the 🗑 icon to delete a workspace.
+
+> To **add** a new workspace, go to the **Overview** page (not Settings).
+
+### Agent Registry (edit/delete)
+
+Scroll to the Agent Registry section in Settings. Edit any agent's details or delete it.
+
+> To **add** a new agent, go to the **Agents** page (not Settings).
 
 ---
 
-## 16. Sentinel Protocol Reference
+## 13. Sentinel Protocol Reference
 
-Agents must output a specific block when they complete a task. AgentDeck **automatically appends these instructions** to every task prompt — you don't need to explain this to agents manually.
+AgentDeck **automatically appends sentinel instructions** to every task prompt — you don't need to explain this to your agents manually.
 
-However, for persistent agent setups (e.g. Claude Code with a `CLAUDE.md`), you can bake the instructions in permanently:
+For **persistent setups** (e.g. a `CLAUDE.md` that stays in your project), you can bake the instructions in permanently:
 
-**In the Conductor sidebar**, click the 📖 icon to open the Protocol Instructions modal. Click:
-- **Copy to Clipboard** — paste into your terminal or CLAUDE.md
-- **Download as CLAUDE.md** — saves the file for use in your project directory
+1. Open the workspace console view → **[Conductor]** tab.
+2. Click the **📖 icon** in the plan selector row (top of the Conductor panel).
+3. The Protocol Instructions modal opens with the full Markdown content.
+4. Click **Copy to Clipboard** — paste into your `CLAUDE.md`.
+5. Or click **Download as CLAUDE.md** — saves the file directly.
 
-### Sentinel block format
+### Sentinel block format (what the agent must output)
 
 ```
 ###AGENTDECK_DONE###
-task_id: <exact task ID from prompt>
-summary: [2-3 sentences describing what you built and key decisions]
+task_id: <exact task ID from the prompt>
+summary: [2-3 sentences: what you built, what changed, key decisions]
 files_modified: [comma-separated file paths, or "none"]
 needs: [what the next agent needs to know, or "none"]
 ###AGENTDECK_END###
@@ -416,24 +564,29 @@ needs: [what the next agent needs to know, or "none"]
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| `task_id` | Yes | Must exactly match the ID in the task prompt. Used to route the completion to the right task. |
-| `summary` | Yes | Read by Ollama to generate the brief for the next agent. Be specific. |
-| `files_modified` | Yes | Helps the next agent know what was changed. Comma-separated paths or `"none"`. |
-| `needs` | Yes | What context the next agent requires. Ollama uses this to write the handoff brief. |
+| `task_id` | Yes | Must match the ID in the task prompt exactly. AgentDeck uses this to route completion to the right task. |
+| `summary` | Yes | Read by Ollama to generate the brief for the next agent. Be specific and factual. |
+| `files_modified` | Yes | Comma-separated paths (relative or absolute), or `none`. Shown in the History tab. |
+| `needs` | Yes | What context the next agent requires. Ollama uses this to write the handoff brief. Write `none` if there are no dependents. |
 
-### Plan generation format (optional)
-
-When an agent is asked to generate a plan:
+### Plan generation format (for the "Generate with Agent" feature)
 
 ```
 ###AGENTDECK_PLAN_START###
 [
   {
-    "id": "unique-string",
-    "title": "Task name",
-    "description": "Full task instructions",
-    "assignedSessionId": "session-id-from-prompt",
+    "id": "task-1",
+    "title": "Short task name",
+    "description": "Full instructions for this task",
+    "assignedSessionId": "<session-id-from-the-prompt>",
     "dependsOn": []
+  },
+  {
+    "id": "task-2",
+    "title": "Second task",
+    "description": "Full instructions",
+    "assignedSessionId": "<session-id>",
+    "dependsOn": ["task-1"]
   }
 ]
 ###AGENTDECK_PLAN_END###
@@ -441,102 +594,131 @@ When an agent is asked to generate a plan:
 
 ---
 
-## 17. Keyboard Shortcuts
+## 14. Keyboard Shortcuts
 
-### Global (Conductor)
+### Standalone Conductor page (`/conductor`)
 
-| Shortcut | Action | Condition |
-|----------|--------|-----------|
-| `P` | Pause orchestration | Not in text input |
-| `R` | Resume orchestration | Not in text input |
-| `S` | Stop orchestration | Not in text input |
-| `Esc` | Close protocol modal | Modal is open |
+| Key | Action | Condition |
+|-----|--------|-----------|
+| `P` | Pause the running pipeline | Not typing in an input field |
+| `R` | Resume a paused pipeline | Not typing in an input field |
+| `S` | Stop the running pipeline | Not typing in an input field |
+| `Esc` | Close the Protocol Instructions modal | Modal is open |
+
+> The workspace-embedded Conductor (right panel tab) uses the **run control buttons** instead of keyboard shortcuts to avoid conflicts with terminal input.
 
 ### Plan Builder
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Enter` / `Cmd+Enter` | Approve & Run (if plan is valid) |
-| `Ctrl+Enter` (in Inject box) | Send injected message |
+| `Ctrl+Enter` / `Cmd+Enter` | Approve & Run (when the plan is valid) |
+
+### Manual Override inject box
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Enter` | Send the injected message to the session |
 
 ---
 
-## 18. Troubleshooting
+## 15. Troubleshooting
+
+### Sessions not showing in the Conductor
+
+**Cause:** No terminal tabs are open yet for this workspace — or you switched to grid mode (Overview) which cleared the session registry.
+
+**Fix:**
+1. Click your workspace in the sidebar to open the console view.
+2. Open terminal tabs and launch your agents in each one.
+3. In the **[Workspace]** right panel tab, assign each tab to an agent in the **Terminal Sessions** section.
+4. Switch to the **[Conductor]** tab — sessions will be populated in the Session Registry at the top of the Build tab.
+
+> Sessions reset when you switch to grid mode. Return to console mode and repeat step 2–4 after any grid-mode visit.
+
+---
 
 ### Agent not receiving tasks
 
 **Check:**
-1. Is the terminal open and the agent running?
-2. Is the session mapped in the Session Registry?
-3. Is the session ID in the task's "Assign to session" field correct?
+1. Is the agent actually running in the terminal? (Not just the shell — the agent itself, e.g. `claude` was typed and is active.)
+2. Is that terminal session mapped to an agent in the Session Registry?
+3. Is the task assigned to the correct session?
 
-**Fix:** Close and reopen the terminal, re-launch the agent, remap in Session Registry.
-
----
-
-### Sentinel not detected
-
-**Symptom:** Task stays in "Running" forever, then times out.
-
-**Check:**
-1. Did the agent actually output `###AGENTDECK_DONE###`?
-2. Is there a typo in the sentinel markers?
-3. Did something interrupt the agent before it finished?
-
-**Fix:** Use **Force Done** or **Retry** from the Manual Override panel. Add the CLAUDE.md protocol file to your project so the agent learns the format.
+**Fix:** Re-map the session in the Session Registry. If the terminal was closed and reopened, the session ID changes — you'll need to remap it.
 
 ---
 
-### Ollama relay fails
+### Sentinel not detected (task stays "Running" until timeout)
 
-**Symptom:** Log shows `RELAY` error; tasks complete but next task gets no brief.
+**Symptom:** The task runs forever, then gets auto-failed with a `TIMEOUT` log entry.
 
 **Check:**
-1. Is Ollama running? (`ollama serve`)
-2. Is the Ollama host correct in Settings?
-3. Is the selected model installed? (`ollama list`)
+1. Did the agent actually output `###AGENTDECK_DONE###`? Scroll up in the terminal to check.
+2. Is there extra text or whitespace before the marker? It must appear on its own line.
+3. Did something interrupt the agent mid-task?
 
-**Fix:** AgentDeck falls back to pass-through automatically — the task's `summary` and `needs` fields are used directly as the brief. The pipeline continues, just with less polished context.
+**Fix:**
+- Use **Force Done** in Manual Override if the work is actually complete.
+- Use **Retry** to re-dispatch if the agent got stuck.
+- Add the CLAUDE.md protocol file to your project directory so the agent always knows the expected output format.
+
+---
+
+### Ollama relay fails or shows ERROR in the log
+
+**Symptom:** Log shows a red `ERROR` entry; tasks complete but the next agent receives a minimal brief.
+
+**Check:**
+1. Is Ollama running? Open a terminal and run `ollama serve` (or check the system tray).
+2. Is the host in Settings correct? (`http://localhost:11434` by default)
+3. Is the selected model installed? Run `ollama list` in a terminal.
+
+**Fix:** AgentDeck falls back to pass-through automatically — the task's `summary` and `needs` fields are concatenated and sent directly as the brief. The pipeline continues, just with less polished context.
 
 ---
 
 ### Task times out immediately
 
-**Symptom:** Task is marked failed seconds after dispatch.
+**Symptom:** A task fails seconds after being dispatched.
 
-**Check:** The task timeout in Settings → Conductor Settings. Default is 30 minutes (1800 seconds). Some tasks may need longer.
+**Check:** Settings → Task Timeout (minutes). Default is 30 — but if you entered `0` or a very small number, it will fire instantly.
 
-**Fix:** Increase the timeout. Use **Retry** to re-dispatch the task.
+**Fix:** Set the timeout to a reasonable value (30–60 minutes for most tasks). Click **Save Conductor Settings**. Use **Retry** to re-dispatch the timed-out task.
 
 ---
 
 ### Plan generation returns malformed JSON
 
-**Symptom:** After clicking Generate, the error banner shows "Plan JSON must be an array" or similar.
+**Symptom:** After clicking Generate, the plan task list stays empty or shows a red error banner.
 
 **Check:**
-1. Did the agent output extra text before/after the markers?
-2. Is the JSON array properly formatted?
-3. Did the agent use session IDs that weren't in the prompt?
+1. Did the agent output extra text before or after the `###AGENTDECK_PLAN_START###` / `###AGENTDECK_PLAN_END###` markers?
+2. Is the JSON valid? (An extra comma, missing quote, etc. will fail validation.)
+3. Did the agent use session IDs not present in the prompt?
 
-**Fix:** Edit the generated JSON manually in the task list, or prompt the agent again with more explicit instructions. The textarea showing the prompt is fully editable.
+**Fix:**
+- Edit the generated plan in the Plan Builder task list — each task can be adjusted manually.
+- Or click **Generate** again with a more explicit prompt. The prompt textarea is fully editable before sending.
 
 ---
 
-### Sessions disappear after restart
+### Sessions disappear after restarting AgentDeck
 
-This is expected — terminal sessions are **ephemeral** (not persisted to disk). Re-open your agent terminals and re-map them in the Session Registry each time you launch AgentDeck.
+**This is expected behavior.** Terminal sessions are ephemeral — they are not saved to disk.
+
+Each time you launch AgentDeck:
+1. Open your workspace terminal (click it in the sidebar).
+2. Open tabs and launch your agents.
+3. Go to the Conductor and remap sessions in the Session Registry.
 
 ---
 
 ### Nothing happens when I click "Approve & Run"
 
 **Check:**
-1. Are there validation errors shown in red? (missing title, no session assigned)
+1. Are there validation errors shown below the task list? Every task needs a title and an assigned session.
 2. Does at least one session have an agent assigned in the Session Registry?
-3. Is Ollama running if you have it configured?
-
-**Fix:** Resolve all validation errors shown below the task list. Assign sessions. All tasks must have a title and an assigned session before the plan can run.
+3. Is there a currently running or paused plan? (The engine blocks starting a second plan on top of an active one — click **Stop** first if needed.)
 
 ---
 

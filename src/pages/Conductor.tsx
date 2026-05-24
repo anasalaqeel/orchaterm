@@ -161,6 +161,11 @@ export const ConductorView: React.FC = () => {
   };
 
   const handleDeletePlan = (id: string) => {
+    // If the plan being deleted is the one currently running in the engine, stop it first.
+    const enginePlan = orchestratorEngine.getCurrentPlan();
+    if (enginePlan?.id === id) {
+      orchestratorEngine.stop();
+    }
     deletePlan(id);
     setActivePlanId(plans.find(p => p.id !== id)?.id ?? null);
   };
@@ -196,6 +201,8 @@ export const ConductorView: React.FC = () => {
       taskTimeoutMinutes:     settings.conductorTaskTimeoutMinutes,
       sessionRegistry:        buildSessionRegistry(),
     });
+    // Stop any existing plan (paused/failed/etc.) before starting the new one.
+    orchestratorEngine.stop();
     orchestratorEngine.start(plan);
   };
 

@@ -4,6 +4,7 @@ import { useDashboard } from '../context/DashboardContext';
 import { TaskLog } from '../types';
 import { TerminalContainer } from '../components/terminal/TerminalContainer';
 import { WorkspacePanel } from '../components/ui/WorkspacePanel';
+import { WorkspaceConductor } from '../components/conductor/WorkspaceConductor';
 import { 
   Play, 
   AlertOctagon, 
@@ -14,7 +15,8 @@ import {
   ChevronRight, 
   Copy, 
   Edit2,
-  ArrowLeft
+  ArrowLeft,
+  Network
 } from 'lucide-react';
 
 export const DashboardView: React.FC = () => {
@@ -54,6 +56,9 @@ export const DashboardView: React.FC = () => {
   const [logSummary, setLogSummary] = useState('');
   const [logStatus, setLogStatus] = useState<'in-progress' | 'done' | 'blocked'>('in-progress');
 
+
+  // Right panel tab state — 'workspace' shows WorkspacePanel, 'conductor' shows WorkspaceConductor
+  const [rightPanel, setRightPanel] = useState<'workspace' | 'conductor'>('workspace');
 
   const activeProject = workspaces.find(p => p.id === activeWorkspaceId) || workspaces[0];
 
@@ -175,18 +180,42 @@ export const DashboardView: React.FC = () => {
             <ArrowLeft className={s.iconSm} style={{ color: '#FF9D00' }} />
             <span>Workspaces List</span>
           </button>
+
         </div>
 
-        {/* Horizontal Split Area: Left 60% Terminals, Right 40% WorkspacePanel */}
+        {/* Horizontal Split Area: Left 60% Terminals, Right 40% contextual panel */}
         <div className={s.consoleSplit}>
           {/* Left: Terminals */}
           <div className={s.consoleSplitLeft}>
             <TerminalContainer workspaceId={activeProject.id} workspacePath={activeProject.path} />
           </div>
 
-          {/* Right: Workspace context panel */}
+          {/* Right: tabbed Workspace / Conductor panel */}
           <div className={s.consoleSplitRight}>
-            <WorkspacePanel workspace={activeProject} />
+            {/* Tab bar */}
+            <div className={s.rightTabBar}>
+              <button
+                className={cx(s.rightTab, rightPanel === 'workspace' && s.rightTabActive)}
+                onClick={() => setRightPanel('workspace')}
+              >
+                Workspace
+              </button>
+              <button
+                className={cx(s.rightTab, rightPanel === 'conductor' && s.rightTabActive)}
+                onClick={() => setRightPanel('conductor')}
+              >
+                <Network className={s.rightTabIcon} />
+                Conductor
+              </button>
+            </div>
+
+            {/* Panel content */}
+            <div className={s.rightPanelContent}>
+              {rightPanel === 'workspace'
+                ? <WorkspacePanel workspace={activeProject} />
+                : <WorkspaceConductor workspaceId={activeProject.id} />
+              }
+            </div>
           </div>
         </div>
       </div>
@@ -780,6 +809,48 @@ const s = {
     overflow: hidden;
     border-left: 1px solid var(--border-color);
     background: var(--bg-primary);
+  `,
+
+  /* ── Right panel tabs ── */
+  rightTabBar: css`
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    padding: 0 4px;
+    flex-shrink: 0;
+  `,
+  rightTab: css`
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+    margin-bottom: -1px;
+    &:hover { color: var(--text-primary); }
+  `,
+  rightTabActive: css`
+    color: #FF9D00 !important;
+    border-bottom-color: #FF9D00;
+  `,
+  rightTabIcon: css`
+    width: 12px;
+    height: 12px;
+  `,
+  rightPanelContent: css`
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
   `,
 
   /* ─── Grid / Overview mode ─── */

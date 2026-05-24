@@ -219,8 +219,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           console.error('[TerminalTab] kill_pty failed:', err),
         );
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sessionId, workspacePath, shell]);
+      }, [sessionId, workspacePath, shell, shellArgs]);
 
     return (
       <div className={styles.wrapper}>
