@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { css, cx } from '@emotion/css';
 import { v4 as uuidv4 } from 'uuid';
 import { invoke } from '@tauri-apps/api/core';
-import { OrchestratorPlan, OrchestratorTask, TerminalSession, Agent } from '../../types';
+import { OrchestratorPlan, OrchestratorTask, TerminalSession } from '../../types';
 import { bufferWatcher } from '../../services/bufferWatcher';
 import { validatePlanJSON, PLAN_START, PLAN_END } from '../../services/sentinelParser';
 import { TaskCard } from './TaskCard';
@@ -18,7 +18,8 @@ type GenStatus = 'idle' | 'sent' | 'waiting' | 'done' | 'error';
 interface PlanBuilderProps {
   plan: OrchestratorPlan | null;
   sessions: TerminalSession[];
-  agents: Agent[];
+  workspaceId: string;
+  groupId: string;
   onSave: (plan: OrchestratorPlan) => void;
   onApproveAndRun: (plan: OrchestratorPlan) => void;
 }
@@ -31,19 +32,21 @@ function makeBlankTask(): OrchestratorTask {
     title: '',
     description: '',
     assignedSessionId: '',
-    assignedAgentId: '',
+    assignedSessionTitle: '',
     dependsOn: [],
     status: 'pending',
   };
 }
 
-function makeBlankPlan(): OrchestratorPlan {
+function makeBlankPlan(workspaceId: string, groupId: string): OrchestratorPlan {
   return {
     id: uuidv4(),
     goal: '',
     tasks: [makeBlankTask()],
     status: 'draft',
     createdAt: Date.now(),
+    workspaceId,
+    groupId,
   };
 }
 
@@ -54,13 +57,9 @@ function makeBlankPlan(): OrchestratorPlan {
 function buildGeneratePrompt(
   goal: string,
   sessions: TerminalSession[],
-  agents: Agent[]
 ): string {
   const sessionList = sessions
-    .map(s => {
-      const agent = agents.find(a => a.id === s.assignedAgentId);
-      return `  - Session ID: "${s.id}", Terminal: "${s.title}"${agent ? `, Agent: "${agent.name}"` : ' (unassigned)'}`;
-    })
+    .map(s => `  - Session ID: "${s.id}", Terminal: "${s.title}"`)
     .join('\n');
 
   const exampleId1 = sessions[0]?.id ?? 'session-id-here';
@@ -103,8 +102,7 @@ Rules:
 }
 
 /**
- * Hydrate validated plan JSON items into full OrchestratorTask objects,
- * filling in assignedAgentId from the session list and defaulting to 'pending'.
+ * Hydrate validated plan JSON items into full OrchestratorTask objects.
  */
 function hydrateTasks(
   items: ReturnType<typeof validatePlanJSON>,
@@ -117,7 +115,7 @@ function hydrateTasks(
       title: item.title,
       description: item.description,
       assignedSessionId: item.assignedSessionId,
-      assignedAgentId: session?.assignedAgentId ?? '',
+      assignedSessionTitle: session?.title ?? item.assignedSessionId,
       dependsOn: item.dependsOn,
       status: 'pending',
     };
@@ -129,12 +127,13 @@ function hydrateTasks(
 export const PlanBuilder: React.FC<PlanBuilderProps> = ({
   plan: initialPlan,
   sessions,
-  agents,
+  workspaceId,
+  groupId,
   onSave,
   onApproveAndRun,
 }) => {
   const [plan, setPlan] = useState<OrchestratorPlan>(
-    initialPlan ?? makeBlankPlan()
+    initialPlan ?? makeBlankPlan(workspaceId, groupId)
   );
 
   // Generate-with-Agent state
@@ -146,8 +145,8 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
 
   // Keep genPrompt updated when goal or sessions change
   useEffect(() => {
-    setGenPrompt(buildGeneratePrompt(plan.goal, sessions, agents));
-  }, [plan.goal, sessions, agents]);
+    setGenPrompt(buildGeneratePrompt(plan.goal, sessions));
+  }, [plan.goal, sessions]);
 
   // Cleanup watch on unmount
   const genSessionRef = useRef(genSession);
@@ -309,14 +308,9 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
             disabled={genStatus === 'waiting'}
           >
             <option value=''>— Choose session —</option>
-            {sessions.map(s => {
-              const ag = agents.find(a => a.id === s.assignedAgentId);
-              return (
-                <option key={s.id} value={s.id}>
-                  {s.title}{ag ? ` — ${ag.name}` : ''}
-                </option>
-              );
-            })}
+            {sessions.map(s => (
+              <option key={s.id} value={s.id}>{s.title}</option>
+            ))}
           </select>
 
           {/* Copy prompt button */}
@@ -391,7 +385,6 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
               task={task}
               allTasks={plan.tasks}
               sessions={sessions}
-              agents={agents}
               editable
               onChange={patch => updateTask(task.id, patch)}
               onDelete={() => deleteTask(task.id)}

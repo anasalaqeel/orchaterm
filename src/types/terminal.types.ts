@@ -1,6 +1,6 @@
 // ── Terminal Session types ────────────────────────────────────────────────────
-// Shared via DashboardContext so ConductorView and SessionRegistry can read
-// the same session list even after navigating away from the Dashboard.
+// Shared via DashboardContext so the Conductor and Chat panels can read
+// the same session list.
 
 export interface TerminalSession {
   id: string;
@@ -8,16 +8,8 @@ export interface TerminalSession {
   shell: string;
   shellArgs: string[];
   workspaceId: string;
-  /** Set by user in SessionRegistry panel. null = not yet assigned. */
-  assignedAgentId: string | null;
-}
-
-// ── Session Registry Entry ─────────────────────────────────────────────────────
-// Maps an ephemeral PTY session UUID to a registered Agent for display.
-
-export interface SessionRegistryEntry {
-  sessionId: string;
-  agentId: string;
-  agentName: string;
-  agentColor: string;
+  /** Hex colour for the tab indicator. null = default (no colour). */
+  color: string | null;
+  /** Display order within the tab strip. Lower = leftmost. */
+  order: number;
 }
