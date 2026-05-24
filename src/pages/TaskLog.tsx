@@ -70,7 +70,7 @@ export const TaskLogView: React.FC = () => {
 
     addTaskLog({
       workspaceId: newLogWorkspace,
-      groupId: null,
+      spaceId: null,
       summary: newLogSummary,
       status: newLogStatus
     });

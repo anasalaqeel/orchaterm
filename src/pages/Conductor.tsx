@@ -152,7 +152,7 @@ export const ConductorView: React.FC = () => {
   const handleNewPlan = () => {
     const blank: OrchestratorPlan = {
       id: uuidv4(), goal: '', tasks: [], status: 'draft', createdAt: Date.now(),
-      workspaceId: activeWorkspaceId ?? '', groupId: '',
+      workspaceId: activeWorkspaceId ?? '', spaceId: '',
     };
     addPlan(blank);
     setActivePlanId(blank.id);
@@ -360,7 +360,7 @@ export const ConductorView: React.FC = () => {
                   plan={activePlan}
                   sessions={workspaceSessions}
                   workspaceId={activePlan.workspaceId}
-                  groupId={activePlan.groupId}
+                  spaceId={activePlan.spaceId}
                   onSave={updated => updatePlan(updated.id, updated)}
                   onApproveAndRun={handleApproveAndRun}
                 />

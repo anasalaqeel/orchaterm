@@ -19,7 +19,7 @@ interface PlanBuilderProps {
   plan: OrchestratorPlan | null;
   sessions: TerminalSession[];
   workspaceId: string;
-  groupId: string;
+  spaceId: string;
   onSave: (plan: OrchestratorPlan) => void;
   onApproveAndRun: (plan: OrchestratorPlan) => void;
 }
@@ -38,7 +38,7 @@ function makeBlankTask(): OrchestratorTask {
   };
 }
 
-function makeBlankPlan(workspaceId: string, groupId: string): OrchestratorPlan {
+function makeBlankPlan(workspaceId: string, spaceId: string): OrchestratorPlan {
   return {
     id: uuidv4(),
     goal: '',
@@ -46,7 +46,7 @@ function makeBlankPlan(workspaceId: string, groupId: string): OrchestratorPlan {
     status: 'draft',
     createdAt: Date.now(),
     workspaceId,
-    groupId,
+    spaceId,
   };
 }
 
@@ -128,12 +128,12 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
   plan: initialPlan,
   sessions,
   workspaceId,
-  groupId,
+  spaceId,
   onSave,
   onApproveAndRun,
 }) => {
   const [plan, setPlan] = useState<OrchestratorPlan>(
-    initialPlan ?? makeBlankPlan(workspaceId, groupId)
+    initialPlan ?? makeBlankPlan(workspaceId, spaceId)
   );
 
   // Generate-with-Agent state
