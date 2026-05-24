@@ -190,6 +190,75 @@ Synthesize all the completed work into a single unified brief for the next agent
   return callOllama(ollamaHost, model, userPrompt);
 }
 
+// ── Streaming group chat ───────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * Streams a conversational response from Ollama.
+ * Calls onToken for each content chunk, onDone when the stream ends.
+ * Returns a cancel function that aborts the request.
+ */
+export function streamChatWithOllama(params: {
+  ollamaHost: string;
+  model: string;
+  systemPrompt: string;
+  messages: ChatMessage[];
+  onToken: (token: string) => void;
+  onDone: () => void;
+  onError: (err: string) => void;
+}): () => void {
+  const { ollamaHost, model, systemPrompt, messages, onToken, onDone, onError } = params;
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const res = await fetch(`${ollamaHost}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'system', content: systemPrompt }, ...messages],
+          stream: true,
+        }),
+      });
+
+      if (!res.ok) {
+        onError(`Ollama error ${res.status}: ${res.statusText}`);
+        return;
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) { onError('No response body'); return; }
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, { stream: true });
+        for (const line of text.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const obj = JSON.parse(trimmed);
+            if (obj.message?.content) onToken(obj.message.content);
+            if (obj.done) { onDone(); return; }
+          } catch { /* skip malformed lines */ }
+        }
+      }
+      onDone();
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') onError(err?.message ?? 'Connection failed');
+    }
+  })();
+
+  return () => controller.abort();
+}
+
 // ── Pass-through fallback ──────────────────────────────────────────────────────
 
 /**

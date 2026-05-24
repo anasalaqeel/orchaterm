@@ -8,7 +8,7 @@ export type ChatMessageSender =
 
 export interface ChatMessage {
   id: string;
-  groupId: string;
+  spaceId: string;
   sender: ChatMessageSender;
   content: string;
   timestamp: number;

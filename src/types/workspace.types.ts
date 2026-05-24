@@ -12,20 +12,19 @@ export interface Workspace {
   updatedAt: string;
 }
 
-// ── Agent Group ───────────────────────────────────────────────────────────────
-// Replaces the old Agent catalog. A group is a named collection of terminal
-// tabs that the user has designated as their AI agent terminals for a task.
-// Ollama orchestrates terminals within a group; groups are isolated from each other.
+// ── Space ─────────────────────────────────────────────────────────────────────
+// A named sub-space within a workspace. Groups terminal tabs into a focused
+// context; the Conductor and Chat panel are scoped to the active Space.
 
-export interface AgentGroup {
+export interface Space {
   id: string;
   name: string;
   workspaceId: string;
   /** Hex colour shown as a dot in the sidebar. e.g. '#ff9d00' */
   color: string;
-  /** IDs of TerminalSession tabs that are members of this group.
+  /** IDs of TerminalSession tabs that belong to this space.
    *  Session IDs are ephemeral — regenerated on app relaunch.
-   *  The user re-adds tabs each session via the group panel. */
+   *  The user re-adds tabs each session via the space panel. */
   sessionIds: string[];
   createdAt: number;
 }
@@ -33,8 +32,8 @@ export interface AgentGroup {
 export interface TaskLog {
   id: string;
   workspaceId: string;
-  /** Which Agent Group this log entry belongs to. null = not group-specific. */
-  groupId: string | null;
+  /** Which Space this log entry belongs to. null = not space-specific. */
+  spaceId: string | null;
   summary: string;        // one-liner summary of handoff/work
   timestamp: string;
   status: 'in-progress' | 'done' | 'blocked';
@@ -43,8 +42,8 @@ export interface TaskLog {
 export interface SavedPrompt {
   id: string;
   workspaceId: string;
-  /** Which Agent Group this prompt belongs to. null = not group-specific. */
-  groupId: string | null;
+  /** Which Space this prompt belongs to. null = not space-specific. */
+  spaceId: string | null;
   title: string;
   content: string;        // full prompt text
   tags: string[];
@@ -64,7 +63,7 @@ export interface AppSettings {
 // Global App Data State structure stored as flat JSON on disk
 export interface AppData {
   workspaces: Workspace[];
-  agentGroups: AgentGroup[];
+  spaces: Space[];
   taskLogs: TaskLog[];
   savedPrompts: SavedPrompt[];
   settings?: AppSettings;

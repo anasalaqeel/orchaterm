@@ -46,8 +46,8 @@ export interface OrchestratorPlan {
   createdAt: number;
   completedAt?: number;
   workspaceId: string;
-  /** Scopes this plan to a specific Agent Group. */
-  groupId: string;
+  /** Scopes this plan to a specific Space. */
+  spaceId: string;
 }
 
 // ── Per-session Buffer (in-memory only) ───────────────────────────────────────
