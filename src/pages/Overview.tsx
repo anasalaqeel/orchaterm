@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { css, cx } from '@emotion/css';
 import { useDashboard } from '../context/DashboardContext';
 import { TerminalContainer } from '../components/terminal/TerminalContainer';
@@ -31,6 +31,14 @@ export const DashboardView: React.FC = () => {
 
   // Dialog state
   const [showAddProj, setShowAddProj] = useState(false);
+
+  // Open new-workspace dialog when triggered from Sidebar shortcut
+  useEffect(() => {
+    if (localStorage.getItem('agentdeck:open-new-workspace') === '1') {
+      localStorage.removeItem('agentdeck:open-new-workspace');
+      setShowAddProj(true);
+    }
+  }, []);
   const [newProjName, setNewProjName] = useState('');
   const [newProjPath, setNewProjPath] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
@@ -124,6 +132,9 @@ export const DashboardView: React.FC = () => {
               >
                 <Network className={s.rightTabIcon} />
                 Conductor
+                {activeProject && localStorage.getItem(`agentdeck:conductor:running:${activeProject.id}`) === 'true' && (
+                  <span className={s.tabRunningDot} />
+                )}
               </button>
               <button
                 className={cx(s.rightTab, rightPanel === 'chat' && s.rightTabActive)}
@@ -190,6 +201,14 @@ export const DashboardView: React.FC = () => {
                   <h4 className={s.cardName}>{proj.name}</h4>
                   <p className={s.cardPath}>{proj.path}</p>
                   {proj.description && <p className={s.cardDesc}>{proj.description}</p>}
+                  {(() => {
+                    const spaceCount = spaces.filter(sp => sp.workspaceId === proj.id).length;
+                    return spaceCount > 0 ? (
+                      <div className={s.cardSpaceBadge}>
+                        {spaceCount} space{spaceCount !== 1 ? 's' : ''}
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
 
                 {/* Inline-editable current task */}
@@ -456,6 +475,16 @@ const s = {
     width: 12px;
     height: 12px;
   `,
+  tabRunningDot: css`
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #ff9d00;
+    margin-left: 4px;
+    flex-shrink: 0;
+    animation: tabDotPulse 1.5s ease-in-out infinite;
+    @keyframes tabDotPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  `,
   rightPanelContent: css`
     flex: 1;
     min-height: 0;
@@ -596,6 +625,18 @@ const s = {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
+  `,
+  cardSpaceBadge: css`
+    display: inline-flex;
+    align-items: center;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 99px;
+    padding: 2px 8px;
+    margin-top: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-tertiary);
   `,
 
   /* ─── Task block ─── */
