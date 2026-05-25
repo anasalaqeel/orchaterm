@@ -1,120 +1,155 @@
 @import "xterm/css/xterm.css";
 
-/* Shared CSS variables */
+/* ── Shared tokens ─────────────────────────────────────────────────────────── */
 :root[data-theme] {
+  /* Spacing */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
   --spacing-lg: 24px;
   --spacing-xl: 32px;
   --spacing-2xl: 48px;
-  --spacing-3xl: 64px;
 
-  --font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
-  --font-family-mono: "Fira Code", Menlo, Monaco, "Courier New", monospace;
+  /* Typography */
+  --font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-family-mono: "Fira Code", "JetBrains Mono", Menlo, monospace;
 
-  --font-size-xs: 12px;
-  --font-size-sm: 13px;
-  --font-size-base: 14px;
-  --font-size-lg: 16px;
-  --font-size-xl: 18px;
-  --font-size-2xl: 20px;
-  --font-size-3xl: 24px;
-  --font-size-4xl: 32px;
+  --font-size-xs:   11px;
+  --font-size-sm:   12px;
+  --font-size-base: 13px;
+  --font-size-md:   14px;
+  --font-size-lg:   16px;
+  --font-size-xl:   18px;
+  --font-size-2xl:  22px;
+  --font-size-3xl:  28px;
 
-  --font-weight-normal: 400;
-  --font-weight-medium: 500;
+  --font-weight-normal:   400;
+  --font-weight-medium:   500;
   --font-weight-semibold: 600;
-  --font-weight-bold: 700;
+  --font-weight-bold:     700;
+  --font-weight-extrabold: 800;
 
-  --border-radius-sm: 5px;
-  --border-radius-md: 8px;
-  --border-radius-lg: 12px;
-  --border-radius-xl: 18px;
-  --border-radius-full: 9999px;
+  /* Radii */
+  --radius-sm:   6px;
+  --radius-md:  10px;
+  --radius-lg:  14px;
+  --radius-xl:  20px;
+  --radius-full: 9999px;
+
+  /* Legacy aliases for components that use old names */
+  --border-radius-sm:   var(--radius-sm);
+  --border-radius-md:   var(--radius-md);
+  --border-radius-lg:   var(--radius-lg);
+  --border-radius-xl:   var(--radius-xl);
+  --border-radius-full: var(--radius-full);
 }
 
-/* Light Theme Variables */
-:root[data-theme="light"] {
-  --color-primary-rgb: 59, 130, 246; /* Blue accent */
-  --color-primary: rgb(var(--color-primary-rgb));
-  --color-brand: var(--color-primary);
-  --color-secondary: #64748b;
-  --color-success-rgb: 16, 185, 129;
-  --color-success: rgb(var(--color-success-rgb));
-  --color-warning-rgb: 245, 158, 11;
-  --color-warning: rgb(var(--color-warning-rgb));
-  --color-error-rgb: 239, 68, 68;
-  --color-error: rgb(var(--color-error-rgb));
-  --color-danger: rgb(var(--color-error-rgb));
-  --color-info-rgb: 59, 130, 246;
-
-  --bg-primary: #f8fafc;
-  --bg-secondary: #ffffff;
-  --bg-tertiary: #f1f5f9;
-  --bg-hover: #e2e8f0;
-  --bg-active: #cbd5e1;
-
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-tertiary: #94a3b8;
-  --text-inverse: #ffffff;
-
-  --border-color: rgba(15, 23, 42, 0.08);
-  --border-color-hover: rgba(15, 23, 42, 0.15);
-
-  --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  --gradient-surface: linear-gradient(180deg, #ffffff 0%, rgba(255, 255, 255, 0.4) 100%);
-  --gradient-glow: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0) 70%);
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-}
-
-/* Dark Theme Variables */
+/* ── Dark Theme ─────────────────────────────────────────────────────────────── */
 :root[data-theme="dark"] {
-  --color-primary-rgb: 255, 157, 0; /* Amber brand */
-  --color-primary: rgb(var(--color-primary-rgb));
-  --color-brand: var(--color-primary);
-  --color-secondary: #94a3b8;
-  --color-success-rgb: 52, 211, 153;
-  --color-success: rgb(var(--color-success-rgb));
-  --color-warning-rgb: 251, 191, 36;
-  --color-warning: rgb(var(--color-warning-rgb));
-  --color-error-rgb: 248, 113, 113;
-  --color-error: rgb(var(--color-error-rgb));
-  --color-danger: rgb(var(--color-error-rgb));
-  --color-info-rgb: 96, 165, 250;
+  /* Brand — ClickUp purple */
+  --color-brand:        #7B68EE;
+  --color-brand-rgb:    123, 104, 238;
+  --color-primary:      #7B68EE;
+  --color-primary-rgb:  123, 104, 238;
 
-  /* Near-black surfaces — modern, cohesive with terminal */
-  --bg-primary: #0e1117;   /* Main app canvas */
-  --bg-secondary: #161b22; /* Sidebar, elevated panels */
-  --bg-tertiary: #0d1117;  /* Inputs, recessed areas */
-  --bg-hover: #21262d;     /* Hover states */
-  --bg-active: #2d333b;    /* Active / selected */
+  /* Semantic */
+  --color-success:      #34d399;
+  --color-success-rgb:  52, 211, 153;
+  --color-warning:      #fbbf24;
+  --color-warning-rgb:  251, 191, 36;
+  --color-error:        #f87171;
+  --color-error-rgb:    248, 113, 113;
+  --color-danger:       #f87171;
+  --color-info:         #818cf8;
+  --color-info-rgb:     129, 140, 248;
 
-  --text-primary: #f0f6fc;
-  --text-secondary: #c9d1d9;
-  --text-tertiary: #6e7681;
-  --text-inverse: #010409;
+  /* Surfaces — ClickUp dark palette */
+  --bg-canvas:     #0a0914;   /* Deepest, behind everything */
+  --bg-primary:    #0f0d1a;   /* Main app canvas */
+  --bg-secondary:  #1A1A2E;   /* Sidebar — ClickUp dark */
+  --bg-tertiary:   #1b1932;   /* Cards, inner surfaces */
+  --bg-hover:      #211e3c;   /* Hover state */
+  --bg-active:     #272445;   /* Active / selected */
+  --bg-input:      #13112080; /* Input backgrounds */
 
-  --border-color: rgba(255, 255, 255, 0.09);
-  --border-color-hover: rgba(255, 255, 255, 0.18);
+  /* Text */
+  --text-primary:   #ede9fe;  /* Warm purple-white */
+  --text-secondary: #a89ec8;  /* Muted purple */
+  --text-tertiary:  #5f587e;  /* Very muted */
+  --text-inverse:   #0a0914;
 
-  --gradient-primary: linear-gradient(135deg, #FF9D00 0%, #d97706 100%);
-  --gradient-surface: linear-gradient(180deg, #161b22 0%, rgba(22, 27, 34, 0.7) 100%);
-  --gradient-glow: radial-gradient(circle, rgba(255, 157, 0, 0.2) 0%, rgba(255, 157, 0, 0) 70%);
+  /* Borders */
+  --border-color:       rgba(255, 255, 255, 0.07);
+  --border-color-hover: rgba(255, 255, 255, 0.14);
+  --border-color-focus: rgba(123, 104, 238, 0.5);
 
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.6);
-  --shadow-md: 0 4px 8px -1px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 12px 24px -3px rgba(0, 0, 0, 0.7), 0 4px 8px -2px rgba(0, 0, 0, 0.5);
+  /* Shadows */
+  --shadow-sm:    0 1px 4px rgba(0, 0, 0, 0.5);
+  --shadow-md:    0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-lg:    0 12px 40px rgba(0, 0, 0, 0.6);
+  --shadow-brand: 0 0 24px rgba(123, 104, 238, 0.20);
+  --shadow-glow:  0 0 40px rgba(123, 104, 238, 0.14);
+
+  /* Gradients */
+  --gradient-brand:   linear-gradient(135deg, #7B68EE, #6B5CE7);
+  --gradient-surface: linear-gradient(160deg, #1b1932 0%, #13112033 100%);
+  --gradient-card:    linear-gradient(160deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 100%);
 }
 
-/* Global Reset & Base Styles */
-*,
-*::before,
-*::after {
+/* ── Light Theme ────────────────────────────────────────────────────────────── */
+:root[data-theme="light"] {
+  /* Brand — ClickUp purple */
+  --color-brand:        #6B5CE7;
+  --color-brand-rgb:    107, 92, 231;
+  --color-primary:      #6B5CE7;
+  --color-primary-rgb:  107, 92, 231;
+
+  /* Semantic */
+  --color-success:      #059669;
+  --color-success-rgb:  5, 150, 105;
+  --color-warning:      #d97706;
+  --color-warning-rgb:  217, 119, 6;
+  --color-error:        #dc2626;
+  --color-error-rgb:    220, 38, 38;
+  --color-danger:       #dc2626;
+  --color-info:         #4f46e5;
+  --color-info-rgb:     79, 70, 229;
+
+  /* Surfaces */
+  --bg-canvas:    #f3f0ff;
+  --bg-primary:   #faf8ff;
+  --bg-secondary: #ffffff;
+  --bg-tertiary:  #f3f0fb;
+  --bg-hover:     #ece8f8;
+  --bg-active:    #e0daf5;
+  --bg-input:     #ffffff;
+
+  /* Text */
+  --text-primary:   #1e1a38;
+  --text-secondary: #4a4368;
+  --text-tertiary:  #9992b8;
+  --text-inverse:   #ffffff;
+
+  /* Borders */
+  --border-color:       rgba(30, 26, 56, 0.09);
+  --border-color-hover: rgba(30, 26, 56, 0.18);
+  --border-color-focus: rgba(107, 92, 231, 0.5);
+
+  /* Shadows */
+  --shadow-sm:    0 1px 3px rgba(30, 26, 56, 0.08);
+  --shadow-md:    0 4px 12px rgba(30, 26, 56, 0.1);
+  --shadow-lg:    0 12px 32px rgba(30, 26, 56, 0.12);
+  --shadow-brand: 0 0 24px rgba(107, 92, 231, 0.18);
+  --shadow-glow:  0 0 40px rgba(107, 92, 231, 0.08);
+
+  /* Gradients */
+  --gradient-brand:   linear-gradient(135deg, #6B5CE7, #5A4BD8);
+  --gradient-surface: linear-gradient(160deg, #ffffff 0%, rgba(243,240,255,0.5) 100%);
+  --gradient-card:    linear-gradient(160deg, rgba(255,255,255,0.8) 0%, rgba(243,240,251,0.4) 100%);
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -132,52 +167,21 @@ body {
   user-select: none;
 }
 
-/* Scrollbar Styling */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
+/* ── Scrollbars ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar          { width: 4px; height: 4px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: rgba(160,150,200,0.18); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(160,150,200,0.32); }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(128, 128, 128, 0.25);
-  border-radius: var(--border-radius-full);
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(128, 128, 128, 0.45);
-}
-
-/* Inputs and interactive focus visible rules */
+/* ── Focus ──────────────────────────────────────────────────────────────────── */
 *:focus-visible {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
 }
 
-/* ── xterm overrides ─────────────────────────────────────────────────────── */
-/* Let xterm set its own background from the theme — no !important overrides.
-   Add a small padding so text doesn't press against the panel edges.         */
-
-.xterm {
-  padding: 8px;
-}
-
-.xterm-viewport {
-  /* xterm sets this inline from theme.background — don't fight it */
-  background-color: transparent !important;
-}
-
-.xterm-screen {
-  background-color: transparent !important;
-}
-
-.xterm-selection div {
-  background-color: rgba(158, 255, 255, 0.2) !important;
-}
-
-.xterm-rows {
-  font-family: 'Fira Code', 'Courier New', Courier, monospace;
-}
+/* ── xterm overrides ────────────────────────────────────────────────────────── */
+.xterm { padding: 8px; }
+.xterm-viewport  { background-color: transparent !important; }
+.xterm-screen    { background-color: transparent !important; }
+.xterm-selection div { background-color: rgba(158, 255, 255, 0.2) !important; }
+.xterm-rows { font-family: var(--font-family-mono); }

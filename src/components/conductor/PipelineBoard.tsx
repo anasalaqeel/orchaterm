@@ -37,7 +37,7 @@ function computeWaves(tasks: OrchestratorTask[]): OrchestratorTask[][] {
 
 const STATUS_COLOR: Record<OrchestratorTaskStatus, string> = {
   pending: '#475569',
-  running: '#FF9D00',
+  running: '#7B68EE',
   done:    '#10b981',
   failed:  '#ef4444',
 };

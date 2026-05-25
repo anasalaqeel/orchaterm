@@ -584,7 +584,7 @@ const styles = {
   genStatus_waiting: css`
     border-color: var(--color-brand);
     color: var(--color-brand);
-    background-color: rgba(255,157,0,0.06);
+    background-color: rgba(123, 104, 238, 0.06);
   `,
   genStatus_done: css`
     border-color: var(--color-success);
