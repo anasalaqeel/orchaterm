@@ -29,6 +29,21 @@ interface TerminalTabProps {
 
 type SpawnState = 'idle' | 'spawning' | 'running' | 'error';
 
+// ── Safe fit helper ────────────────────────────────────────────────────────────
+// Always probe proposeDimensions() before calling fit(). If the container has
+// zero size, proposeDimensions() returns undefined and fit() crashes internally
+// trying to read .dimensions on that undefined value.
+function safeFit(addon: FitAddon): { cols: number; rows: number } | null {
+  try {
+    const dims = addon.proposeDimensions();
+    if (!dims || dims.cols <= 0 || dims.rows <= 0) return null;
+    addon.fit();
+    return dims;
+  } catch {
+    return null;
+  }
+}
+
 export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
   ({ sessionId, workspacePath, shell, shellArgs }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -41,14 +56,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     useImperativeHandle(ref, () => ({
       fit: () => {
         if (!fitAddonRef.current || !termRef.current) return;
-        try {
-          fitAddonRef.current.fit();
-          const { cols, rows } = termRef.current;
-          if (cols > 0 && rows > 0) {
-            invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
-          }
-        } catch {
-          // Container may not be visible yet — ignore.
+        const dims = safeFit(fitAddonRef.current);
+        if (dims) {
+          invoke('resize_pty', { sessionId, cols: dims.cols, rows: dims.rows }).catch(() => {});
         }
       },
     }));
@@ -133,11 +143,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
       // ─ Initial fit (on next frame so the DOM has settled) ────────────
       requestAnimationFrame(() => {
-        try {
-          fitAddon.fit();
-        } catch {
-          // Container may have zero size if the tab is still hidden.
-        }
+        safeFit(fitAddon);
       });
 
       // ─ Forward keyboard input → PTY ──────────────────────────────────
@@ -178,22 +184,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         if (resizeTimer !== null) clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
           if (!fitAddonRef.current || !termRef.current) return;
-          try {
-            const proposed = fitAddonRef.current.proposeDimensions();
-            if (!proposed) return;
-            const { cols, rows } = proposed;
-            if (
-              cols > 0 &&
-              rows > 0 &&
-              (cols !== termRef.current.cols || rows !== termRef.current.rows)
-            ) {
-              fitAddonRef.current.fit();
-              invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
-            }
-          } catch {
-            // Ignore — container might be transitioning.
+          const dims = safeFit(fitAddonRef.current);
+          if (dims && (dims.cols !== termRef.current.cols || dims.rows !== termRef.current.rows)) {
+            invoke('resize_pty', { sessionId, cols: dims.cols, rows: dims.rows }).catch(() => {});
           }
-        }, 100); // 100ms debounce
+        }, 100);
       });
 
       if (containerRef.current) {

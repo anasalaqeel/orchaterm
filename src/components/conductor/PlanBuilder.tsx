@@ -98,7 +98,7 @@ Rules:
 - dependsOn is an array of task IDs that must complete before this task starts. Use [] for tasks with no dependencies.
 - Tasks with no shared dependencies can run in parallel (assign them to different sessions).
 - Keep descriptions detailed enough that the agent can execute the task without further context.
-- Do not include any text before ${PLAN_START} or after ${PLAN_END}.`;
+- Do not include any text before the start marker or after the end marker.`;
 }
 
 /**
@@ -226,11 +226,8 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
     setGenError('');
 
     try {
-      // 1. Send the prompt to the agent's PTY session (newline required)
-      await invoke('write_pty', { id: genSession, data: genPrompt + '\n' });
-      setGenStatus('waiting');
-
-      // 2. Start watching for the plan block
+      // 1. Set up the plan watcher BEFORE sending the prompt so no early PTY
+      //    output is missed during the async listen() setup.
       await bufferWatcher.watchForPlan(
         genSession,
         // onPlan — fires when ###AGENTDECK_PLAN_START### ... ###AGENTDECK_PLAN_END### detected
@@ -251,6 +248,10 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
           setGenError(err);
         }
       );
+
+      // 2. Now send the prompt — the watcher is already listening.
+      await invoke('write_pty', { sessionId: genSession, data: genPrompt + '\n' });
+      setGenStatus('waiting');
     } catch (err: any) {
       setGenStatus('error');
       setGenError(err?.message ?? String(err));
@@ -351,7 +352,7 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
             {genStatus === 'error'   && <XCircle className={styles.genStatusIcon} />}
             <span>
               {genStatus === 'sent'    && 'Sending prompt to agent…'}
-              {genStatus === 'waiting' && `Waiting for agent to output plan markers (${PLAN_START})…`}
+              {genStatus === 'waiting' && 'Prompt sent — waiting for agent to respond with the plan…'}
               {genStatus === 'done'    && `Plan received! ${plan.tasks.length} tasks loaded — review and edit below.`}
               {genStatus === 'error'   && `Error: ${genError}`}
             </span>

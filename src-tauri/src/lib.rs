@@ -7,7 +7,7 @@ use std::thread;
 
 use portable_pty::{native_pty_system, CommandBuilder, Child, MasterPty, PtySize};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 // ── Shell detection ────────────────────────────────────────────────────────────
 
@@ -358,6 +358,39 @@ fn kill_pty(
     }
 }
 
+// ── Persistent storage commands ────────────────────────────────────────────────
+// Using std::fs directly via app_handle.path() avoids the tauri-plugin-fs
+// scope/path quirks that silently drop writes on some platforms.
+
+fn app_data_file(app: &AppHandle, name: &str) -> Result<std::path::PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Cannot resolve app data dir: {e}"))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Cannot create app data dir: {e}"))?;
+    Ok(dir.join(name))
+}
+
+#[tauri::command]
+fn load_store(app: AppHandle, file: String) -> Result<String, String> {
+    let path = app_data_file(&app, &file)?;
+    if !path.exists() {
+        return Ok(String::new()); // caller treats empty string as "no data"
+    }
+    std::fs::read_to_string(&path).map_err(|e| format!("Read failed: {e}"))
+}
+
+#[tauri::command]
+fn save_store(app: AppHandle, file: String, data: String) -> Result<(), String> {
+    let path = app_data_file(&app, &file)?;
+    // Write atomically: write to a temp file, then rename.
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, &data).map_err(|e| format!("Write failed: {e}"))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("Rename failed: {e}"))?;
+    Ok(())
+}
+
 // ── App Entry ──────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -372,7 +405,9 @@ pub fn run() {
             spawn_pty,
             write_pty,
             resize_pty,
-            kill_pty
+            kill_pty,
+            load_store,
+            save_store
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

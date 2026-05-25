@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useMatch } from 'react-router';
 import { css, cx } from '@emotion/css';
 import { useDashboard } from '../../context/DashboardContext';
@@ -7,7 +7,7 @@ import { SpaceManagerModal } from '../ui/SpaceManagerModal';
 import {
   History, Sparkles, Settings,
   Sun, Moon, Blocks, LayoutDashboard,
-  Plus, Edit2, Trash2,
+  Plus, Edit2, Trash2, Terminal,
 } from 'lucide-react';
 
 // ── Route definitions ─────────────────────────────────────────────────────────
@@ -24,6 +24,7 @@ export function Sidebar() {
   const {
     theme, toggleTheme,
     workspaces, activeWorkspaceId, setActiveWorkspaceId,
+    deleteWorkspace,
     viewMode, setViewMode,
     spaces, deleteSpace,
     activeSpaceId, setActiveSpaceId,
@@ -32,9 +33,24 @@ export function Sidebar() {
   const navigate    = useNavigate();
   const onDashboard = useMatch('/');
 
+  // ── Sidebar selection (independent of console) ───────────────────────────
+  // Clicking a workspace only expands it in the sidebar — does NOT navigate.
+  // The console tracks its own workspace via activeWorkspaceId.
+  const [sidebarFocusedId, setSidebarFocusedId] = useState<string | null>(activeWorkspaceId);
+
+  // Keep sidebar in sync when the console workspace changes externally
+  // (e.g. user opens a workspace from the Overview grid).
+  useEffect(() => {
+    if (activeWorkspaceId) setSidebarFocusedId(activeWorkspaceId);
+  }, [activeWorkspaceId]);
+
+  // ── Hover tracking for action buttons ────────────────────────────────────
+  const [hoveredWsId,    setHoveredWsId]    = useState<string | null>(null);
+  const [hoveredSpaceId, setHoveredSpaceId] = useState<string | null>(null);
+
   // ── Space modal state ─────────────────────────────────────────────────────
-  const [spaceModalOpen, setSpaceModalOpen] = useState(false);
-  const [editingSpace,   setEditingSpace]   = useState<Space | undefined>(undefined);
+  const [spaceModalOpen,   setSpaceModalOpen]   = useState(false);
+  const [editingSpace,     setEditingSpace]     = useState<Space | undefined>(undefined);
   const [modalWorkspaceId, setModalWorkspaceId] = useState<string>('');
 
   const openCreateSpace = (workspaceId: string) => {
@@ -49,13 +65,10 @@ export function Sidebar() {
     setSpaceModalOpen(true);
   };
 
-  const handleDeleteSpace = (sp: Space) => {
-    if (window.confirm(`Delete space "${sp.name}"?`)) deleteSpace(sp.id);
-  };
-
-  // ── Workspace nav ─────────────────────────────────────────────────────────
-  const openWorkspace = (id: string) => {
+  // ── Open workspace in console (explicit action only) ──────────────────────
+  const openInConsole = (id: string) => {
     setActiveWorkspaceId(id);
+    setSidebarFocusedId(id);
     setViewMode('console');
     navigate('/');
   };
@@ -78,54 +91,111 @@ export function Sidebar() {
 
       <div className={s.body}>
 
-        {/* ── Workspaces (with nested spaces) ── */}
+        {/* ── Workspaces ── */}
         <span className={s.sectionLabel}>Workspaces</span>
         <div className={s.workspaceList}>
           {workspaces.length === 0 && (
             <p className={s.empty}>No workspaces yet.</p>
           )}
+
           {workspaces.map(w => {
-            const isConsoleActive = !!onDashboard && viewMode === 'console' && w.id === activeWorkspaceId;
+            const isFocused       = w.id === sidebarFocusedId;
+            const isConsoleOpen   = !!onDashboard && viewMode === 'console' && w.id === activeWorkspaceId;
             const workspaceSpaces = spaces.filter(sp => sp.workspaceId === w.id);
+            const isWsHovered     = hoveredWsId === w.id;
 
             return (
               <div key={w.id}>
-                {/* Workspace row */}
-                <button
-                  onClick={() => openWorkspace(w.id)}
-                  className={cx(s.wsBtn, isConsoleActive && s.wsBtnActive)}
-                >
-                  <span className={s.wsDot} style={{ backgroundColor: w.color }} />
-                  <span className={s.wsName}>{w.name}</span>
-                </button>
 
-                {/* Spaces — shown only when this workspace is active in console mode */}
-                {isConsoleActive && (
+                {/* Workspace row */}
+                <div
+                  className={cx(
+                    s.wsRow,
+                    isFocused   && s.wsRowFocused,
+                    isConsoleOpen && s.wsRowConsoleOpen,
+                  )}
+                  style={isConsoleOpen ? { borderLeftColor: w.color } : undefined}
+                  onMouseEnter={() => setHoveredWsId(w.id)}
+                  onMouseLeave={() => setHoveredWsId(null)}
+                >
+                  {/* Click area — select only, no navigation */}
+                  <button
+                    className={s.wsClickArea}
+                    onClick={() => setSidebarFocusedId(isFocused ? null : w.id)}
+                  >
+                    <span className={s.wsDot} style={{ backgroundColor: w.color }} />
+                    <span className={s.wsName}>{w.name}</span>
+                  </button>
+
+                  {/* Action buttons — visible on hover */}
+                  <div className={cx(s.wsActions, !isWsHovered && s.hidden)}>
+                    {/* Open in console */}
+                    <button
+                      className={cx(s.iconBtn, isConsoleOpen && s.iconBtnActive)}
+                      title={isConsoleOpen ? 'Already open in console' : 'Open in console'}
+                      onClick={() => openInConsole(w.id)}
+                    >
+                      <Terminal size={10} />
+                    </button>
+                    {/* Delete */}
+                    <button
+                      className={cx(s.iconBtn, s.iconBtnDanger)}
+                      title="Delete workspace"
+                      onClick={() => {
+                        if (window.confirm(`Delete workspace "${w.name}" and all its spaces?`)) {
+                          deleteWorkspace(w.id);
+                        }
+                      }}
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Spaces — shown when workspace is focused in sidebar */}
+                {isFocused && (
                   <div className={s.spaceList}>
                     {workspaceSpaces.map(sp => {
-                      const isSpaceActive = sp.id === activeSpaceId;
+                      const isSpaceActive  = sp.id === activeSpaceId;
+                      const isSpaceHovered = hoveredSpaceId === sp.id;
+
                       return (
                         <div
                           key={sp.id}
                           className={cx(s.spaceRow, isSpaceActive && s.spaceRowActive)}
-                          style={isSpaceActive ? { borderLeftColor: sp.color } : undefined}
+                          style={isSpaceActive
+                            ? { borderLeftColor: sp.color, backgroundColor: sp.color + '18' }
+                            : undefined}
                           onClick={() => setActiveSpaceId(isSpaceActive ? null : sp.id)}
+                          onMouseEnter={() => setHoveredSpaceId(sp.id)}
+                          onMouseLeave={() => setHoveredSpaceId(null)}
                         >
                           <span className={s.spaceConnector} />
-                          <span className={s.spaceDot} style={{ backgroundColor: sp.color }} />
+                          <span
+                            className={s.spaceDot}
+                            style={{
+                              backgroundColor: sp.color,
+                              boxShadow: isSpaceActive ? `0 0 0 2px ${sp.color}44` : undefined,
+                            }}
+                          />
                           <span className={s.spaceName}>{sp.name}</span>
-                          <div className={s.spaceActions}>
+
+                          {/* Space actions — shown on hover */}
+                          <div className={cx(s.spaceActions, !isSpaceHovered && s.hidden)}>
                             <button
-                              className={s.spaceActionBtn}
-                              onClick={e => { e.stopPropagation(); openEditSpace(sp); }}
+                              className={s.iconBtn}
                               title="Edit space"
+                              onClick={e => { e.stopPropagation(); openEditSpace(sp); }}
                             >
                               <Edit2 size={9} />
                             </button>
                             <button
-                              className={cx(s.spaceActionBtn, s.spaceDeleteBtn)}
-                              onClick={e => { e.stopPropagation(); handleDeleteSpace(sp); }}
+                              className={cx(s.iconBtn, s.iconBtnDanger)}
                               title="Delete space"
+                              onClick={e => {
+                                e.stopPropagation();
+                                if (window.confirm(`Delete space "${sp.name}"?`)) deleteSpace(sp.id);
+                              }}
                             >
                               <Trash2 size={9} />
                             </button>
@@ -135,16 +205,14 @@ export function Sidebar() {
                     })}
 
                     {/* New space button */}
-                    <button
-                      className={s.newSpaceBtn}
-                      onClick={() => openCreateSpace(w.id)}
-                    >
+                    <button className={s.newSpaceBtn} onClick={() => openCreateSpace(w.id)}>
                       <span className={s.spaceConnector} />
-                      <Plus size={9} className={s.newSpaceIcon} />
+                      <Plus size={9} />
                       <span>New Space</span>
                     </button>
                   </div>
                 )}
+
               </div>
             );
           })}
@@ -155,7 +223,6 @@ export function Sidebar() {
         {/* ── Navigation ── */}
         <span className={s.sectionLabel}>Navigation</span>
         <nav className={s.nav}>
-
           <NavLink
             to="/"
             end
@@ -172,7 +239,6 @@ export function Sidebar() {
               <span>{label}</span>
             </NavLink>
           ))}
-
         </nav>
 
       </div>
@@ -189,7 +255,7 @@ export function Sidebar() {
         </button>
       </div>
 
-      {/* Space create/edit modal */}
+      {/* Space modal */}
       {spaceModalOpen && modalWorkspaceId && (
         <SpaceManagerModal
           workspaceId={modalWorkspaceId}
@@ -276,32 +342,53 @@ const s = {
     padding: 0 var(--spacing-sm);
   `,
 
-  /* Workspace row */
-  wsBtn: css`
+  /* Workspace row wrapper */
+  wsRow: css`
     width: 100%;
     display: flex;
     align-items: center;
-    gap: var(--spacing-sm);
-    padding: 9px 12px;
     border-radius: var(--border-radius-sm);
-    border: none;
     border-left: 2px solid transparent;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    padding-right: 4px;
+    &:hover { background-color: var(--bg-hover); }
+  `,
+  /* Sidebar-selected: subtle highlight, no border */
+  wsRowFocused: css`
+    background-color: var(--bg-hover);
+  `,
+  /* Console-open: colored left border marks the "live" workspace */
+  wsRowConsoleOpen: css`
+    background-color: var(--bg-hover);
+  `,
+
+  /* Action button group */
+  wsActions: css`
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    flex-shrink: 0;
+    transition: opacity 120ms ease;
+  `,
+
+  /* Inner button: dot + name — click only selects, does NOT navigate */
+  wsClickArea: css`
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: 8px 4px 8px 12px;
+    border: none;
     background: transparent;
     color: var(--text-secondary);
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-semibold);
     cursor: pointer;
-    transition: all 0.15s ease;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    &:hover { color: var(--text-primary); background-color: var(--bg-hover); }
-  `,
-  wsBtnActive: css`
-    background-color: var(--bg-hover);
-    border-left-color: var(--color-primary);
-    color: var(--color-primary);
-    &:hover { color: var(--color-primary); }
+    text-align: left;
+    border-radius: var(--border-radius-sm);
+    transition: color 0.15s ease;
+    &:hover { color: var(--text-primary); }
   `,
   wsDot: css`
     width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
@@ -312,10 +399,40 @@ const s = {
     }
   `,
   wsName: css`
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   `,
 
-  /* Space list (nested under active workspace) */
+  /* Shared small icon button */
+  iconBtn: css`
+    flex-shrink: 0;
+    width: 20px; height: 20px;
+    border-radius: 4px; border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 100ms ease, color 100ms ease;
+    padding: 0;
+    &:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+  `,
+  iconBtnDanger: css`
+    &:hover { background: rgba(239,68,68,0.15) !important; color: #ef4444 !important; }
+  `,
+  iconBtnActive: css`
+    color: var(--color-primary) !important;
+  `,
+
+  /* Utility: visually hidden but still in layout */
+  hidden: css`
+    opacity: 0;
+    pointer-events: none;
+  `,
+
+  /* Space list */
   spaceList: css`
     display: flex;
     flex-direction: column;
@@ -323,8 +440,6 @@ const s = {
     margin-top: 2px;
     padding-bottom: 4px;
   `,
-
-  /* Connector line visual */
   spaceConnector: css`
     width: 16px;
     flex-shrink: 0;
@@ -332,23 +447,18 @@ const s = {
     &::before {
       content: '';
       position: absolute;
-      left: 10px;
-      top: 50%;
+      left: 10px; top: 50%;
       transform: translateY(-50%);
-      width: 6px;
-      height: 1px;
+      width: 6px; height: 1px;
       background: var(--border-color);
     }
   `,
-
-  /* Space row */
   spaceRow: css`
     display: flex;
     align-items: center;
-    gap: 7px;
-    padding: 6px 8px 6px 4px;
+    gap: 6px;
+    padding: 5px 6px 5px 4px;
     border-radius: var(--border-radius-sm);
-    border: none;
     border-left: 2px solid transparent;
     background: transparent;
     color: var(--text-tertiary);
@@ -356,91 +466,51 @@ const s = {
     font-weight: 600;
     cursor: pointer;
     transition: all 0.12s ease;
-    position: relative;
     user-select: none;
-
-    &:hover {
-      color: var(--text-secondary);
-      background: var(--bg-hover);
-    }
-    &:hover .space-actions { opacity: 1; }
+    &:hover { color: var(--text-secondary); background: var(--bg-hover); }
   `,
   spaceRowActive: css`
     color: var(--text-primary) !important;
-    background: var(--bg-hover) !important;
   `,
   spaceDot: css`
-    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+    transition: box-shadow 150ms ease;
   `,
   spaceName: css`
-    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
   `,
   spaceActions: css`
-    display: flex;
-    align-items: center;
-    gap: 1px;
-    opacity: 0;
+    display: flex; align-items: center; gap: 1px; flex-shrink: 0;
     transition: opacity 120ms ease;
-    flex-shrink: 0;
-  `,
-  spaceActionBtn: css`
-    width: 16px; height: 16px; border-radius: 3px; border: none;
-    background: transparent; color: var(--text-tertiary);
-    cursor: pointer; display: flex; align-items: center; justify-content: center;
-    transition: all 100ms ease;
-    &:hover { background: var(--bg-hover); color: var(--text-primary); }
-  `,
-  spaceDeleteBtn: css`
-    &:hover {
-      background: rgba(239,68,68,0.12) !important;
-      color: #ef4444 !important;
-    }
   `,
 
   /* New space button */
   newSpaceBtn: css`
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 5px 8px 5px 4px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 6px 5px 4px;
     border-radius: var(--border-radius-sm);
-    border: none;
-    background: transparent;
+    border: none; background: transparent;
     color: var(--text-tertiary);
-    font-size: 10px;
-    font-weight: 600;
-    cursor: pointer;
+    font-size: 10px; font-weight: 600;
+    cursor: pointer; width: 100%; text-align: left;
     transition: all 0.12s ease;
-    width: 100%;
-    text-align: left;
-    letter-spacing: 0.01em;
     &:hover { color: #FF9D00; background: var(--bg-hover); }
-  `,
-  newSpaceIcon: css`
-    color: inherit; flex-shrink: 0;
   `,
 
   divider: css`
-    border: none;
-    border-top: 1px solid var(--border-color);
-    margin: 8px 0;
+    border: none; border-top: 1px solid var(--border-color); margin: 8px 0;
   `,
   nav: css`
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    display: flex; flex-direction: column; gap: 4px;
     padding-bottom: var(--spacing-lg);
   `,
   navBtn: css`
-    display: flex;
-    align-items: center;
-    gap: 12px;
+    display: flex; align-items: center; gap: 12px;
     padding: 8px 12px;
     border-radius: var(--border-radius-sm);
     border-left: 2px solid transparent;
     color: var(--text-secondary);
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold);
     text-decoration: none;
     transition: all 0.15s ease;
     &:hover { color: var(--text-primary); background-color: var(--bg-hover); }
@@ -455,19 +525,14 @@ const s = {
   footer: css`
     padding: var(--spacing-md);
     border-top: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    display: flex; align-items: center; justify-content: space-between;
   `,
   version: css`font-size: var(--font-size-xs); color: var(--text-tertiary);`,
   themeBtn: css`
-    padding: 8px;
-    border-radius: var(--border-radius-sm);
+    padding: 8px; border-radius: var(--border-radius-sm);
     border: 1px solid var(--border-color);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
+    background: transparent; color: var(--text-secondary);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
     transition: background-color 0.15s, color 0.15s;
     &:hover { background-color: var(--bg-hover); color: var(--text-primary); }
   `,
