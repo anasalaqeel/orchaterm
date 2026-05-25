@@ -656,66 +656,67 @@ const MessageRow: React.FC<{
 const s = {
   root: css`
     display: flex; flex-direction: column; height: 100%;
-    background: #070d14; overflow: hidden; position: relative;
+    background: #010409; overflow: hidden; position: relative;
   `,
   header: css`
     display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 14px; border-bottom: 1px solid #0d1c2a;
-    background: #0b1520; flex-shrink: 0; gap: 8px;
+    padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.07);
+    background: #0d1117; flex-shrink: 0; gap: 8px;
   `,
-  headerLeft: css`display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;`,
-  headerRight: css`display: flex; align-items: center; gap: 5px; flex-shrink: 0;`,
+  headerLeft: css`display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; overflow: hidden;`,
+  headerRight: css`display: flex; align-items: center; gap: 4px; flex-shrink: 0;`,
   botIcon: css`color: #ff9d00; flex-shrink: 0;`,
-  headerTitle: css`font-size: 12px; font-weight: 700; color: #e2e8f0; white-space: nowrap;`,
+  headerTitle: css`font-size: 12px; font-weight: 700; color: #f0f6fc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;`,
   groupBadge: css`
     display: inline-flex; align-items: center; gap: 4px;
-    font-size: 10px; font-weight: 700; padding: 2px 7px;
+    font-size: 10px; font-weight: 600; padding: 1px 6px;
     border-radius: 99px; border: 1px solid; flex-shrink: 0; cursor: default;
+    opacity: 0.85;
   `,
   headerIconBtn: css`
     width: 24px; height: 24px; border-radius: 5px; border: none;
-    background: transparent; color: #475569; cursor: pointer;
+    background: transparent; color: #6e7681; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: all 150ms ease;
-    &:hover { background: #0d1c2a; color: #94a3b8; }
+    &:hover { background: rgba(255,255,255,0.07); color: #c9d1d9; }
   `,
   headerIconBtnActive: css`
-    color: #10b981 !important;
-    background: rgba(16,185,129,0.1) !important;
+    color: #3fb950 !important;
+    background: rgba(63,185,80,0.1) !important;
   `,
-  onlineBadge: css`display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; color: #10b981;`,
+  onlineBadge: css`display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: #3fb950;`,
   onlineDot: css`
-    width: 6px; height: 6px; border-radius: 50%; background: #10b981;
-    animation: blink 2s ease-in-out infinite;
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    width: 5px; height: 5px; border-radius: 50%; background: #3fb950;
+    animation: blink 2.5s ease-in-out infinite;
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
   `,
-  offlineBadge: css`display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; color: #ef4444;`,
+  offlineBadge: css`display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: #f85149;`,
   refreshBtn: css`
     width: 22px; height: 22px; border-radius: 5px; border: none;
-    background: transparent; color: #475569; cursor: pointer;
+    background: transparent; color: #6e7681; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: all 150ms ease;
-    &:hover { background: #0d1c2a; color: #94a3b8; }
-    &:disabled { opacity: 0.5; cursor: default; }
+    &:hover { background: rgba(255,255,255,0.07); color: #c9d1d9; }
+    &:disabled { opacity: 0.4; cursor: default; }
   `,
   spin: css`animation: spin 0.8s linear infinite; @keyframes spin { to { transform: rotate(360deg); } }`,
   warningBanner: css`
-    background: rgba(245,158,11,0.08); border-bottom: 1px solid rgba(245,158,11,0.2);
-    padding: 8px 14px; font-size: 11px; color: #f59e0b; flex-shrink: 0; line-height: 1.5;
-    code { font-family: 'Fira Code',monospace; color: #fbbf24; }
-    strong { color: #fbbf24; }
+    background: rgba(245,158,11,0.07); border-bottom: 1px solid rgba(245,158,11,0.15);
+    padding: 8px 14px; font-size: 11px; color: #e3b341; flex-shrink: 0; line-height: 1.5;
+    code { font-family: 'Fira Code',monospace; color: #e3b341; }
+    strong { color: #e3b341; }
   `,
   inlineLinkBtn: css`
-    background: transparent; border: none; color: #fbbf24;
+    background: transparent; border: none; color: #e3b341;
     text-decoration: underline; cursor: pointer; font-size: inherit; padding: 0;
-    &:hover { color: #fff; }
+    &:hover { color: #f0f6fc; }
   `,
   messageList: css`
-    flex: 1; overflow-y: auto; padding: 16px 14px;
+    flex: 1; overflow-y: auto; padding: 14px 12px;
     display: flex; flex-direction: column; gap: 10px;
     scroll-behavior: smooth;
     &::-webkit-scrollbar { width: 4px; }
-    &::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 2px; }
+    &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
   `,
   emptyState: css`
     flex: 1; display: flex; flex-direction: column; align-items: center;
@@ -739,79 +740,79 @@ const s = {
   msgRowUser: css`flex-direction: row-reverse;`,
   msgRowAssistant: css`flex-direction: row;`,
   avatar: css`
-    width: 24px; height: 24px; border-radius: 50%;
-    background: #0d1c2a; border: 1px solid #1e3a5f;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
     display: flex; align-items: center; justify-content: center;
     color: #ff9d00; flex-shrink: 0;
   `,
-  avatarUser: css`background: rgba(255,157,0,0.1); border-color: rgba(255,157,0,0.3);`,
+  avatarUser: css`background: rgba(255,157,0,0.08); border-color: rgba(255,157,0,0.25);`,
   bubble: css`
-    max-width: 82%; padding: 10px 13px; border-radius: 12px;
-    font-size: 12px; line-height: 1.55; word-break: break-word; position: relative;
+    max-width: 82%; padding: 9px 12px; border-radius: 10px;
+    font-size: 12px; line-height: 1.6; word-break: break-word; position: relative;
   `,
   bubbleUser: css`
-    background: rgba(255,157,0,0.12); border: 1px solid rgba(255,157,0,0.25);
+    background: rgba(255,157,0,0.1); border: 1px solid rgba(255,157,0,0.2);
     border-bottom-right-radius: 3px; color: #fde68a;
   `,
   bubbleAssistant: css`
-    background: #0d1c2a; border: 1px solid #132030;
-    border-bottom-left-radius: 3px; color: #cbd5e1;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-bottom-left-radius: 3px; color: #c9d1d9;
   `,
-  msgText: css`margin: 0; font-size: inherit; line-height: 1.55;`,
+  msgText: css`margin: 0; font-size: inherit; line-height: 1.6;`,
   cursor: css`
-    display: inline-block; width: 7px; height: 13px; background: #ff9d00;
+    display: inline-block; width: 6px; height: 12px; background: #ff9d00;
     border-radius: 1px; margin-left: 2px; vertical-align: text-bottom;
     animation: blink2 0.8s step-end infinite;
     @keyframes blink2 { 0%,100%{opacity:1} 50%{opacity:0} }
   `,
   vaultBtn: css`
     position: absolute; top: -8px; right: -8px;
-    width: 22px; height: 22px; border-radius: 50%;
-    background: #0b1520; border: 1px solid #1e3a5f;
-    color: #475569; cursor: pointer;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #0d1117; border: 1px solid rgba(255,255,255,0.12);
+    color: #6e7681; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: all 150ms ease;
-    &:hover { background: rgba(255,157,0,0.12); border-color: #ff9d00; color: #ff9d00; }
+    &:hover { border-color: #ff9d00; color: #ff9d00; }
   `,
   agentSummaryRow: css`
     display: flex; align-items: baseline; gap: 6px;
-    padding: 5px 8px; background: rgba(0,0,0,0.2);
-    border-radius: 6px; border-left: 2px solid #1e3a5f;
+    padding: 4px 8px; background: rgba(255,255,255,0.03);
+    border-radius: 5px; border-left: 2px solid rgba(255,255,255,0.12);
   `,
-  agentSummaryDot: css`width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 3px;`,
-  agentSummaryTitle: css`font-size: 10px; font-weight: 700; color: #475569; white-space: nowrap; flex-shrink: 0;`,
-  agentSummaryText: css`font-size: 11px; color: #64748b; line-height: 1.4;`,
+  agentSummaryDot: css`width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-top: 3px;`,
+  agentSummaryTitle: css`font-size: 10px; font-weight: 600; color: #6e7681; white-space: nowrap; flex-shrink: 0;`,
+  agentSummaryText: css`font-size: 11px; color: #8b949e; line-height: 1.4;`,
   systemRow: css`
-    font-size: 11px; color: #64748b; padding: 6px 10px;
-    border-left: 2px solid #1e3a5f; border-radius: 4px;
-    background: rgba(30,58,95,0.15); line-height: 1.4;
+    font-size: 11px; color: #8b949e; padding: 5px 10px;
+    border-left: 2px solid rgba(255,255,255,0.12); border-radius: 3px;
+    background: rgba(255,255,255,0.03); line-height: 1.4;
   `,
   scrollBtn: css`
-    position: absolute; bottom: 70px; right: 16px;
-    width: 28px; height: 28px; border-radius: 50%;
-    border: 1px solid #1e3a5f; background: #0b1520; color: #64748b;
+    position: absolute; bottom: 70px; right: 14px;
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.12); background: #0d1117; color: #6e7681;
     cursor: pointer; display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: all 150ms ease;
-    &:hover { background: #122030; color: #e2e8f0; }
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5); transition: all 150ms ease;
+    &:hover { border-color: rgba(255,255,255,0.2); color: #c9d1d9; }
   `,
   inputArea: css`
     display: flex; align-items: flex-end; gap: 8px;
-    padding: 10px 12px; border-top: 1px solid #0d1c2a;
-    background: #0b1520; flex-shrink: 0;
+    padding: 10px 12px; border-top: 1px solid rgba(255,255,255,0.07);
+    background: #0d1117; flex-shrink: 0;
   `,
   textarea: css`
-    flex: 1; background: #071018; border: 1px solid #1e3a5f;
-    border-radius: 8px; padding: 9px 12px; color: #e2e8f0;
+    flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px; padding: 8px 12px; color: #f0f6fc;
     font-size: 12px; font-family: inherit; line-height: 1.5;
     resize: none; outline: none; max-height: 120px; min-height: 36px;
     transition: border-color 150ms ease;
-    &:focus { border-color: #2d5a8a; }
-    &::placeholder { color: #334155; }
-    &:disabled { opacity: 0.5; cursor: not-allowed; }
+    &:focus { border-color: rgba(255,157,0,0.5); }
+    &::placeholder { color: #6e7681; }
+    &:disabled { opacity: 0.4; cursor: not-allowed; }
   `,
   sendBtn: css`
-    width: 34px; height: 34px; flex-shrink: 0; border-radius: 8px; border: none;
-    background: #ff9d00; color: #070d14; cursor: pointer;
+    width: 32px; height: 32px; flex-shrink: 0; border-radius: 7px; border: none;
+    background: #ff9d00; color: #010409; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     font-size: 13px; font-weight: 700; transition: all 150ms ease;
     &:hover:not(:disabled) { background: #ffb733; }

@@ -275,15 +275,6 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
         </div>
       )}
 
-      {/* ── Group scope indicator ── */}
-      {activeSpace && (
-        <div className={s.spaceScopeBanner} style={{ borderLeftColor: activeSpace.color }}>
-          <span className={s.spaceScopeDot} style={{ backgroundColor: activeSpace.color }} />
-          <span className={s.spaceScopeLabel}>Scoped to:</span>
-          <span className={s.spaceScopeName}>{activeSpace.name}</span>
-        </div>
-      )}
-
       {/* ── Plan selector row ── */}
       <div className={s.planSelectorRow}>
         <Network className={s.planSelectorIcon} />
@@ -600,8 +591,6 @@ const s = {
   modalHeaderTitle: css`
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-bold);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
     color: var(--text-primary);
   `,
   modalHeaderHint: css`
@@ -935,10 +924,8 @@ const s = {
     gap: 5px;
   `,
   sectionLabel: css`
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
+    font-size: 10px;
+    font-weight: 600;
     color: var(--text-tertiary);
     padding: 0 2px;
   `,

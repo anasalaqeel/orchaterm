@@ -665,9 +665,9 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background-color: #0b1520;
-    padding: 0 12px 0 0;
-    border-bottom: 1px solid #0d1c2a;
+    background-color: #0d1117;
+    padding: 0 10px 0 0;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
     user-select: none;
     flex-shrink: 0;
     gap: 8px;
@@ -707,16 +707,16 @@ const styles = {
     }
   `,
   activeTab: css`
-    background-color: #070d14;
+    background-color: #010409;
     /* border-top-color is set inline via tabColor */
-    color: #f1f5f9;
+    color: #f0f6fc;
   `,
   inactiveTab: css`
-    background-color: #0b1520;
-    color: #64748b;
+    background-color: transparent;
+    color: #6e7681;
     &:hover {
-      background-color: #0d1c2a;
-      color: #94a3b8;
+      background-color: rgba(255,255,255,0.04);
+      color: #8b949e;
     }
   `,
   tabDragging: css`
@@ -894,18 +894,18 @@ const styles = {
     gap: 6px;
     font-size: 11px;
     font-weight: 600;
-    color: #94a3b8;
-    background-color: #0d1c2a;
-    border: 1px solid #1a2e40;
-    border-radius: 6px;
+    color: #8b949e;
+    background-color: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 5px;
     padding: 4px 8px;
     cursor: pointer;
     transition: all 150ms ease;
     white-space: nowrap;
     &:hover {
-      color: #e2e8f0;
-      background-color: #122030;
-      border-color: #243a50;
+      color: #e6edf3;
+      background-color: rgba(255,255,255,0.08);
+      border-color: rgba(255,255,255,0.15);
     }
   `,
   shellPickerIcon: css`
@@ -1009,10 +1009,10 @@ const styles = {
     justify-content: center;
     font-size: 11px;
     font-weight: 700;
-    color: #94a3b8;
-    background-color: #0d1c2a;
-    border: 1px solid #1a2e40;
-    border-radius: 6px;
+    color: #8b949e;
+    background-color: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 5px;
     padding: 4px;
     width: 28px;
     height: 28px;
@@ -1021,9 +1021,9 @@ const styles = {
     white-space: nowrap;
     flex-shrink: 0;
     &:hover {
-      color: #ffffff;
-      background-color: #122030;
-      border-color: #243a50;
+      color: #ff9d00;
+      background-color: rgba(255,157,0,0.1);
+      border-color: rgba(255,157,0,0.3);
     }
   `,
 
