@@ -103,10 +103,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         cursorStyle: 'block',
         scrollback: 5000,
         theme: {
-          background: '#070d14',
+          background: '#0C0C0C',
           foreground: '#d4d4d4',
           cursor: '#7B68EE',
-          cursorAccent: '#070d14',
+          cursorAccent: '#0C0C0C',
           selectionBackground: 'rgba(158, 255, 255, 0.25)',
           selectionForeground: '#ffffff',
           black: '#1a1a1a',
