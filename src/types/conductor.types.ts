@@ -46,8 +46,8 @@ export interface OrchestratorPlan {
   createdAt: number;
   completedAt?: number;
   workspaceId: string;
-  /** Scopes this plan to a specific Space. */
-  spaceId: string;
+  /** Scopes this plan to a specific Space. null = not scoped to any space. */
+  spaceId: string | null;
 }
 
 // ── Per-session Buffer (in-memory only) ───────────────────────────────────────
