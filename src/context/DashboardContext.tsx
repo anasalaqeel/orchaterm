@@ -3,7 +3,10 @@ import {
   Workspace, Space, TaskLog, SavedPrompt, AppData, AppSettings,
   OrchestratorPlan, TerminalSession,
 } from '../types';
-import { loadData, saveData, loadPlans, savePlans } from '../services/storage';
+import {
+  loadData, saveData, loadPlans, savePlans,
+  loadUIState, saveUIState,
+} from '../services/storage';
 
 export interface ToastInfo {
   id: string;
@@ -103,21 +106,36 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     const init = async () => {
       try {
-        const data = await loadData();
-        setWorkspaces(data.workspaces || []);
-        setSpaces(data.spaces || []);
+        const [data, ui, savedPlans] = await Promise.all([
+          loadData(),
+          loadUIState(),
+          loadPlans(),
+        ]);
+
+        const ws  = data.workspaces || [];
+        const sps = data.spaces    || [];
+
+        setWorkspaces(ws);
+        setSpaces(sps);
         setTaskLogs(data.taskLogs || []);
         setSavedPrompts(data.savedPrompts || []);
-
-        if (data.workspaces?.length > 0) {
-          setActiveWorkspaceId(data.workspaces[0].id);
-        }
-        if (data.settings) {
-          setSettings(prev => ({ ...prev, ...data.settings }));
-        }
-
-        const savedPlans = await loadPlans();
+        if (data.settings) setSettings(prev => ({ ...prev, ...data.settings }));
         setPlans(savedPlans);
+
+        // Restore active workspace — validate it still exists
+        if (ui.activeWorkspaceId && ws.some(w => w.id === ui.activeWorkspaceId)) {
+          setActiveWorkspaceId(ui.activeWorkspaceId);
+        } else if (ws.length > 0) {
+          setActiveWorkspaceId(ws[0].id);
+        }
+
+        // Restore active space — validate it still exists
+        if (ui.activeSpaceId && sps.some(sp => sp.id === ui.activeSpaceId)) {
+          setActiveSpaceId(ui.activeSpaceId);
+        }
+
+        // Restore view mode
+        setViewMode(ui.viewMode);
 
         const savedTheme = localStorage.getItem('agentdeck_theme');
         setTheme(savedTheme === 'light' ? 'light' : 'dark');
@@ -129,6 +147,17 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
     init();
   }, []);
+
+  // ── Persist UI state on change (debounced) ───────────────────────────────────
+  const uiSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!isLoaded) return; // wait until initial load is complete
+    if (uiSaveTimer.current) clearTimeout(uiSaveTimer.current);
+    uiSaveTimer.current = setTimeout(() => {
+      saveUIState({ activeWorkspaceId, activeSpaceId, viewMode });
+    }, 400);
+    return () => { if (uiSaveTimer.current) clearTimeout(uiSaveTimer.current); };
+  }, [activeWorkspaceId, activeSpaceId, viewMode, isLoaded]);
 
   // ── Sync theme ───────────────────────────────────────────────────────────────
   useEffect(() => {

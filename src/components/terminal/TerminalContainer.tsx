@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Plus, X, Terminal, Edit2, ChevronDown, Check, Palette } from 'lucide-react';
 import { css, cx } from '@emotion/css';
 import type { TerminalSession } from '../../types';
+import { loadTerminalTabs, saveTerminalTabs } from '../../services/storage';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,9 @@ interface ShellInfo {
 interface TerminalContainerProps {
   workspaceId: string;
   workspacePath: string;
+  /** Stable key for this scope (workspaceId::spaceId or workspaceId::workspace).
+   *  Used to save/restore tab metadata per scope. */
+  scopeKey: string;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -45,6 +49,7 @@ function shellBasename(path: string): string {
 export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   workspaceId,
   workspacePath,
+  scopeKey,
 }) => {
   const { settings, addTerminalSession, removeTerminalSession, updateTerminalSession } = useDashboard();
 
@@ -92,6 +97,9 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   }, [shellPickerOpen]);
 
   // ── Session state ────────────────────────────────────────────────────────
+  // isInitializing stays true until the first default tab is created.
+  // This prevents the empty-state card from flashing during remount.
+  const [isInitializing, setIsInitializing] = useState(true);
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
@@ -151,7 +159,9 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Workspace change ─────────────────────────────────────────────────────
+  // ── Scope change: restore saved tabs or create default ──────────────────
+  // Runs on mount (and whenever workspaceId changes, though the component is
+  // re-keyed from above so that is equivalent to a remount).
   const prevWorkspaceId = useRef(workspaceId);
 
   useEffect(() => {
@@ -163,28 +173,91 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     }
     prevWorkspaceId.current = workspaceId;
 
-    const shell = selectedShellRef.current;
-    const shellPath = shell?.path ?? settings.shellPath ?? 'powershell';
-    const shellArgs = shell?.args ?? [];
-    const shellName = shell?.name ?? shellBasename(shellPath);
+    let cancelled = false;
 
-    tabCounter.current = 1;
-    const defaultId = crypto.randomUUID();
-    tabRefs.current.set(defaultId, React.createRef<TerminalTabHandle | null>());
-    setSessions([{ id: defaultId, title: `${shellName} 1`, shell: shellPath, shellArgs, workspaceId, color: null, order: 0 }]);
-    setActiveSessionId(defaultId);
-    setEditingSessionId(null);
+    const restoreOrCreate = async () => {
+      const shell = selectedShellRef.current;
+      const shellPath = shell?.path ?? settings.shellPath ?? 'powershell';
+      const shellArgs = shell?.args ?? [];
+      const shellName = shell?.name ?? shellBasename(shellPath);
+
+      // Try to restore previously saved tabs for this scope.
+      const allTabs = await loadTerminalTabs();
+      const saved = allTabs[scopeKey];
+
+      if (cancelled) return;
+
+      if (saved && saved.length > 0) {
+        // Restore saved layout — fresh IDs, same metadata.
+        tabCounter.current = saved.length;
+        const restored: TerminalSession[] = saved
+          .slice()
+          .sort((a, b) => a.order - b.order)
+          .map((tab, i) => {
+            const newId = crypto.randomUUID();
+            tabRefs.current.set(newId, React.createRef<TerminalTabHandle | null>());
+            return {
+              id: newId,
+              title: tab.title,
+              shell: tab.shell,
+              shellArgs: tab.shellArgs,
+              workspaceId,
+              color: tab.color,
+              order: i,
+            };
+          });
+        setSessions(restored);
+        setActiveSessionId(restored[0].id);
+      } else {
+        // No saved state — create a single default tab.
+        tabCounter.current = 1;
+        const defaultId = crypto.randomUUID();
+        tabRefs.current.set(defaultId, React.createRef<TerminalTabHandle | null>());
+        setSessions([{ id: defaultId, title: `${shellName} 1`, shell: shellPath, shellArgs, workspaceId, color: null, order: 0 }]);
+        setActiveSessionId(defaultId);
+      }
+
+      setEditingSessionId(null);
+      setIsInitializing(false);
+    };
+
+    restoreOrCreate();
 
     return () => {
+      cancelled = true;
       setSessions((prev) => {
-        prev.forEach((s) => {
-          invoke('kill_pty', { sessionId: s.id }).catch(() => {});
-        });
+        prev.forEach((s) => invoke('kill_pty', { sessionId: s.id }).catch(() => {}));
         return prev;
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId]);
+  }, [workspaceId, scopeKey]);
+
+  // ── Save tab metadata whenever sessions change ────────────────────────────
+  const saveTabsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isInitializing) return; // skip until the first tab batch is ready
+    if (saveTabsTimer.current) clearTimeout(saveTabsTimer.current);
+    saveTabsTimer.current = setTimeout(async () => {
+      const allTabs = await loadTerminalTabs();
+      if (sessions.length === 0) {
+        // All tabs closed — remove scope entry so next open starts fresh.
+        delete allTabs[scopeKey];
+      } else {
+        allTabs[scopeKey] = sessions.map(s => ({
+          title: s.title,
+          shell: s.shell,
+          shellArgs: s.shellArgs,
+          color: s.color,
+          order: s.order,
+        }));
+      }
+      await saveTerminalTabs(allTabs);
+    }, 500);
+    return () => { if (saveTabsTimer.current) clearTimeout(saveTabsTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, isInitializing, scopeKey]);
 
   // ── Tab actions ──────────────────────────────────────────────────────────
 
@@ -540,7 +613,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
       {/* Terminal Viewports */}
       <div className={styles.viewports}>
-        {sessions.length === 0 ? (
+        {!isInitializing && sessions.length === 0 ? (
           <div className={styles.emptyState}>
             <Terminal className={styles.emptyIcon} />
             <p className={styles.emptyTitle}>No active terminal sessions</p>

@@ -118,17 +118,28 @@ export function parseSentinel(buffer: string): OrchestratorTaskOutput | null {
 
 /**
  * Scans a buffer for a complete plan JSON block (used during plan generation
- * from a capable agent). Returns the raw JSON string if found, or null if the
+ * from a capable agent). Returns the clean JSON string if found, or null if the
  * block is not yet complete.
+ *
+ * Design notes:
+ * - Strip ANSI first — Claude's PTY output is heavily decorated.
+ * - Use lastIndexOf for PLAN_END so we always pick up Claude's *actual*
+ *   response rather than any markers that appear in the echoed prompt or in
+ *   Claude's own preamble / commentary.
  */
 export function parsePlanBlock(buffer: string): string | null {
-  const startIdx = buffer.indexOf(PLAN_START);
-  if (startIdx === -1) return null;
+  // Work on ANSI-clean text so escape codes don't disrupt marker detection.
+  const clean = stripAnsiCodes(buffer);
 
-  const endIdx = buffer.indexOf(PLAN_END, startIdx);
+  // Find the last complete END marker — this is always Claude's real output.
+  const endIdx = clean.lastIndexOf(PLAN_END);
   if (endIdx === -1) return null;
 
-  return buffer.slice(startIdx + PLAN_START.length, endIdx).trim();
+  // Find the last START marker that precedes this END.
+  const startIdx = clean.lastIndexOf(PLAN_START, endIdx);
+  if (startIdx === -1) return null;
+
+  return clean.slice(startIdx + PLAN_START.length, endIdx).trim();
 }
 
 /**
