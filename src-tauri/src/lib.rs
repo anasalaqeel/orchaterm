@@ -88,9 +88,11 @@ fn get_available_shells() -> Vec<ShellInfo> {
     // ── Synthetic: bash inside WSL ────────────────────────────────────────
     // Only added when wsl.exe is present. Uses `wsl -- bash` so it always
     // opens bash regardless of what WSL's default shell is set to.
+    // Named "WSL bash" to distinguish it from "WSL" (default shell) and
+    // from the native Windows "Git Bash" (MSYS2) entry below.
     if wsl_found {
         shells.push(ShellInfo {
-            name: "Git Bash (WSL)".to_string(),
+            name: "WSL bash".to_string(),
             path: "wsl".to_string(),
             args: vec!["--".to_string(), "bash".to_string()],
         });
