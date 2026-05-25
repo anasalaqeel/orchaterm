@@ -27,7 +27,7 @@ interface TerminalContainerProps {
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const TAB_COLOR_PRESETS = [
-  '#ff9d00', // amber  (default)
+  '#7B68EE', // brand purple (default)
   '#10b981', // emerald
   '#3b82f6', // blue
   '#8b5cf6', // violet
@@ -408,7 +408,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
             const isEditing  = session.id === editingSessionId;
             const isDragging = session.id === dragId;
             const isDragOver = session.id === dragOverId;
-            const tabColor   = session.color ?? '#ff9d00';
+            const tabColor   = session.color ?? '#7B68EE';
             const isColorPickerOpen = session.id === colorPickerOpenId;
 
             return (
@@ -444,7 +444,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 >
                   <span
                     className={cx(styles.colorDot, isActive && styles.colorDotActive)}
-                    style={{ backgroundColor: session.color ?? (isActive ? '#ff9d00' : '#334155') }}
+                    style={{ backgroundColor: session.color ?? (isActive ? 'var(--color-brand)' : 'var(--bg-tertiary)') }}
                     title="Change tab color"
                   />
 
@@ -658,16 +658,16 @@ const styles = {
     height: 100%;
     display: flex;
     flex-direction: column;
-    background-color: #070d14;
+    background-color: var(--bg-canvas);
     overflow: hidden;
   `,
   header: css`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background-color: #0d1117;
+    background-color: var(--bg-secondary);
     padding: 0 10px 0 0;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
+    border-bottom: 1px solid var(--border-color);
     user-select: none;
     flex-shrink: 0;
     gap: 8px;
@@ -707,16 +707,15 @@ const styles = {
     }
   `,
   activeTab: css`
-    background-color: #010409;
-    /* border-top-color is set inline via tabColor */
-    color: #f0f6fc;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
   `,
   inactiveTab: css`
     background-color: transparent;
-    color: #6e7681;
+    color: var(--text-tertiary);
     &:hover {
-      background-color: rgba(255,255,255,0.04);
-      color: #8b949e;
+      background-color: var(--bg-hover);
+      color: var(--text-secondary);
     }
   `,
   tabDragging: css`
@@ -724,7 +723,7 @@ const styles = {
     cursor: grabbing;
   `,
   tabDragOver: css`
-    box-shadow: -3px 0 0 0 #ff9d00;
+    box-shadow: -3px 0 0 0 var(--color-brand);
   `,
 
   /* Color dot */
@@ -755,13 +754,12 @@ const styles = {
   colorPickerPopover: css`
     position: fixed;
     z-index: 9999;
-    background-color: #0b1520;
-    border: 1px solid #1a2e40;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color-hover);
     border-radius: 10px;
     padding: 10px 12px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
     animation: popIn 120ms ease-out;
-
     @keyframes popIn {
       from { opacity: 0; transform: scale(0.92) translateY(-4px); }
       to   { opacity: 1; transform: scale(1)    translateY(0); }
@@ -769,10 +767,8 @@ const styles = {
   `,
   colorPickerLabel: css`
     font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #475569;
+    font-weight: 600;
+    color: var(--text-tertiary);
     margin-bottom: 8px;
     white-space: nowrap;
   `,
@@ -802,9 +798,9 @@ const styles = {
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    border: 1px solid #334155;
-    background: #0f172a;
-    color: #64748b;
+    border: 1px solid var(--border-color-hover);
+    background: var(--bg-canvas);
+    color: var(--text-tertiary);
     font-size: 9px;
     cursor: pointer;
     display: flex;
@@ -820,9 +816,9 @@ const styles = {
   `,
 
   renameInput: css`
-    background-color: #0f172a;
-    border: 1px solid #334155;
-    color: #f1f5f9;
+    background-color: var(--bg-canvas);
+    border: 1px solid var(--border-color-hover);
+    color: var(--text-primary);
     border-radius: 4px;
     padding: 2px 4px;
     width: 96px;
@@ -846,7 +842,7 @@ const styles = {
   tabActionBtn: css`
     padding: 2px;
     border-radius: 4px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     background: transparent;
     border: none;
     cursor: pointer;
@@ -855,14 +851,14 @@ const styles = {
     align-items: center;
     justify-content: center;
     &:hover {
-      background-color: #1e293b;
-      color: #cbd5e1;
+      background-color: var(--bg-hover);
+      color: var(--text-primary);
     }
   `,
   closeTabBtn: css`
     padding: 2px;
     border-radius: 4px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     background: transparent;
     border: none;
     cursor: pointer;
@@ -894,24 +890,24 @@ const styles = {
     gap: 6px;
     font-size: 11px;
     font-weight: 600;
-    color: #8b949e;
-    background-color: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-secondary);
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
     border-radius: 5px;
     padding: 4px 8px;
     cursor: pointer;
     transition: all 150ms ease;
     white-space: nowrap;
     &:hover {
-      color: #e6edf3;
-      background-color: rgba(255,255,255,0.08);
-      border-color: rgba(255,255,255,0.15);
+      color: var(--text-primary);
+      background-color: var(--bg-hover);
+      border-color: var(--border-color-hover);
     }
   `,
   shellPickerIcon: css`
     width: 12px;
     height: 12px;
-    color: #ff9d00;
+    color: var(--color-brand);
     flex-shrink: 0;
   `,
   shellPickerLabel: css`
@@ -936,13 +932,12 @@ const styles = {
     right: 0;
     z-index: 200;
     min-width: 240px;
-    background-color: #0b1520;
-    border: 1px solid #1a2e40;
-    border-radius: 8px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color-hover);
+    border-radius: 10px;
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
     animation: fadeDropdown 120ms ease-out;
-
     @keyframes fadeDropdown {
       from { opacity: 0; transform: translateY(-4px); }
       to   { opacity: 1; transform: translateY(0); }
@@ -951,10 +946,8 @@ const styles = {
   shellDropdownHeader: css`
     padding: 8px 12px 4px;
     font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #475569;
+    font-weight: 600;
+    color: var(--text-tertiary);
   `,
   shellDropdownItem: css`
     display: flex;
@@ -967,21 +960,21 @@ const styles = {
     cursor: pointer;
     transition: background 100ms ease;
     text-align: left;
-    &:hover { background-color: #122030; }
+    &:hover { background-color: var(--bg-hover); }
   `,
   shellDropdownItemActive: css`
-    background-color: rgba(255, 157, 0, 0.08);
+    background-color: rgba(123, 104, 238, 0.10);
   `,
   shellItemIcon: css`
     width: 13px;
     height: 13px;
-    color: #ff9d00;
+    color: var(--color-brand);
     flex-shrink: 0;
   `,
   shellItemName: css`
     font-size: 12px;
     font-weight: 600;
-    color: #e2e8f0;
+    color: var(--text-primary);
     flex: 1;
     white-space: nowrap;
     overflow: hidden;
@@ -989,8 +982,8 @@ const styles = {
   `,
   shellItemPath: css`
     font-size: 10px;
-    color: #475569;
-    font-family: 'Fira Code', monospace;
+    color: var(--text-tertiary);
+    font-family: var(--font-family-mono);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -999,7 +992,7 @@ const styles = {
   shellItemCheck: css`
     width: 12px;
     height: 12px;
-    color: #ff9d00;
+    color: var(--color-brand);
     flex-shrink: 0;
   `,
 
@@ -1009,9 +1002,9 @@ const styles = {
     justify-content: center;
     font-size: 11px;
     font-weight: 700;
-    color: #8b949e;
-    background-color: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-secondary);
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
     border-radius: 5px;
     padding: 4px;
     width: 28px;
@@ -1021,15 +1014,15 @@ const styles = {
     white-space: nowrap;
     flex-shrink: 0;
     &:hover {
-      color: #ff9d00;
-      background-color: rgba(255,157,0,0.1);
-      border-color: rgba(255,157,0,0.3);
+      color: var(--color-brand);
+      background-color: rgba(123, 104, 238, 0.10);
+      border-color: rgba(123, 104, 238, 0.30);
     }
   `,
 
   viewports: css`
     flex: 1;
-    background-color: #070d14;
+    background-color: var(--bg-canvas);
     min-height: 0;
     position: relative;
   `,
@@ -1051,40 +1044,41 @@ const styles = {
     justify-content: center;
     padding: 48px;
     text-align: center;
-    color: #64748b;
   `,
   emptyIcon: css`
-    width: 32px;
-    height: 32px;
-    color: #1e3a5f;
-    margin-bottom: 12px;
+    width: 40px; height: 40px;
+    color: var(--text-tertiary);
+    margin-bottom: 14px;
+    opacity: 0.5;
   `,
   emptyTitle: css`
     font-weight: 700;
-    color: #94a3b8;
+    color: var(--text-secondary);
     font-size: 14px;
     margin: 0;
   `,
   emptyDesc: css`
     font-size: 12px;
-    color: #64748b;
-    margin-top: 4px;
-    margin-bottom: 16px;
+    color: var(--text-tertiary);
+    margin-top: 5px;
+    margin-bottom: 20px;
+    line-height: 1.5;
   `,
   launchBtn: css`
     display: flex;
     align-items: center;
-    gap: 6px;
-    background-color: #ff9d00;
-    color: #070d14;
+    gap: 7px;
+    background: var(--gradient-brand);
+    color: #fff;
     font-size: 12px;
     font-weight: 700;
-    padding: 8px 16px;
-    border-radius: 8px;
+    padding: 9px 18px;
+    border-radius: 10px;
     border: none;
     cursor: pointer;
-    transition: background-color 150ms ease;
-    &:hover { background-color: #ffb733; }
+    box-shadow: 0 4px 14px rgba(123, 104, 238, 0.30);
+    transition: box-shadow 0.2s, filter 0.2s;
+    &:hover { box-shadow: 0 6px 20px rgba(123, 104, 238, 0.40); filter: brightness(1.06); }
   `,
   tinyIcon: css`
     width: 10px;

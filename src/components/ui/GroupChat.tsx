@@ -665,7 +665,7 @@ const s = {
   `,
   headerLeft: css`display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; overflow: hidden;`,
   headerRight: css`display: flex; align-items: center; gap: 4px; flex-shrink: 0;`,
-  botIcon: css`color: #ff9d00; flex-shrink: 0;`,
+  botIcon: css`color: var(--color-brand); flex-shrink: 0;`,
   headerTitle: css`font-size: 12px; font-weight: 700; color: #f0f6fc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;`,
   groupBadge: css`
     display: inline-flex; align-items: center; gap: 4px;
@@ -733,7 +733,7 @@ const s = {
     background: #0b1520; border: 1px solid #1e3a5f; border-radius: 8px;
     color: #64748b; font-size: 11px; padding: 8px 12px; cursor: pointer;
     text-align: left; transition: all 150ms ease; line-height: 1.4; width: 100%;
-    &:hover:not(:disabled) { border-color: #ff9d00; color: #e2e8f0; background: #0d1c2a; }
+    &:hover:not(:disabled) { border-color: var(--color-brand); color: #e2e8f0; background: rgba(123, 104, 238, 0.08); }
     &:disabled { opacity: 0.4; cursor: not-allowed; }
   `,
   msgRow: css`display: flex; align-items: flex-end; gap: 8px; position: relative;`,
@@ -743,16 +743,16 @@ const s = {
     width: 22px; height: 22px; border-radius: 50%;
     background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
     display: flex; align-items: center; justify-content: center;
-    color: #ff9d00; flex-shrink: 0;
+    color: var(--color-brand); flex-shrink: 0;
   `,
-  avatarUser: css`background: rgba(255,157,0,0.08); border-color: rgba(255,157,0,0.25);`,
+  avatarUser: css`background: rgba(123, 104, 238, 0.10); border-color: rgba(123, 104, 238, 0.28);`,
   bubble: css`
     max-width: 82%; padding: 9px 12px; border-radius: 10px;
     font-size: 12px; line-height: 1.6; word-break: break-word; position: relative;
   `,
   bubbleUser: css`
-    background: rgba(255,157,0,0.1); border: 1px solid rgba(255,157,0,0.2);
-    border-bottom-right-radius: 3px; color: #fde68a;
+    background: rgba(123, 104, 238, 0.12); border: 1px solid rgba(123, 104, 238, 0.22);
+    border-bottom-right-radius: 3px; color: #c4b5fd;
   `,
   bubbleAssistant: css`
     background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
@@ -760,7 +760,7 @@ const s = {
   `,
   msgText: css`margin: 0; font-size: inherit; line-height: 1.6;`,
   cursor: css`
-    display: inline-block; width: 6px; height: 12px; background: #ff9d00;
+    display: inline-block; width: 6px; height: 12px; background: var(--color-brand);
     border-radius: 1px; margin-left: 2px; vertical-align: text-bottom;
     animation: blink2 0.8s step-end infinite;
     @keyframes blink2 { 0%,100%{opacity:1} 50%{opacity:0} }
@@ -772,7 +772,7 @@ const s = {
     color: #6e7681; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: all 150ms ease;
-    &:hover { border-color: #ff9d00; color: #ff9d00; }
+    &:hover { border-color: var(--color-brand); color: var(--color-brand); }
   `,
   agentSummaryRow: css`
     display: flex; align-items: baseline; gap: 6px;
@@ -806,16 +806,16 @@ const s = {
     font-size: 12px; font-family: inherit; line-height: 1.5;
     resize: none; outline: none; max-height: 120px; min-height: 36px;
     transition: border-color 150ms ease;
-    &:focus { border-color: rgba(255,157,0,0.5); }
+    &:focus { border-color: rgba(123, 104, 238, 0.5); }
     &::placeholder { color: #6e7681; }
     &:disabled { opacity: 0.4; cursor: not-allowed; }
   `,
   sendBtn: css`
     width: 32px; height: 32px; flex-shrink: 0; border-radius: 7px; border: none;
-    background: #ff9d00; color: #010409; cursor: pointer;
+    background: var(--color-brand); color: #fff; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     font-size: 13px; font-weight: 700; transition: all 150ms ease;
-    &:hover:not(:disabled) { background: #ffb733; }
+    &:hover:not(:disabled) { filter: brightness(1.10); }
     &:disabled { opacity: 0.35; cursor: not-allowed; }
   `,
   stopBtn: css`background: #ef4444 !important; color: #fff !important; &:hover { background: #f87171 !important; }`,

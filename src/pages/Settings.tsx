@@ -753,7 +753,7 @@ const styles = {
     color: #3b82f6; /* text-blue-500 */
   `,
   settingsIcon: css`
-    color: #ff9d00; /* text-[#FF9D00] */
+    color: var(--color-brand);
   `,
   cardDescription: css`
     font-size: var(--font-size-xs);
@@ -923,8 +923,8 @@ const styles = {
     padding-top: 8px;
   `,
   amberButton: css`
-    background-color: #FF9D00;
-    color: #0d2131;
+    background-color: var(--color-brand);
+    color: #fff;
     padding: 8px 16px;
     border: none;
     border-radius: var(--border-radius-sm);

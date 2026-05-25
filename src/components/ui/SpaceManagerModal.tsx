@@ -12,7 +12,7 @@ import { useDashboard } from '../../context/DashboardContext';
 import { Space } from '../../types';
 
 const COLOR_PRESETS = [
-  '#ff9d00', '#10b981', '#3b82f6', '#8b5cf6',
+  '#7B68EE', '#10b981', '#3b82f6', '#8b5cf6',
   '#ec4899', '#ef4444', '#06b6d4', '#84cc16',
 ];
 
@@ -282,7 +282,7 @@ const s = {
     background: rgba(0,0,0,0.3);
   `,
   checkbox: css`
-    width: 14px; height: 14px; accent-color: #ff9d00;
+    width: 14px; height: 14px; accent-color: var(--color-brand);
     cursor: pointer; flex-shrink: 0;
   `,
   sessionDot: css`

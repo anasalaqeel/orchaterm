@@ -1,24 +1,21 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useMatch } from 'react-router';
 import { css, cx } from '@emotion/css';
+import { motion, AnimatePresence } from 'motion/react';
 import { useDashboard } from '../../context/DashboardContext';
 import { Space } from '../../types';
 import { SpaceManagerModal } from '../ui/SpaceManagerModal';
 import {
   History, Sparkles, Settings,
   Sun, Moon, Blocks, LayoutDashboard,
-  Plus, Edit2, Trash2, Terminal,
+  Plus, Edit2, Trash2, Terminal, ChevronRight,
 } from 'lucide-react';
-
-// ── Route definitions ─────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
   { to: '/logs',     label: 'Task Log',     icon: History },
   { to: '/prompts',  label: 'Prompt Vault', icon: Sparkles },
   { to: '/settings', label: 'Settings',     icon: Settings },
 ] as const;
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 export function Sidebar() {
   const {
@@ -33,27 +30,19 @@ export function Sidebar() {
   const navigate    = useNavigate();
   const onDashboard = useMatch('/');
 
-  // ── Sidebar selection (independent of console) ───────────────────────────
-  // Clicking a workspace only expands it in the sidebar — does NOT navigate.
-  // The console tracks its own workspace via activeWorkspaceId.
   const [sidebarFocusedId, setSidebarFocusedId] = useState<string | null>(activeWorkspaceId);
 
-  // Keep sidebar in sync when the console workspace changes externally
-  // (e.g. user opens a workspace from the Overview grid).
   useEffect(() => {
     if (activeWorkspaceId) setSidebarFocusedId(activeWorkspaceId);
   }, [activeWorkspaceId]);
 
-  // ── Hover tracking for action buttons ────────────────────────────────────
   const [hoveredWsId,    setHoveredWsId]    = useState<string | null>(null);
   const [hoveredSpaceId, setHoveredSpaceId] = useState<string | null>(null);
 
-  // ── Space modal state ─────────────────────────────────────────────────────
   const [spaceModalOpen,   setSpaceModalOpen]   = useState(false);
   const [editingSpace,     setEditingSpace]     = useState<Space | undefined>(undefined);
   const [modalWorkspaceId, setModalWorkspaceId] = useState<string>('');
 
-  // Listen for open-space-modal event dispatched by GroupChat stale banner
   useEffect(() => {
     const handler = () => {
       const spaceId = localStorage.getItem('agentdeck:open-space-modal');
@@ -73,14 +62,12 @@ export function Sidebar() {
     setEditingSpace(undefined);
     setSpaceModalOpen(true);
   };
-
   const openEditSpace = (sp: Space) => {
     setModalWorkspaceId(sp.workspaceId);
     setEditingSpace(sp);
     setSpaceModalOpen(true);
   };
 
-  // ── Open workspace in console (explicit action only) ──────────────────────
   const openInConsole = (id: string) => {
     setActiveWorkspaceId(id);
     setSidebarFocusedId(id);
@@ -97,17 +84,22 @@ export function Sidebar() {
 
       {/* Brand */}
       <div className={s.brand}>
-        <div className={s.logo}><Blocks className={s.logoIcon} /></div>
+        <div className={s.logo}>
+          <Blocks className={s.logoIcon} />
+        </div>
         <h1 className={s.title}>AgentDeck</h1>
+        <span className={s.version}>β</span>
       </div>
 
       <div className={s.body}>
 
         {/* ── Workspaces ── */}
-        <div className={s.sectionRow}>
+        <div className={s.sectionHead}>
           <span className={s.sectionLabel}>Workspaces</span>
-          <button
-            className={s.sectionAddBtn}
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.92 }}
+            className={s.addBtn}
             title="New Workspace"
             onClick={() => {
               navigate('/');
@@ -115,139 +107,176 @@ export function Sidebar() {
               localStorage.setItem('agentdeck:open-new-workspace', '1');
             }}
           >
-            <Plus size={10} />
-          </button>
+            <Plus size={11} />
+          </motion.button>
         </div>
+
         <div className={s.workspaceList}>
           {workspaces.length === 0 && (
             <p className={s.empty}>No workspaces yet.</p>
           )}
 
-          {workspaces.map(w => {
-            const isFocused       = w.id === sidebarFocusedId;
-            const isConsoleOpen   = !!onDashboard && viewMode === 'console' && w.id === activeWorkspaceId;
-            const workspaceSpaces = spaces.filter(sp => sp.workspaceId === w.id);
-            const isWsHovered     = hoveredWsId === w.id;
+          {workspaces.map((w, i) => {
+            const isFocused     = w.id === sidebarFocusedId;
+            const isConsoleOpen = !!onDashboard && viewMode === 'console' && w.id === activeWorkspaceId;
+            const wsSpaces      = spaces.filter(sp => sp.workspaceId === w.id);
+            const isWsHovered   = hoveredWsId === w.id;
+            const isRunning     = localStorage.getItem(`agentdeck:conductor:running:${w.id}`) === 'true';
 
             return (
-              <div key={w.id}>
-
+              <motion.div
+                key={w.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.04, duration: 0.2 }}
+              >
                 {/* Workspace row */}
                 <div
-                  className={cx(
-                    s.wsRow,
-                    isFocused   && s.wsRowFocused,
-                    isConsoleOpen && s.wsRowConsoleOpen,
-                  )}
-                  style={isConsoleOpen ? { borderLeftColor: w.color } : undefined}
+                  className={cx(s.wsRow, isConsoleOpen && s.wsRowActive)}
+                  style={isConsoleOpen ? { '--ws-color': w.color } as React.CSSProperties : undefined}
                   onMouseEnter={() => setHoveredWsId(w.id)}
                   onMouseLeave={() => setHoveredWsId(null)}
                 >
-                  {/* Click area — select only, no navigation */}
                   <button
                     className={s.wsClickArea}
                     onClick={() => setSidebarFocusedId(isFocused ? null : w.id)}
                   >
-                    <span className={s.wsDot} style={{ backgroundColor: w.color }} />
+                    {/* Workspace avatar */}
+                    <span
+                      className={s.wsAvatar}
+                      style={{ backgroundColor: w.color + '22', borderColor: w.color + '44' }}
+                    >
+                      <span className={s.wsAvatarDot} style={{ backgroundColor: w.color }} />
+                    </span>
+
                     <span className={s.wsName}>{w.name}</span>
-                    {(() => {
-                      const count = spaces.filter(sp => sp.workspaceId === w.id).length;
-                      return count > 0 ? (
-                        <span className={s.wsSpaceBadge}>{count}</span>
-                      ) : null;
-                    })()}
+
+                    {wsSpaces.length > 0 && (
+                      <span className={s.wsBadge}>{wsSpaces.length}</span>
+                    )}
+                    {isRunning && <span className={s.wsRunDot} />}
+
+                    <motion.span
+                      className={s.wsChevron}
+                      animate={{ rotate: isFocused ? 90 : 0 }}
+                      transition={{ duration: 0.18 }}
+                    >
+                      <ChevronRight size={11} />
+                    </motion.span>
                   </button>
 
-                  {/* Action buttons — visible on hover */}
-                  <div className={cx(s.wsActions, !isWsHovered && s.hidden)}>
-                    {/* Open in console */}
-                    <button
-                      className={cx(s.iconBtn, isConsoleOpen && s.iconBtnActive)}
-                      title={isConsoleOpen ? 'Already open in console' : 'Open in console'}
-                      onClick={() => openInConsole(w.id)}
-                    >
-                      <Terminal size={10} />
-                    </button>
-                    {/* Delete */}
-                    <button
-                      className={cx(s.iconBtn, s.iconBtnDanger)}
-                      title="Delete workspace"
-                      onClick={() => {
-                        if (window.confirm(`Delete workspace "${w.name}" and all its spaces?`)) {
-                          deleteWorkspace(w.id);
-                        }
-                      }}
-                    >
-                      <Trash2 size={10} />
-                    </button>
-                  </div>
+                  <AnimatePresence>
+                    {isWsHovered && (
+                      <motion.div
+                        className={s.wsActions}
+                        initial={{ opacity: 0, scale: 0.85 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.85 }}
+                        transition={{ duration: 0.12 }}
+                      >
+                        <button
+                          className={cx(s.iconBtn, isConsoleOpen && s.iconBtnGlow)}
+                          title={isConsoleOpen ? 'Currently open' : 'Open in console'}
+                          onClick={() => openInConsole(w.id)}
+                        >
+                          <Terminal size={10} />
+                        </button>
+                        <button
+                          className={cx(s.iconBtn, s.iconBtnDanger)}
+                          title="Delete workspace"
+                          onClick={() => {
+                            if (window.confirm(`Delete "${w.name}" and all its spaces?`))
+                              deleteWorkspace(w.id);
+                          }}
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
-                {/* Spaces — shown when workspace is focused in sidebar */}
-                {isFocused && (
-                  <div className={s.spaceList}>
-                    {workspaceSpaces.map(sp => {
-                      const isSpaceActive  = sp.id === activeSpaceId;
-                      const isSpaceHovered = hoveredSpaceId === sp.id;
+                {/* Spaces */}
+                <AnimatePresence>
+                  {isFocused && (
+                    <motion.div
+                      className={s.spaceList}
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                      style={{ overflow: 'hidden' }}
+                    >
+                      {wsSpaces.map((sp, si) => {
+                        const isActive  = sp.id === activeSpaceId;
+                        const isHovered = hoveredSpaceId === sp.id;
 
-                      return (
-                        <div
-                          key={sp.id}
-                          className={cx(s.spaceRow, isSpaceActive && s.spaceRowActive)}
-                          style={isSpaceActive
-                            ? { borderLeftColor: sp.color, backgroundColor: sp.color + '18' }
-                            : undefined}
-                          onClick={() => setActiveSpaceId(isSpaceActive ? null : sp.id)}
-                          onMouseEnter={() => setHoveredSpaceId(sp.id)}
-                          onMouseLeave={() => setHoveredSpaceId(null)}
-                        >
-                          <span className={s.spaceConnector} />
-                          <span
-                            className={s.spaceDot}
-                            style={{
-                              backgroundColor: sp.color,
-                              boxShadow: isSpaceActive ? `0 0 0 2px ${sp.color}44` : undefined,
-                            }}
-                          />
-                          <span className={s.spaceName}>{sp.name}</span>
-                          {localStorage.getItem(`agentdeck:conductor:running:${w.id}`) === 'true' && (
-                            <span className={s.spaceRunningDot} />
-                          )}
+                        return (
+                          <motion.div
+                            key={sp.id}
+                            initial={{ opacity: 0, x: -6 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: si * 0.03, duration: 0.16 }}
+                            className={cx(s.spaceRow, isActive && s.spaceRowActive)}
+                            style={isActive ? { '--sp-color': sp.color } as React.CSSProperties : undefined}
+                            onClick={() => setActiveSpaceId(isActive ? null : sp.id)}
+                            onMouseEnter={() => setHoveredSpaceId(sp.id)}
+                            onMouseLeave={() => setHoveredSpaceId(null)}
+                          >
+                            <span className={s.spaceTrack} />
+                            <span
+                              className={s.spaceDot}
+                              style={{ backgroundColor: isActive ? sp.color : sp.color + '80' }}
+                            />
+                            <span className={s.spaceName}>{sp.name}</span>
 
-                          {/* Space actions — shown on hover */}
-                          <div className={cx(s.spaceActions, !isSpaceHovered && s.hidden)}>
-                            <button
-                              className={s.iconBtn}
-                              title="Edit space"
-                              onClick={e => { e.stopPropagation(); openEditSpace(sp); }}
-                            >
-                              <Edit2 size={9} />
-                            </button>
-                            <button
-                              className={cx(s.iconBtn, s.iconBtnDanger)}
-                              title="Delete space"
-                              onClick={e => {
-                                e.stopPropagation();
-                                if (window.confirm(`Delete space "${sp.name}"?`)) deleteSpace(sp.id);
-                              }}
-                            >
-                              <Trash2 size={9} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                            <AnimatePresence>
+                              {isHovered && (
+                                <motion.div
+                                  className={s.spaceActions}
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  transition={{ duration: 0.1 }}
+                                >
+                                  <button
+                                    className={s.iconBtn}
+                                    title="Edit"
+                                    onClick={e => { e.stopPropagation(); openEditSpace(sp); }}
+                                  >
+                                    <Edit2 size={9} />
+                                  </button>
+                                  <button
+                                    className={cx(s.iconBtn, s.iconBtnDanger)}
+                                    title="Delete"
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      if (window.confirm(`Delete "${sp.name}"?`)) deleteSpace(sp.id);
+                                    }}
+                                  >
+                                    <Trash2 size={9} />
+                                  </button>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </motion.div>
+                        );
+                      })}
 
-                    {/* New space button */}
-                    <button className={s.newSpaceBtn} onClick={() => openCreateSpace(w.id)}>
-                      <span className={s.spaceConnector} />
-                      <Plus size={9} />
-                      <span>New Space</span>
-                    </button>
-                  </div>
-                )}
-
-              </div>
+                      <motion.button
+                        className={s.newSpaceBtn}
+                        onClick={() => openCreateSpace(w.id)}
+                        whileHover={{ x: 2 }}
+                        transition={{ duration: 0.12 }}
+                      >
+                        <span className={s.spaceTrack} />
+                        <Plus size={9} />
+                        <span>New Space</span>
+                      </motion.button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
             );
           })}
         </div>
@@ -260,14 +289,22 @@ export function Sidebar() {
             className={cx(s.navBtn, isOverviewActive && s.navBtnActive)}
             onClick={() => setViewMode('grid')}
           >
-            <LayoutDashboard className={s.navIcon} />
-            <span>Overview</span>
+            {() => (
+              <>
+                <LayoutDashboard className={s.navIcon} />
+                <span>Overview</span>
+              </>
+            )}
           </NavLink>
 
           {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
             <NavLink key={to} to={to} className={navLinkClass}>
-              <Icon className={s.navIcon} />
-              <span>{label}</span>
+              {() => (
+                <>
+                  <Icon className={s.navIcon} />
+                  <span>{label}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -276,17 +313,20 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className={s.footer}>
-        <span className={s.version}>v0.1 β</span>
-        <button
+        <span className={s.footerLabel}>v0.1</span>
+        <motion.button
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.92 }}
           onClick={toggleTheme}
           className={s.themeBtn}
-          title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
         >
-          {theme === 'dark' ? <Sun className={s.themeIcon} /> : <Moon className={s.themeIcon} />}
-        </button>
+          {theme === 'dark'
+            ? <Sun className={s.themeIcon} />
+            : <Moon className={s.themeIcon} />}
+        </motion.button>
       </div>
 
-      {/* Space modal */}
       {spaceModalOpen && modalWorkspaceId && (
         <SpaceManagerModal
           workspaceId={modalWorkspaceId}
@@ -294,26 +334,26 @@ export function Sidebar() {
           onClose={() => setSpaceModalOpen(false)}
         />
       )}
-
     </aside>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+/* ── Styles ─────────────────────────────────────────────────────────────────── */
 
 const s = {
   sidebar: css`
-    width: 256px;
+    width: 248px;
     border-right: 1px solid var(--border-color);
-    background-color: var(--bg-secondary);
+    background: var(--bg-secondary);
     display: flex;
     flex-direction: column;
     height: 100vh;
     flex-shrink: 0;
-    transition: background-color 0.3s ease, border-color 0.3s ease;
   `,
+
+  /* Brand */
   brand: css`
-    padding: 14px var(--spacing-md);
+    padding: 16px 14px 14px;
     border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
@@ -322,125 +362,126 @@ const s = {
     flex-shrink: 0;
   `,
   logo: css`
-    width: 28px; height: 28px; border-radius: 7px;
-    background-color: #FF9D00;
+    width: 30px; height: 30px;
+    border-radius: 9px;
+    background: var(--gradient-brand);
     display: flex; align-items: center; justify-content: center;
-    color: #070d14; flex-shrink: 0;
+    box-shadow: 0 2px 10px rgba(123, 104, 238, 0.35);
+    flex-shrink: 0;
   `,
-  logoIcon: css`width: 17px; height: 17px;`,
+  logoIcon: css`width: 16px; height: 16px; color: #fff;`,
   title: css`
+    font-size: 14px;
     font-weight: 800;
-    font-size: 15px;
-    line-height: 1;
     letter-spacing: -0.03em;
     color: var(--text-primary);
+    flex: 1;
   `,
+  version: css`
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--color-brand);
+    background: rgba(123, 104, 238, 0.14);
+    padding: 1px 6px;
+    border-radius: 99px;
+  `,
+
+  /* Body */
   body: css`
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: var(--spacing-lg) var(--spacing-md) 0;
+    padding: 16px 10px 0;
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-sm);
-    &::-webkit-scrollbar { width: 4px; }
-    &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+    gap: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+    &::-webkit-scrollbar { width: 3px; }
+    &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 99px; }
   `,
-  sectionLabel: css`
-    font-size: 10px;
-    color: var(--text-tertiary);
-    font-weight: 600;
-    padding: 0 var(--spacing-sm);
-    user-select: none;
-  `,
-  sectionRow: css`
+
+  /* Section header */
+  sectionHead: css`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 var(--spacing-sm);
-    /* Override child sectionLabel padding so it doesn't double-apply */
-    & > span { padding: 0; }
+    padding: 0 6px;
+    margin-bottom: 4px;
   `,
-  sectionAddBtn: css`
-    width: 18px; height: 18px; border-radius: 4px; border: none;
-    background: transparent; color: var(--text-tertiary); cursor: pointer;
+  sectionLabel: css`
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    user-select: none;
+  `,
+  addBtn: css`
+    width: 20px; height: 20px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    transition: all 120ms ease;
-    &:hover { background: var(--bg-hover); color: #ff9d00; }
+    transition: background 0.15s, color 0.15s;
+    &:hover { background: rgba(123, 104, 238, 0.12); color: var(--color-brand); }
   `,
-  wsSpaceBadge: css`
-    font-size: 9px; font-weight: 700; color: var(--text-tertiary);
-    background: var(--bg-tertiary); border-radius: 99px;
-    padding: 1px 5px; flex-shrink: 0; letter-spacing: 0;
-  `,
-  spaceRunningDot: css`
-    width: 5px; height: 5px; border-radius: 50%;
-    background: #ff9d00; flex-shrink: 0;
-    animation: runPulse 1.5s ease-in-out infinite;
-    @keyframes runPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-  `,
+
+  /* Workspace list */
   workspaceList: css`
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
+    margin-bottom: 8px;
   `,
   empty: css`
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-tertiary);
+    padding: 6px 10px;
     font-style: italic;
-    padding: 0 var(--spacing-sm);
   `,
 
-  /* Workspace row wrapper */
+  /* Workspace row */
   wsRow: css`
-    width: 100%;
     display: flex;
     align-items: center;
-    border-radius: var(--border-radius-sm);
-    border-left: 2px solid transparent;
-    transition: background 0.15s ease, border-color 0.15s ease;
+    border-radius: 8px;
+    transition: background 0.15s;
     padding-right: 4px;
-    &:hover { background-color: var(--bg-hover); }
+    position: relative;
+    &:hover { background: var(--bg-hover); }
   `,
-  /* Sidebar-selected: subtle highlight, no border */
-  wsRowFocused: css`
-    background-color: var(--bg-hover);
+  wsRowActive: css`
+    background: rgba(123, 104, 238, 0.10) !important;
   `,
-  /* Console-open: colored left border marks the "live" workspace */
-  wsRowConsoleOpen: css`
-    background-color: var(--bg-hover);
-  `,
-
-  /* Action button group */
-  wsActions: css`
-    display: flex;
-    align-items: center;
-    gap: 1px;
-    flex-shrink: 0;
-    transition: opacity 120ms ease;
-  `,
-
-  /* Inner button: dot + name — click only selects, does NOT navigate */
   wsClickArea: css`
     flex: 1;
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: var(--spacing-sm);
-    padding: 8px 4px 8px 12px;
+    gap: 8px;
+    padding: 7px 6px;
     border: none;
     background: transparent;
     color: var(--text-secondary);
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-semibold);
+    font-size: 12px;
+    font-weight: 600;
     cursor: pointer;
     text-align: left;
-    border-radius: var(--border-radius-sm);
-    transition: color 0.15s ease;
+    border-radius: 8px;
+    transition: color 0.15s;
     &:hover { color: var(--text-primary); }
   `,
-  wsDot: css`
-    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  wsAvatar: css`
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  `,
+  wsAvatarDot: css`
+    width: 8px; height: 8px;
+    border-radius: 50%;
   `,
   wsName: css`
     flex: 1;
@@ -449,31 +490,33 @@ const s = {
     white-space: nowrap;
     min-width: 0;
   `,
-
-  /* Shared small icon button */
-  iconBtn: css`
-    flex-shrink: 0;
-    width: 20px; height: 20px;
-    border-radius: 4px; border: none;
-    background: transparent;
+  wsBadge: css`
+    font-size: 9px;
+    font-weight: 700;
     color: var(--text-tertiary);
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: background 100ms ease, color 100ms ease;
-    padding: 0;
-    &:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+    background: var(--bg-hover);
+    border-radius: 99px;
+    padding: 1px 5px;
+    flex-shrink: 0;
   `,
-  iconBtnDanger: css`
-    &:hover { background: rgba(239,68,68,0.15) !important; color: #ef4444 !important; }
+  wsRunDot: css`
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--color-brand);
+    flex-shrink: 0;
+    animation: runPulse 1.6s ease-in-out infinite;
+    @keyframes runPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
   `,
-  iconBtnActive: css`
-    color: var(--color-primary) !important;
+  wsChevron: css`
+    color: var(--text-tertiary);
+    display: flex;
+    flex-shrink: 0;
   `,
-
-  /* Utility: visually hidden but still in layout */
-  hidden: css`
-    opacity: 0;
-    pointer-events: none;
+  wsActions: css`
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    flex-shrink: 0;
   `,
 
   /* Space list */
@@ -481,103 +524,133 @@ const s = {
     display: flex;
     flex-direction: column;
     gap: 1px;
-    margin-top: 2px;
-    padding-bottom: 4px;
+    padding-bottom: 6px;
   `,
-  spaceConnector: css`
-    width: 16px;
+  spaceTrack: css`
+    width: 22px;
     flex-shrink: 0;
-    position: relative;
-    &::before {
-      content: '';
-      position: absolute;
-      left: 10px; top: 50%;
-      transform: translateY(-50%);
-      width: 6px; height: 1px;
-      background: var(--border-color);
-    }
   `,
   spaceRow: css`
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 6px 5px 4px;
-    border-radius: var(--border-radius-sm);
-    border-left: 2px solid transparent;
-    background: transparent;
+    gap: 7px;
+    padding: 5px 6px 5px 0;
+    border-radius: 7px;
     color: var(--text-tertiary);
     font-size: 11px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.12s ease;
+    transition: all 0.12s;
     user-select: none;
+    position: relative;
     &:hover { color: var(--text-secondary); background: var(--bg-hover); }
   `,
   spaceRowActive: css`
     color: var(--text-primary) !important;
+    background: rgba(123, 104, 238, 0.08) !important;
   `,
   spaceDot: css`
-    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-    transition: box-shadow 150ms ease;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: all 0.15s;
   `,
   spaceName: css`
-    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   `,
   spaceActions: css`
     display: flex; align-items: center; gap: 1px; flex-shrink: 0;
-    transition: opacity 120ms ease;
   `,
-
-  /* New space button */
   newSpaceBtn: css`
-    display: flex; align-items: center; gap: 6px;
-    padding: 5px 6px 5px 4px;
-    border-radius: var(--border-radius-sm);
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 6px 5px 0;
+    border-radius: 7px;
     border: none; background: transparent;
     color: var(--text-tertiary);
     font-size: 10px; font-weight: 600;
     cursor: pointer; width: 100%; text-align: left;
-    transition: all 0.12s ease;
-    &:hover { color: #FF9D00; background: var(--bg-hover); }
+    transition: all 0.12s;
+    &:hover { color: var(--color-brand); background: rgba(123, 104, 238, 0.08); }
   `,
 
+  /* Icon buttons */
+  iconBtn: css`
+    width: 22px; height: 22px;
+    border-radius: 5px; border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.1s, color 0.1s;
+    padding: 0;
+    &:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+  `,
+  iconBtnDanger: css`
+    &:hover { background: rgba(248,113,113,0.15) !important; color: #f87171 !important; }
+  `,
+  iconBtnGlow: css`
+    color: var(--color-brand) !important;
+  `,
+
+  /* Navigation */
   nav: css`
-    display: flex; flex-direction: column; gap: 4px;
-    padding-top: 12px; padding-bottom: var(--spacing-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 12px 0 16px;
     border-top: 1px solid var(--border-color);
     margin-top: 4px;
   `,
   navBtn: css`
-    display: flex; align-items: center; gap: 12px;
-    padding: 8px 12px;
-    border-radius: var(--border-radius-sm);
-    border-left: 2px solid transparent;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
     color: var(--text-secondary);
-    font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold);
+    font-size: 12px;
+    font-weight: 600;
     text-decoration: none;
-    transition: all 0.15s ease;
-    &:hover { color: var(--text-primary); background-color: var(--bg-hover); }
+    transition: color 0.15s, background 0.15s;
+    position: relative;
+    &:hover { color: var(--text-primary); background: var(--bg-hover); }
   `,
   navBtnActive: css`
-    background-color: var(--bg-hover);
-    border-left-color: var(--color-primary);
-    color: var(--color-primary);
-    &:hover { color: var(--color-primary); }
+    color: #fff !important;
+    background: var(--color-brand) !important;
   `,
-  navIcon: css`width: 16px; height: 16px; flex-shrink: 0;`,
+  navIcon: css`
+    width: 15px; height: 15px; flex-shrink: 0;
+  `,
+
+  /* Footer */
   footer: css`
-    padding: var(--spacing-md);
+    padding: 12px 14px;
     border-top: 1px solid var(--border-color);
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
   `,
-  version: css`font-size: var(--font-size-xs); color: var(--text-tertiary);`,
+  footerLabel: css`
+    font-size: 10px;
+    color: var(--text-tertiary);
+    font-weight: 600;
+  `,
   themeBtn: css`
-    padding: 8px; border-radius: var(--border-radius-sm);
+    width: 30px; height: 30px;
+    border-radius: 8px;
     border: 1px solid var(--border-color);
-    background: transparent; color: var(--text-secondary);
-    cursor: pointer; display: flex; align-items: center; justify-content: center;
-    transition: background-color 0.15s, color 0.15s;
-    &:hover { background-color: var(--bg-hover); color: var(--text-primary); }
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    &:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-color-hover); }
   `,
-  themeIcon: css`width: 16px; height: 16px;`,
+  themeIcon: css`width: 14px; height: 14px;`,
 };

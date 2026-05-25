@@ -241,7 +241,7 @@ const styles = {
   `,
   cardRunning: css`
     border-color: var(--color-brand);
-    box-shadow: 0 0 0 1px var(--color-brand) inset, 0 0 12px rgba(255,157,0,0.08);
+    box-shadow: 0 0 0 1px var(--color-brand) inset, 0 0 12px rgba(123, 104, 238, 0.10);
   `,
   cardDone:   css`border-color: var(--color-success); opacity: 0.75;`,
   cardFailed: css`border-color: var(--color-danger);`,
