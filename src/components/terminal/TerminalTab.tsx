@@ -77,9 +77,12 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       setSpawnState('spawning');
       setErrorMsg('');
 
-      // Safe default dimensions — the ResizeObserver will correct them shortly.
-      const cols = 80;
-      const rows = 24;
+      // Fit first so the PTY starts with the real terminal dimensions.
+      // If the container hasn't settled yet, safeFit returns null and we fall
+      // back to 80×24; the ResizeObserver will correct it shortly after.
+      const fitted = fitAddonRef.current ? safeFit(fitAddonRef.current) : null;
+      const cols = fitted?.cols ?? 80;
+      const rows = fitted?.rows ?? 24;
 
       try {
         await invoke('spawn_pty', {
