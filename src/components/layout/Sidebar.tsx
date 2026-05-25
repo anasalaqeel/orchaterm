@@ -98,10 +98,7 @@ export function Sidebar() {
       {/* Brand */}
       <div className={s.brand}>
         <div className={s.logo}><Blocks className={s.logoIcon} /></div>
-        <div>
-          <h1 className={s.title}>AgentDeck</h1>
-          <span className={s.subtitle}>Developer Hub</span>
-        </div>
+        <h1 className={s.title}>AgentDeck</h1>
       </div>
 
       <div className={s.body}>
@@ -255,10 +252,7 @@ export function Sidebar() {
           })}
         </div>
 
-        <div className={s.divider} />
-
         {/* ── Navigation ── */}
-        <span className={s.sectionLabel}>Navigation</span>
         <nav className={s.nav}>
           <NavLink
             to="/"
@@ -282,7 +276,7 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className={s.footer}>
-        <span className={s.version}>v0.1.0 (Beta)</span>
+        <span className={s.version}>v0.1 β</span>
         <button
           onClick={toggleTheme}
           className={s.themeBtn}
@@ -319,33 +313,27 @@ const s = {
     transition: background-color 0.3s ease, border-color 0.3s ease;
   `,
   brand: css`
-    padding: var(--spacing-lg);
+    padding: 14px var(--spacing-md);
     border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     user-select: none;
+    flex-shrink: 0;
   `,
   logo: css`
-    width: 32px; height: 32px; border-radius: 8px;
+    width: 28px; height: 28px; border-radius: 7px;
     background-color: #FF9D00;
     display: flex; align-items: center; justify-content: center;
-    color: #0d2131; flex-shrink: 0;
+    color: #070d14; flex-shrink: 0;
   `,
-  logoIcon: css`width: 20px; height: 20px;`,
+  logoIcon: css`width: 17px; height: 17px;`,
   title: css`
-    font-weight: var(--font-weight-bold);
-    font-size: var(--font-size-xl);
+    font-weight: 800;
+    font-size: 15px;
     line-height: 1;
-    letter-spacing: -0.025em;
+    letter-spacing: -0.03em;
     color: var(--text-primary);
-  `,
-  subtitle: css`
-    font-size: 10px;
-    color: var(--text-tertiary);
-    font-weight: var(--font-weight-semibold);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
   `,
   body: css`
     flex: 1;
@@ -361,9 +349,7 @@ const s = {
   sectionLabel: css`
     font-size: 10px;
     color: var(--text-tertiary);
-    font-weight: var(--font-weight-bold);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    font-weight: 600;
     padding: 0 var(--spacing-sm);
     user-select: none;
   `,
@@ -454,12 +440,7 @@ const s = {
     &:hover { color: var(--text-primary); }
   `,
   wsDot: css`
-    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-    animation: pulse 2s ease-in-out infinite;
-    @keyframes pulse {
-      0%, 100% { opacity: 1 }
-      50%       { opacity: 0.5 }
-    }
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
   `,
   wsName: css`
     flex: 1;
@@ -560,12 +541,11 @@ const s = {
     &:hover { color: #FF9D00; background: var(--bg-hover); }
   `,
 
-  divider: css`
-    border: none; border-top: 1px solid var(--border-color); margin: 8px 0;
-  `,
   nav: css`
     display: flex; flex-direction: column; gap: 4px;
-    padding-bottom: var(--spacing-lg);
+    padding-top: 12px; padding-bottom: var(--spacing-lg);
+    border-top: 1px solid var(--border-color);
+    margin-top: 4px;
   `,
   navBtn: css`
     display: flex; align-items: center; gap: 12px;

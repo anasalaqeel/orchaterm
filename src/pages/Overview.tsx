@@ -12,7 +12,7 @@ import {
   ArrowLeft,
   Network,
   MessageSquare,
-  Layers,
+  Info,
 } from 'lucide-react';
 
 export const DashboardView: React.FC = () => {
@@ -94,14 +94,16 @@ export const DashboardView: React.FC = () => {
               className={s.consoleDot}
               style={{ backgroundColor: activeProject.color || '#FF9D00' }}
             />
-            <span className={s.consoleLabel}>Workspace</span>
             <h2 className={s.consoleName}>{activeProject.name}</h2>
-            <span className={s.consolePath}>({activeProject.path})</span>
+            <span className={s.consolePath}>{activeProject.path}</span>
 
             {/* Active space pill — only shown when a space is selected */}
             {activeSpace && (
-              <div className={s.spacePill} style={{ borderColor: activeSpace.color + '60' }}>
-                <Layers className={s.spacePillIcon} style={{ color: activeSpace.color }} />
+              <div className={s.spacePill} style={{ borderColor: activeSpace.color + '50' }}>
+                <span
+                  className={s.spacePillDot}
+                  style={{ backgroundColor: activeSpace.color }}
+                />
                 <span className={s.spacePillName} style={{ color: activeSpace.color }}>
                   {activeSpace.name}
                 </span>
@@ -123,12 +125,15 @@ export const DashboardView: React.FC = () => {
               <button
                 className={cx(s.rightTab, rightPanel === 'workspace' && s.rightTabActive)}
                 onClick={() => setRightPanel('workspace')}
+                title="Workspace info"
               >
-                Workspace
+                <Info className={s.rightTabIcon} />
+                Info
               </button>
               <button
                 className={cx(s.rightTab, rightPanel === 'conductor' && s.rightTabActive)}
                 onClick={() => setRightPanel('conductor')}
+                title="Orchestrate agents"
               >
                 <Network className={s.rightTabIcon} />
                 Conductor
@@ -139,6 +144,7 @@ export const DashboardView: React.FC = () => {
               <button
                 className={cx(s.rightTab, rightPanel === 'chat' && s.rightTabActive)}
                 onClick={() => setRightPanel('chat')}
+                title="Chat with Ollama about this workspace"
               >
                 <MessageSquare className={s.rightTabIcon} />
                 Chat
@@ -213,7 +219,7 @@ export const DashboardView: React.FC = () => {
 
                 {/* Inline-editable current task */}
                 <div className={s.taskBlock}>
-                  <div className={s.taskLabel}>Current Task</div>
+                  <div className={s.taskLabel}>current task</div>
                   {editingTaskId === proj.id ? (
                     <div className={s.taskEditRow}>
                       <input
@@ -345,7 +351,7 @@ const s = {
     background: #070d14;
   `,
   consoleHeader: css`
-    padding: var(--spacing-md) var(--spacing-lg);
+    padding: 10px var(--spacing-lg);
     border-bottom: 1px solid var(--border-color);
     background: var(--bg-secondary);
     display: flex;
@@ -353,71 +359,72 @@ const s = {
     justify-content: space-between;
     flex-shrink: 0;
     user-select: none;
+    min-height: 0;
   `,
   consoleHeaderLeft: css`
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: var(--spacing-sm);
+    gap: 8px;
+    overflow: hidden;
   `,
   consoleDot: css`
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: var(--border-radius-full);
     flex-shrink: 0;
   `,
-  consoleLabel: css`
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-bold);
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-  `,
   consoleName: css`
-    font-size: var(--font-size-lg);
-    font-weight: 800;
+    font-size: 14px;
+    font-weight: 700;
     color: var(--text-primary);
+    white-space: nowrap;
   `,
   consolePath: css`
     font-size: 10px;
     color: var(--text-tertiary);
     font-family: var(--font-family-mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     @media (max-width: 768px) { display: none; }
   `,
   spacePill: css`
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 2px 8px 2px 6px;
+    padding: 2px 8px;
     border-radius: var(--border-radius-full);
     border: 1px solid;
-    background: rgba(0, 0, 0, 0.25);
-    margin-left: 4px;
+    background: rgba(0, 0, 0, 0.3);
+    flex-shrink: 0;
   `,
-  spacePillIcon: css`
-    width: 11px;
-    height: 11px;
+  spacePillDot: css`
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
     flex-shrink: 0;
   `,
   spacePillName: css`
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     white-space: nowrap;
   `,
   consoleBackBtn: css`
     display: flex;
     align-items: center;
-    gap: 6px;
-    background: var(--bg-primary);
-    color: var(--text-secondary);
-    padding: 6px 12px;
+    gap: 5px;
+    background: transparent;
+    color: var(--text-tertiary);
+    padding: 5px 10px;
     border-radius: var(--border-radius-sm);
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-bold);
+    font-size: 11px;
+    font-weight: 600;
     border: 1px solid var(--border-color);
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-    &:hover { background: var(--bg-hover); color: var(--text-primary); }
+    flex-shrink: 0;
+    transition: border-color 0.15s, color 0.15s;
+    &:hover { border-color: var(--border-color-hover); color: var(--text-primary); }
   `,
   consoleSplit: css`
     flex: 1;
@@ -643,16 +650,16 @@ const s = {
   taskBlock: css`
     background: var(--bg-tertiary);
     border-radius: var(--border-radius-sm);
-    padding: 10px 12px;
+    padding: 9px 12px;
     border: 1px solid var(--border-color);
   `,
   taskLabel: css`
     font-size: 10px;
-    font-weight: var(--font-weight-semibold);
+    font-weight: 600;
     color: var(--text-tertiary);
     margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    font-family: var(--font-family-mono);
+    letter-spacing: 0.02em;
   `,
   taskEditRow: css`
     display: flex;
