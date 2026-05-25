@@ -19,6 +19,7 @@ import {
   OrchestratorPlan,
   OrchestratorTask,
   ConductorLogEntry,
+  TerminalSession,
 } from '../../types';
 import { orchestratorEngine } from '../../services/orchestratorEngine';
 import { SENTINEL_START, SENTINEL_END, PLAN_START, PLAN_END } from '../../services/sentinelParser';
@@ -467,7 +468,7 @@ const TabBtn: React.FC<{
 
 const HistoryCard: React.FC<{
   plan: OrchestratorPlan;
-  sessions: ReturnType<typeof Array.prototype.filter>;
+  sessions: TerminalSession[];
 }> = ({ plan, sessions }) => {
   const [open, setOpen] = useState(false);
   const color = STATUS_COLORS[plan.status] ?? 'var(--text-tertiary)';
