@@ -1,14 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { NavLink, useNavigate, useMatch } from 'react-router';
 import { css, cx } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDashboard } from '../../context/DashboardContext';
-import { Space } from '../../types';
-import { SpaceManagerModal } from '../ui/SpaceManagerModal';
 import {
   History, Sparkles, Settings,
   Sun, Moon, Blocks, LayoutDashboard,
-  Plus, Edit2, Trash2, Terminal, ChevronRight,
+  Plus, Trash2,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -23,54 +21,15 @@ export function Sidebar() {
     workspaces, activeWorkspaceId, setActiveWorkspaceId,
     deleteWorkspace,
     viewMode, setViewMode,
-    spaces, deleteSpace,
-    activeSpaceId, setActiveSpaceId,
   } = useDashboard();
 
   const navigate    = useNavigate();
   const onDashboard = useMatch('/');
 
-  const [sidebarFocusedId, setSidebarFocusedId] = useState<string | null>(activeWorkspaceId);
-
-  useEffect(() => {
-    if (activeWorkspaceId) setSidebarFocusedId(activeWorkspaceId);
-  }, [activeWorkspaceId]);
-
-  const [hoveredWsId,    setHoveredWsId]    = useState<string | null>(null);
-  const [hoveredSpaceId, setHoveredSpaceId] = useState<string | null>(null);
-
-  const [spaceModalOpen,   setSpaceModalOpen]   = useState(false);
-  const [editingSpace,     setEditingSpace]     = useState<Space | undefined>(undefined);
-  const [modalWorkspaceId, setModalWorkspaceId] = useState<string>('');
-
-  useEffect(() => {
-    const handler = () => {
-      const spaceId = localStorage.getItem('agentdeck:open-space-modal');
-      if (spaceId) {
-        localStorage.removeItem('agentdeck:open-space-modal');
-        const sp = spaces.find(s => s.id === spaceId);
-        if (sp) openEditSpace(sp);
-      }
-    };
-    window.addEventListener('agentdeck:open-space-modal', handler);
-    return () => window.removeEventListener('agentdeck:open-space-modal', handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spaces]);
-
-  const openCreateSpace = (workspaceId: string) => {
-    setModalWorkspaceId(workspaceId);
-    setEditingSpace(undefined);
-    setSpaceModalOpen(true);
-  };
-  const openEditSpace = (sp: Space) => {
-    setModalWorkspaceId(sp.workspaceId);
-    setEditingSpace(sp);
-    setSpaceModalOpen(true);
-  };
+  const [hoveredWsId, setHoveredWsId] = useState<string | null>(null);
 
   const openInConsole = (id: string) => {
     setActiveWorkspaceId(id);
-    setSidebarFocusedId(id);
     setViewMode('console');
     navigate('/');
   };
@@ -117,9 +76,7 @@ export function Sidebar() {
           )}
 
           {workspaces.map((w, i) => {
-            const isFocused     = w.id === sidebarFocusedId;
             const isConsoleOpen = !!onDashboard && viewMode === 'console' && w.id === activeWorkspaceId;
-            const wsSpaces      = spaces.filter(sp => sp.workspaceId === w.id);
             const isWsHovered   = hoveredWsId === w.id;
             const isRunning     = localStorage.getItem(`agentdeck:conductor:running:${w.id}`) === 'true';
 
@@ -130,16 +87,15 @@ export function Sidebar() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.04, duration: 0.2 }}
               >
-                {/* Workspace row */}
                 <div
                   className={cx(s.wsRow, isConsoleOpen && s.wsRowActive)}
-                  style={isConsoleOpen ? { '--ws-color': w.color } as React.CSSProperties : undefined}
+                  style={isConsoleOpen ? { '--ws-color': w.color } as CSSProperties : undefined}
                   onMouseEnter={() => setHoveredWsId(w.id)}
                   onMouseLeave={() => setHoveredWsId(null)}
                 >
                   <button
                     className={s.wsClickArea}
-                    onClick={() => setSidebarFocusedId(isFocused ? null : w.id)}
+                    onClick={() => openInConsole(w.id)}
                   >
                     {/* Workspace avatar */}
                     <span
@@ -150,19 +106,7 @@ export function Sidebar() {
                     </span>
 
                     <span className={s.wsName}>{w.name}</span>
-
-                    {wsSpaces.length > 0 && (
-                      <span className={s.wsBadge}>{wsSpaces.length}</span>
-                    )}
                     {isRunning && <span className={s.wsRunDot} />}
-
-                    <motion.span
-                      className={s.wsChevron}
-                      animate={{ rotate: isFocused ? 90 : 0 }}
-                      transition={{ duration: 0.18 }}
-                    >
-                      <ChevronRight size={11} />
-                    </motion.span>
                   </button>
 
                   <AnimatePresence>
@@ -175,17 +119,10 @@ export function Sidebar() {
                         transition={{ duration: 0.12 }}
                       >
                         <button
-                          className={cx(s.iconBtn, isConsoleOpen && s.iconBtnGlow)}
-                          title={isConsoleOpen ? 'Currently open' : 'Open in console'}
-                          onClick={() => openInConsole(w.id)}
-                        >
-                          <Terminal size={10} />
-                        </button>
-                        <button
                           className={cx(s.iconBtn, s.iconBtnDanger)}
                           title="Delete workspace"
                           onClick={() => {
-                            if (window.confirm(`Delete "${w.name}" and all its spaces?`))
+                            if (window.confirm(`Delete "${w.name}"?`))
                               deleteWorkspace(w.id);
                           }}
                         >
@@ -195,87 +132,6 @@ export function Sidebar() {
                     )}
                   </AnimatePresence>
                 </div>
-
-                {/* Spaces */}
-                <AnimatePresence>
-                  {isFocused && (
-                    <motion.div
-                      className={s.spaceList}
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-                      style={{ overflow: 'hidden' }}
-                    >
-                      {wsSpaces.map((sp, si) => {
-                        const isActive  = sp.id === activeSpaceId;
-                        const isHovered = hoveredSpaceId === sp.id;
-
-                        return (
-                          <motion.div
-                            key={sp.id}
-                            initial={{ opacity: 0, x: -6 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: si * 0.03, duration: 0.16 }}
-                            className={cx(s.spaceRow, isActive && s.spaceRowActive)}
-                            style={isActive ? { '--sp-color': sp.color } as React.CSSProperties : undefined}
-                            onClick={() => setActiveSpaceId(isActive ? null : sp.id)}
-                            onMouseEnter={() => setHoveredSpaceId(sp.id)}
-                            onMouseLeave={() => setHoveredSpaceId(null)}
-                          >
-                            <span className={s.spaceTrack} />
-                            <span
-                              className={s.spaceDot}
-                              style={{ backgroundColor: isActive ? sp.color : sp.color + '80' }}
-                            />
-                            <span className={s.spaceName}>{sp.name}</span>
-
-                            <AnimatePresence>
-                              {isHovered && (
-                                <motion.div
-                                  className={s.spaceActions}
-                                  initial={{ opacity: 0 }}
-                                  animate={{ opacity: 1 }}
-                                  exit={{ opacity: 0 }}
-                                  transition={{ duration: 0.1 }}
-                                >
-                                  <button
-                                    className={s.iconBtn}
-                                    title="Edit"
-                                    onClick={e => { e.stopPropagation(); openEditSpace(sp); }}
-                                  >
-                                    <Edit2 size={9} />
-                                  </button>
-                                  <button
-                                    className={cx(s.iconBtn, s.iconBtnDanger)}
-                                    title="Delete"
-                                    onClick={e => {
-                                      e.stopPropagation();
-                                      if (window.confirm(`Delete "${sp.name}"?`)) deleteSpace(sp.id);
-                                    }}
-                                  >
-                                    <Trash2 size={9} />
-                                  </button>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </motion.div>
-                        );
-                      })}
-
-                      <motion.button
-                        className={s.newSpaceBtn}
-                        onClick={() => openCreateSpace(w.id)}
-                        whileHover={{ x: 2 }}
-                        transition={{ duration: 0.12 }}
-                      >
-                        <span className={s.spaceTrack} />
-                        <Plus size={9} />
-                        <span>New Space</span>
-                      </motion.button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
               </motion.div>
             );
           })}
@@ -326,14 +182,6 @@ export function Sidebar() {
             : <Moon className={s.themeIcon} />}
         </motion.button>
       </div>
-
-      {spaceModalOpen && modalWorkspaceId && (
-        <SpaceManagerModal
-          workspaceId={modalWorkspaceId}
-          space={editingSpace}
-          onClose={() => setSpaceModalOpen(false)}
-        />
-      )}
     </aside>
   );
 }
@@ -490,15 +338,6 @@ const s = {
     white-space: nowrap;
     min-width: 0;
   `,
-  wsBadge: css`
-    font-size: 9px;
-    font-weight: 700;
-    color: var(--text-tertiary);
-    background: var(--bg-hover);
-    border-radius: 99px;
-    padding: 1px 5px;
-    flex-shrink: 0;
-  `,
   wsRunDot: css`
     width: 6px; height: 6px;
     border-radius: 50%;
@@ -507,74 +346,11 @@ const s = {
     animation: runPulse 1.6s ease-in-out infinite;
     @keyframes runPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
   `,
-  wsChevron: css`
-    color: var(--text-tertiary);
-    display: flex;
-    flex-shrink: 0;
-  `,
   wsActions: css`
     display: flex;
     align-items: center;
     gap: 1px;
     flex-shrink: 0;
-  `,
-
-  /* Space list */
-  spaceList: css`
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    padding-bottom: 6px;
-  `,
-  spaceTrack: css`
-    width: 22px;
-    flex-shrink: 0;
-  `,
-  spaceRow: css`
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 5px 6px 5px 0;
-    border-radius: 7px;
-    color: var(--text-tertiary);
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.12s;
-    user-select: none;
-    position: relative;
-    &:hover { color: var(--text-secondary); background: var(--bg-hover); }
-  `,
-  spaceRowActive: css`
-    color: var(--text-primary) !important;
-    background: rgba(123, 104, 238, 0.08) !important;
-  `,
-  spaceDot: css`
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    transition: all 0.15s;
-  `,
-  spaceName: css`
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-  `,
-  spaceActions: css`
-    display: flex; align-items: center; gap: 1px; flex-shrink: 0;
-  `,
-  newSpaceBtn: css`
-    display: flex; align-items: center; gap: 7px;
-    padding: 5px 6px 5px 0;
-    border-radius: 7px;
-    border: none; background: transparent;
-    color: var(--text-tertiary);
-    font-size: 10px; font-weight: 600;
-    cursor: pointer; width: 100%; text-align: left;
-    transition: all 0.12s;
-    &:hover { color: var(--color-brand); background: rgba(123, 104, 238, 0.08); }
   `,
 
   /* Icon buttons */
@@ -591,9 +367,6 @@ const s = {
   `,
   iconBtnDanger: css`
     &:hover { background: rgba(248,113,113,0.15) !important; color: #f87171 !important; }
-  `,
-  iconBtnGlow: css`
-    color: var(--color-brand) !important;
   `,
 
   /* Navigation */
