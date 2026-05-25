@@ -27,6 +27,12 @@ interface WatchEntry {
   onSentinel?: (output: OrchestratorTaskOutput) => void;
   onPlan?: (rawJson: string) => void;
   onPlanError?: (err: string) => void;
+  /**
+   * Epoch ms after which plan/sentinel detection should actually fire.
+   * While Date.now() < ignoreUntil, incoming data is wiped and not checked.
+   * This lets the PTY echo of the sent prompt clear before we start scanning.
+   */
+  ignoreUntil?: number;
 }
 
 // ── PTY event payload shape emitted by Rust ────────────────────────────────────
@@ -120,6 +126,21 @@ class BufferWatcher {
   // ── Internal: plan JSON check ──────────────────────────────────────────────
 
   private checkPlan(entry: WatchEntry): void {
+    // Echo-suppress window: wipe data until the delay has elapsed.
+    if (entry.ignoreUntil !== undefined) {
+      if (Date.now() < entry.ignoreUntil) {
+        // Still suppressing — discard echo so markers in the prompt body
+        // can never create a false-positive match.
+        entry.buffer.buffer = '';
+        return;
+      }
+      // Delay just expired: do a final wipe so no echo residue remains,
+      // then start fresh detection on the next incoming chunk.
+      entry.ignoreUntil = undefined;
+      entry.buffer.buffer = '';
+      return;
+    }
+
     const rawJson = parsePlanBlock(entry.buffer.buffer);
     if (rawJson === null) return;
 
@@ -160,11 +181,16 @@ class BufferWatcher {
    * Switch a session into plan-detection mode. Any previous mode and buffer
    * is cleared. onPlan fires with the raw JSON string when complete.
    * onPlanError fires if the JSON is malformed.
+   *
+   * @param echoSuppressMs - milliseconds to discard incoming data before
+   *   starting real detection (default 1500). Use this to let the PTY echo
+   *   of the sent prompt clear before scanning for plan markers.
    */
   async watchForPlan(
     sessionId: string,
     onPlan: (rawJson: string) => void,
-    onPlanError: (err: string) => void
+    onPlanError: (err: string) => void,
+    echoSuppressMs = 1500,
   ): Promise<void> {
     const entry = await this.ensureListening(sessionId);
     entry.buffer.buffer = '';
@@ -172,6 +198,7 @@ class BufferWatcher {
     entry.onPlan = onPlan;
     entry.onPlanError = onPlanError;
     entry.onSentinel = undefined;
+    entry.ignoreUntil = echoSuppressMs > 0 ? Date.now() + echoSuppressMs : undefined;
   }
 
   /**
@@ -187,6 +214,7 @@ class BufferWatcher {
     entry.onSentinel = undefined;
     entry.onPlan = undefined;
     entry.onPlanError = undefined;
+    entry.ignoreUntil = undefined;
   }
 
   /**
