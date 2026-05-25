@@ -142,11 +142,13 @@ class BufferWatcher {
         entry.buffer.buffer = '';
         return;
       }
-      // Delay just expired: do a final wipe so no echo residue remains,
-      // then start fresh detection on the next incoming chunk.
+      // Suppress window expired. Every chunk during the window was already
+      // wiped, so the buffer holds only the *current* incoming chunk — which
+      // is the first real response data from the agent (not echo residue).
+      // Clear the flag and fall through so this chunk is scanned immediately;
+      // the old "final wipe + return" was silently discarding the agent's
+      // first response chunk (often the one containing PLAN_START).
       entry.ignoreUntil = undefined;
-      entry.buffer.buffer = '';
-      return;
     }
 
     const rawJson = parsePlanBlock(entry.buffer.buffer);

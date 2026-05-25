@@ -51,6 +51,12 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     const fitAddonRef = useRef<FitAddon | null>(null);
     const [spawnState, setSpawnState] = useState<SpawnState>('idle');
     const [errorMsg, setErrorMsg] = useState('');
+    // Guard against React StrictMode double-invocation. When StrictMode runs
+    // cleanup immediately after the first effect, it sets this to true so the
+    // second (redundant) invocation is a no-op. Manually triggered retries
+    // reset this flag because they come from the retry button, not from the
+    // effect re-running with the same deps.
+    const effectActiveRef = useRef(false);
 
     // ── Expose fit() to parent via ref ───────────────────────────────────
     useImperativeHandle(ref, () => ({
@@ -96,6 +102,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // ── Main effect — creates xterm, wires listeners, spawns PTY ─────────
     useEffect(() => {
       if (!containerRef.current) return;
+      // If the effect is already active (StrictMode double-invocation in dev),
+      // skip this redundant run. The flag is reset in cleanup so a genuine
+      // re-run (deps change or manual retry) still works correctly.
+      if (effectActiveRef.current) return;
+      effectActiveRef.current = true;
 
       // ─ xterm instance ────────────────────────────────────────────────
       const term = new Terminal({
@@ -201,6 +212,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
       // ─ Cleanup ───────────────────────────────────────────────────────
       return () => {
+        // Reset the guard so a genuine re-run (deps change) works correctly.
+        effectActiveRef.current = false;
         cancelled = true;
         if (resizeTimer !== null) clearTimeout(resizeTimer);
         resizeObserver.disconnect();
