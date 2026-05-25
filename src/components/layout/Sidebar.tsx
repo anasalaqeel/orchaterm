@@ -53,6 +53,21 @@ export function Sidebar() {
   const [editingSpace,     setEditingSpace]     = useState<Space | undefined>(undefined);
   const [modalWorkspaceId, setModalWorkspaceId] = useState<string>('');
 
+  // Listen for open-space-modal event dispatched by GroupChat stale banner
+  useEffect(() => {
+    const handler = () => {
+      const spaceId = localStorage.getItem('agentdeck:open-space-modal');
+      if (spaceId) {
+        localStorage.removeItem('agentdeck:open-space-modal');
+        const sp = spaces.find(s => s.id === spaceId);
+        if (sp) openEditSpace(sp);
+      }
+    };
+    window.addEventListener('agentdeck:open-space-modal', handler);
+    return () => window.removeEventListener('agentdeck:open-space-modal', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaces]);
+
   const openCreateSpace = (workspaceId: string) => {
     setModalWorkspaceId(workspaceId);
     setEditingSpace(undefined);
@@ -92,7 +107,20 @@ export function Sidebar() {
       <div className={s.body}>
 
         {/* ── Workspaces ── */}
-        <span className={s.sectionLabel}>Workspaces</span>
+        <div className={s.sectionRow}>
+          <span className={s.sectionLabel}>Workspaces</span>
+          <button
+            className={s.sectionAddBtn}
+            title="New Workspace"
+            onClick={() => {
+              navigate('/');
+              setViewMode('grid');
+              localStorage.setItem('agentdeck:open-new-workspace', '1');
+            }}
+          >
+            <Plus size={10} />
+          </button>
+        </div>
         <div className={s.workspaceList}>
           {workspaces.length === 0 && (
             <p className={s.empty}>No workspaces yet.</p>
@@ -125,6 +153,12 @@ export function Sidebar() {
                   >
                     <span className={s.wsDot} style={{ backgroundColor: w.color }} />
                     <span className={s.wsName}>{w.name}</span>
+                    {(() => {
+                      const count = spaces.filter(sp => sp.workspaceId === w.id).length;
+                      return count > 0 ? (
+                        <span className={s.wsSpaceBadge}>{count}</span>
+                      ) : null;
+                    })()}
                   </button>
 
                   {/* Action buttons — visible on hover */}
@@ -179,6 +213,9 @@ export function Sidebar() {
                             }}
                           />
                           <span className={s.spaceName}>{sp.name}</span>
+                          {localStorage.getItem(`agentdeck:conductor:running:${w.id}`) === 'true' && (
+                            <span className={s.spaceRunningDot} />
+                          )}
 
                           {/* Space actions — shown on hover */}
                           <div className={cx(s.spaceActions, !isSpaceHovered && s.hidden)}>
@@ -329,6 +366,32 @@ const s = {
     letter-spacing: 0.05em;
     padding: 0 var(--spacing-sm);
     user-select: none;
+  `,
+  sectionRow: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--spacing-sm);
+    /* Override child sectionLabel padding so it doesn't double-apply */
+    & > span { padding: 0; }
+  `,
+  sectionAddBtn: css`
+    width: 18px; height: 18px; border-radius: 4px; border: none;
+    background: transparent; color: var(--text-tertiary); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 120ms ease;
+    &:hover { background: var(--bg-hover); color: #ff9d00; }
+  `,
+  wsSpaceBadge: css`
+    font-size: 9px; font-weight: 700; color: var(--text-tertiary);
+    background: var(--bg-tertiary); border-radius: 99px;
+    padding: 1px 5px; flex-shrink: 0; letter-spacing: 0;
+  `,
+  spaceRunningDot: css`
+    width: 5px; height: 5px; border-radius: 50%;
+    background: #ff9d00; flex-shrink: 0;
+    animation: runPulse 1.5s ease-in-out infinite;
+    @keyframes runPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
   `,
   workspaceList: css`
     display: flex;
