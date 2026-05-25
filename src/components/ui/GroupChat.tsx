@@ -1,19 +1,34 @@
 /**
  * GroupChat.tsx
  *
- * Streaming Ollama chat panel scoped to the active Agent Group.
- * System prompt gives Ollama context about the workspace, the active group,
- * and the terminal sessions in that group.
+ * Streaming Ollama chat panel scoped to the active Space.
  *
- * User messages appear on the right (amber), Ollama responses on the left (slate).
- * Responses stream token-by-token.
+ * Features:
+ * - Streaming chat with Ollama (stale-closure fix via streamingContentRef)
+ * - Chat history persisted to localStorage per workspace/space
+ * - Live terminal feed: watchForSummary → summariseChunk → agent-summary messages
+ * - Terminal injection: parses "INJECT → <title>: <msg>" from Ollama, calls write_pty
+ * - Save message to Prompt Vault
+ * - Export transcript as .md
+ * - Contextual empty state with suggested prompts
+ * - Inline Markdown rendering (code fences, bold, inline code)
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { css, cx } from '@emotion/css';
-import { Send, Bot, User, WifiOff, RefreshCw, Users, ChevronDown } from 'lucide-react';
+import {
+  Send, Bot, User, WifiOff, RefreshCw, Users,
+  ChevronDown, Activity, BookmarkPlus, Download, X as XIcon,
+} from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { useDashboard } from '../../context/DashboardContext';
-import { streamChatWithOllama, ChatMessage, checkOllamaOnline } from '../../services/ollamaRelay';
+import {
+  streamChatWithOllama,
+  summariseChunk,
+  checkOllamaOnline,
+  ChatMessage,
+} from '../../services/ollamaRelay';
+import { bufferWatcher } from '../../services/bufferWatcher';
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
@@ -21,17 +36,100 @@ interface GroupChatProps {
   workspaceId: string;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// ── Display message ────────────────────────────────────────────────────────────
+
+type MsgRole = 'user' | 'assistant' | 'system' | 'agent-summary';
+
+interface DisplayMessage {
+  id: string;
+  role: MsgRole;
+  content: string;
+  streaming?: boolean;
+  sessionTitle?: string;
+  sessionColor?: string | null;
+  injectedSessionTitle?: string;
+}
+
+// ── Storage helpers ────────────────────────────────────────────────────────────
+
+const MAX_STORED = 100;
+
+function chatStorageKey(workspaceId: string, spaceId: string | null): string {
+  return `agentdeck:chat:${workspaceId}:${spaceId ?? 'workspace'}`;
+}
+
+function loadPersistedMessages(key: string): DisplayMessage[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMessages(key: string, messages: DisplayMessage[]): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(messages.slice(-MAX_STORED)));
+  } catch { /* storage full — ignore */ }
+}
+
+// ── Inline Markdown renderer ───────────────────────────────────────────────────
+
+function renderMarkdown(text: string): React.ReactNode {
+  // Split on code fences
+  const parts = text.split(/(```[\s\S]*?```)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith('```') && part.endsWith('```')) {
+          const inner = part.slice(3, -3).replace(/^\w+\n/, '');
+          return (
+            <pre key={i} className={md.codeBlock}>{inner}</pre>
+          );
+        }
+        // Inline: **bold**, `code`
+        const segments = part.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+        return (
+          <span key={i}>
+            {segments.map((seg, j) => {
+              if (seg.startsWith('**') && seg.endsWith('**'))
+                return <strong key={j} className={md.bold}>{seg.slice(2, -2)}</strong>;
+              if (seg.startsWith('`') && seg.endsWith('`'))
+                return <code key={j} className={md.inlineCode}>{seg.slice(1, -1)}</code>;
+              return seg;
+            })}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+const md = {
+  codeBlock: css`
+    background: rgba(0,0,0,0.35); border-radius: 6px; padding: 8px 10px;
+    margin: 6px 0; font-family: 'Fira Code','Cascadia Code',monospace;
+    font-size: 11px; overflow-x: auto; white-space: pre; color: #94a3b8;
+  `,
+  bold: css`color: #e2e8f0;`,
+  inlineCode: css`
+    background: rgba(0,0,0,0.3); border-radius: 3px; padding: 1px 5px;
+    font-family: 'Fira Code',monospace; font-size: 0.9em; color: #f59e0b;
+  `,
+};
+
+// ── System prompt ──────────────────────────────────────────────────────────────
 
 function buildSystemPrompt(
   workspaceName: string,
-  groupName: string | null,
+  spaceName: string | null,
   sessionTitles: string[],
 ): string {
-  const groupLine = groupName
-    ? `Active Space: "${groupName}"`
+  const spaceLine = spaceName
+    ? `Active Space: "${spaceName}"`
     : 'No space is currently selected.';
-
   const sessionsLine = sessionTitles.length > 0
     ? `Terminal sessions in this space:\n${sessionTitles.map(t => `  • ${t}`).join('\n')}`
     : 'No terminal sessions are currently assigned to this space.';
@@ -39,19 +137,43 @@ function buildSystemPrompt(
   return `You are an AI orchestration assistant embedded inside AgentDeck, a developer workspace management tool.
 
 Workspace: "${workspaceName}"
-${groupLine}
+${spaceLine}
 ${sessionsLine}
 
-Your job: help the developer plan, coordinate, and execute work across their terminal sessions. Be concise, direct, and practical. Think like a senior engineer and a tech lead — not a chatbot. Avoid filler, avoid markdown headers, keep answers short unless depth is needed.`;
+Your job: help the developer plan, coordinate, and execute work across their terminal sessions. Be concise, direct, and practical. Think like a senior engineer and a tech lead — not a chatbot. Avoid filler, avoid markdown headers, keep answers short unless depth is needed.
+
+When the developer asks you to send a message or instruction to a specific terminal session, include an injection line in your response formatted exactly like this:
+INJECT → <terminal-title>: <message to send>
+
+Only use INJECT when the user explicitly asks you to send/relay something to a terminal. You can include your normal reply above or below the INJECT line.`;
 }
 
-// ── Display message ────────────────────────────────────────────────────────────
+// ── Inject parser ──────────────────────────────────────────────────────────────
 
-interface DisplayMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  streaming?: boolean;
+function parseInject(
+  content: string,
+  sessions: { id: string; title: string; color: string | null }[],
+): { sessionId: string; sessionTitle: string; sessionColor: string | null; message: string } | null {
+  const match = content.match(/INJECT\s*→\s*([^:\n]+):\s*(.+)/i);
+  if (!match) return null;
+  const targetTitle = match[1].trim();
+  const message     = match[2].trim();
+  const session = sessions.find(
+    s => s.title.toLowerCase().includes(targetTitle.toLowerCase()),
+  );
+  if (!session) return null;
+  return { sessionId: session.id, sessionTitle: session.title, sessionColor: session.color, message };
+}
+
+// ── Suggested prompts ──────────────────────────────────────────────────────────
+
+function getSuggestions(sessionTitles: string[]): string[] {
+  const first = sessionTitles[0] ?? 'the terminal';
+  return [
+    'What is everyone working on right now?',
+    `Summarise what ${first} has done so far`,
+    `Tell ${first} to write a brief status update`,
+  ];
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -59,15 +181,19 @@ interface DisplayMessage {
 export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   const {
     workspaces, spaces, terminalSessions,
-    activeSpaceId, settings,
+    activeSpaceId, settings, addSavedPrompt, showToast,
   } = useDashboard();
 
-  const workspace    = workspaces.find(w => w.id === workspaceId);
-  const activeSpace  = spaces.find(g => g.id === activeSpaceId);
-  const allSessions  = terminalSessions.filter(s => s.workspaceId === workspaceId);
+  const workspace     = workspaces.find(w => w.id === workspaceId);
+  const activeSpace   = spaces.find(g => g.id === activeSpaceId);
+  const allSessions   = terminalSessions.filter(s => s.workspaceId === workspaceId);
   const groupSessions = activeSpace
     ? allSessions.filter(s => activeSpace.sessionIds.includes(s.id))
     : allSessions;
+
+  // ── Storage key — changes when space changes ──────────────────────────────
+  const storageKey    = chatStorageKey(workspaceId, activeSpaceId ?? null);
+  const storageKeyRef = useRef(storageKey);
 
   // ── Ollama status ─────────────────────────────────────────────────────────
   const [ollamaOnline, setOllamaOnline] = useState<boolean | null>(null);
@@ -83,53 +209,101 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
   useEffect(() => { checkOnline(); }, [checkOnline]);
 
-  // ── Message history ───────────────────────────────────────────────────────
-  const [messages,   setMessages]   = useState<DisplayMessage[]>([]);
+  // ── Message history (persisted) ───────────────────────────────────────────
+  const [messages,   setMessages]   = useState<DisplayMessage[]>(() => loadPersistedMessages(storageKey));
   const [apiHistory, setApiHistory] = useState<ChatMessage[]>([]);
   const [input,      setInput]      = useState('');
   const [streaming,  setStreaming]  = useState(false);
-  const cancelRef = useRef<(() => void) | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Tracks streaming content so onDone never needs to read state
+  const streamingContentRef = useRef('');
+  const cancelRef           = useRef<(() => void) | null>(null);
+  const bottomRef           = useRef<HTMLDivElement>(null);
+  const textareaRef         = useRef<HTMLTextAreaElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
-  const scrollToBottom = (smooth = true) => {
-    bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant' });
-  };
-
+  // Persist on every message change (debounced 300 ms)
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!streaming) scrollToBottom();
-  }, [messages.length, streaming]);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => saveMessages(storageKeyRef.current, messages), 300);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [messages]);
+
+  // Swap persisted history when space changes
+  useEffect(() => {
+    const newKey = chatStorageKey(workspaceId, activeSpaceId ?? null);
+    storageKeyRef.current = newKey;
+    setMessages(loadPersistedMessages(newKey));
+    setApiHistory([]);
+  }, [workspaceId, activeSpaceId]);
+
+  const scrollToBottom = (smooth = true) =>
+    bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant' });
+
+  useEffect(() => { if (!streaming) scrollToBottom(); }, [messages.length, streaming]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
-    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setShowScrollBtn(distFromBottom > 120);
+    setShowScrollBtn(el.scrollHeight - el.scrollTop - el.clientHeight > 120);
   };
+
+  // ── Live feed (watchForSummary) ───────────────────────────────────────────
+  const [liveFeedOn, setLiveFeedOn] = useState(
+    () => localStorage.getItem('agentdeck:livefeed') === 'true',
+  );
+
+  const toggleLiveFeed = () => {
+    setLiveFeedOn(prev => {
+      localStorage.setItem('agentdeck:livefeed', String(!prev));
+      return !prev;
+    });
+  };
+
+  const groupSessionIds = groupSessions.map(s => s.id).join(',');
+
+  useEffect(() => {
+    if (!liveFeedOn || !settings.conductorOllamaModel || !settings.ollamaHost) return;
+
+    groupSessions.forEach(session => {
+      bufferWatcher.watchForSummary(session.id, async (chunk: string) => {
+        try {
+          const summary = await summariseChunk(
+            chunk, session.title,
+            settings.ollamaHost, settings.conductorOllamaModel,
+          );
+          setMessages(prev => [...prev, {
+            id: crypto.randomUUID(),
+            role: 'agent-summary',
+            content: summary,
+            sessionTitle: session.title,
+            sessionColor: session.color,
+          }]);
+        } catch { /* silently skip */ }
+      });
+    });
+
+    return () => { groupSessions.forEach(s => bufferWatcher.clearSummary(s.id)); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveFeedOn, groupSessionIds, settings.conductorOllamaModel, settings.ollamaHost]);
 
   // ── Send message ──────────────────────────────────────────────────────────
 
-  const handleSend = () => {
-    const text = input.trim();
-    if (!text || streaming) return;
-    if (!settings.conductorOllamaModel) return;
+  const handleSend = useCallback((overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
+    if (!text || streaming || !settings.conductorOllamaModel) return;
 
     setInput('');
-    // Reset textarea height
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    streamingContentRef.current = '';
 
-    const userMsg: DisplayMessage = {
-      id: crypto.randomUUID(), role: 'user', content: text,
-    };
-    const assistantId = crypto.randomUUID();
-    const assistantMsg: DisplayMessage = {
-      id: assistantId, role: 'assistant', content: '', streaming: true,
-    };
+    const userMsg: DisplayMessage      = { id: crypto.randomUUID(), role: 'user', content: text };
+    const assistantId                  = crypto.randomUUID();
+    const assistantMsg: DisplayMessage = { id: assistantId, role: 'assistant', content: '', streaming: true };
 
     setMessages(prev => [...prev, userMsg, assistantMsg]);
-
-    const newApiHistory: ChatMessage[] = [...apiHistory, { role: 'user', content: text }];
-    setApiHistory(newApiHistory);
+    const newHistory: ChatMessage[] = [...apiHistory, { role: 'user', content: text }];
+    setApiHistory(newHistory);
     setStreaming(true);
     setOllamaOnline(true); // optimistic
 
@@ -140,58 +314,55 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     );
 
     const cancel = streamChatWithOllama({
-      ollamaHost: settings.ollamaHost,
-      model:      settings.conductorOllamaModel,
+      ollamaHost:   settings.ollamaHost,
+      model:        settings.conductorOllamaModel,
       systemPrompt,
-      messages:   newApiHistory,
+      messages:     newHistory,
       onToken: (token) => {
+        streamingContentRef.current += token;
         setMessages(prev =>
-          prev.map(m =>
-            m.id === assistantId ? { ...m, content: m.content + token } : m,
-          ),
+          prev.map(m => m.id === assistantId ? { ...m, content: m.content + token } : m),
         );
       },
       onDone: () => {
+        const finalContent = streamingContentRef.current;
         setStreaming(false);
-        setMessages(prev =>
-          prev.map(m => m.id === assistantId ? { ...m, streaming: false } : m),
-        );
-        // Add completed assistant message to api history
-        setMessages(current => {
-          const finishedMsg = current.find(m => m.id === assistantId);
-          if (finishedMsg) {
-            setApiHistory(h => [...h, { role: 'assistant', content: finishedMsg.content }]);
-          }
-          return current;
-        });
+        setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, streaming: false } : m));
+        setApiHistory(h => [...h, { role: 'assistant', content: finalContent }]);
         cancelRef.current = null;
         scrollToBottom();
+
+        // Handle inject pattern
+        const inj = parseInject(finalContent, groupSessions);
+        if (inj) {
+          invoke('write_pty', { sessionId: inj.sessionId, data: inj.message + '\n' }).catch(() => {});
+          setMessages(prev => [...prev, {
+            id: crypto.randomUUID(),
+            role: 'system',
+            content: `✦ Sent to ${inj.sessionTitle}: ${inj.message}`,
+            injectedSessionTitle: inj.sessionTitle,
+            sessionColor: inj.sessionColor,
+          }]);
+        }
       },
       onError: (err) => {
         setStreaming(false);
         setOllamaOnline(false);
         setMessages(prev =>
-          prev.map(m =>
-            m.id === assistantId
-              ? { ...m, content: `Error: ${err}`, streaming: false }
-              : m,
-          ),
+          prev.map(m => m.id === assistantId ? { ...m, content: `Error: ${err}`, streaming: false } : m),
         );
         cancelRef.current = null;
       },
     });
 
     cancelRef.current = cancel;
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input, streaming, settings, workspace, activeSpace, groupSessions, apiHistory, workspaceId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  // Auto-grow textarea
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
     e.target.style.height = 'auto';
@@ -202,12 +373,52 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     cancelRef.current?.();
     cancelRef.current = null;
     setStreaming(false);
-    setMessages(prev =>
-      prev.map(m => m.streaming ? { ...m, streaming: false } : m),
-    );
+    setMessages(prev => prev.map(m => m.streaming ? { ...m, streaming: false } : m));
   };
 
-  // ── No model configured ───────────────────────────────────────────────────
+  // ── Save to Prompt Vault ──────────────────────────────────────────────────
+
+  const handleSaveToVault = useCallback((msg: DisplayMessage) => {
+    const title = msg.content.slice(0, 60) + (msg.content.length > 60 ? '…' : '');
+    addSavedPrompt({
+      workspaceId,
+      spaceId: activeSpaceId ?? null,
+      title,
+      content: msg.content,
+      tags: [],
+    });
+    showToast('Saved to Prompt Vault', 'success');
+  }, [workspaceId, activeSpaceId, addSavedPrompt, showToast]);
+
+  // ── Export transcript ─────────────────────────────────────────────────────
+
+  const handleExport = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const lines = messages.map(m => {
+      if (m.role === 'user')          return `**You** (${today}):\n${m.content}\n`;
+      if (m.role === 'assistant')     return `**Ollama** (${today}):\n${m.content}\n`;
+      if (m.role === 'agent-summary') return `*[${m.sessionTitle}]:* ${m.content}\n`;
+      if (m.role === 'system')        return `*${m.content}*\n`;
+      return '';
+    }).filter(Boolean);
+    const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `agentdeck-chat-${today}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── Clear history ─────────────────────────────────────────────────────────
+
+  const handleClear = () => {
+    localStorage.removeItem(storageKeyRef.current);
+    setMessages([]);
+    setApiHistory([]);
+  };
+
+  // ── Guards ────────────────────────────────────────────────────────────────
 
   const modelMissing = !settings.conductorOllamaModel;
 
@@ -224,25 +435,51 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             {activeSpace ? activeSpace.name : 'Workspace'} Chat
           </span>
           {activeSpace && (
-            <span className={s.groupBadge} style={{ backgroundColor: activeSpace.color + '22', color: activeSpace.color, borderColor: activeSpace.color + '44' }}>
+            <span
+              className={s.groupBadge}
+              style={{
+                backgroundColor: activeSpace.color + '22',
+                color: activeSpace.color,
+                borderColor: activeSpace.color + '44',
+              }}
+              title={groupSessions.map(s => s.title).join(', ') || 'No sessions assigned'}
+            >
               <Users size={9} />
               {groupSessions.length} session{groupSessions.length !== 1 ? 's' : ''}
             </span>
           )}
         </div>
 
-        {/* Ollama status */}
-        <div className={s.statusRow}>
+        <div className={s.headerRight}>
+          {/* Live feed toggle */}
+          {!modelMissing && (
+            <button
+              className={cx(s.headerIconBtn, liveFeedOn && s.headerIconBtnActive)}
+              onClick={toggleLiveFeed}
+              title={liveFeedOn ? 'Disable live terminal summaries' : 'Enable live terminal summaries'}
+            >
+              <Activity size={12} />
+            </button>
+          )}
+          {/* Export */}
+          {messages.length > 0 && (
+            <button className={s.headerIconBtn} onClick={handleExport} title="Export transcript (.md)">
+              <Download size={12} />
+            </button>
+          )}
+          {/* Clear */}
+          {messages.length > 0 && (
+            <button className={s.headerIconBtn} onClick={handleClear} title="Clear chat history">
+              <XIcon size={12} />
+            </button>
+          )}
+          {/* Ollama status */}
           {ollamaOnline === false && (
-            <span className={s.offlineBadge}>
-              <WifiOff size={10} />
-              Offline
-            </span>
+            <span className={s.offlineBadge}><WifiOff size={10} /> Offline</span>
           )}
           {ollamaOnline === true && (
             <span className={s.onlineBadge}>
-              <span className={s.onlineDot} />
-              Ollama
+              <span className={s.onlineDot} /> Ollama
             </span>
           )}
           <button
@@ -259,18 +496,33 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       {/* Warning banners */}
       {modelMissing && (
         <div className={s.warningBanner}>
-          <span>⚠ No Ollama model configured — go to Settings → Conductor Settings to pick one.</span>
+          ⚠ No Ollama model configured — go to <strong>Settings → Conductor Settings</strong> to pick one.
         </div>
       )}
       {ollamaOnline === false && !modelMissing && (
         <div className={s.warningBanner}>
-          <span>⚠ Ollama is offline at <code>{settings.ollamaHost}</code> — start it to enable chat.</span>
+          ⚠ Ollama is offline at <code>{settings.ollamaHost}</code> — start it to enable chat.
+        </div>
+      )}
+      {/* Stale space sessions */}
+      {activeSpace && activeSpace.sessionIds.length > 0 && groupSessions.length === 0 && (
+        <div className={s.warningBanner}>
+          ⚠ Sessions assigned to <strong>{activeSpace.name}</strong> are from a previous launch.{' '}
+          <button
+            className={s.inlineLinkBtn}
+            onClick={() => {
+              localStorage.setItem('agentdeck:open-space-modal', activeSpace.id);
+              window.dispatchEvent(new Event('agentdeck:open-space-modal'));
+            }}
+          >
+            Re-add sessions
+          </button>{' '}via Space settings.
         </div>
       )}
 
       {/* Message list */}
       <div className={s.messageList} onScroll={handleScroll}>
-        {messages.length === 0 && (
+        {messages.length === 0 ? (
           <div className={s.emptyState}>
             <Bot size={28} className={s.emptyIcon} />
             <p className={s.emptyTitle}>
@@ -278,46 +530,39 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             </p>
             <p className={s.emptyHint}>
               Ask anything about your terminals, tasks, or workflow.
-              {activeSpace && groupSessions.length > 0 && (
-                <span> Ollama knows about {groupSessions.length} session{groupSessions.length !== 1 ? 's' : ''} in this group.</span>
-              )}
             </p>
-          </div>
-        )}
-
-        {messages.map(msg => (
-          <div
-            key={msg.id}
-            className={cx(s.msgRow, msg.role === 'user' ? s.msgRowUser : s.msgRowAssistant)}
-          >
-            {msg.role === 'assistant' && (
-              <div className={s.avatar}>
-                <Bot size={12} />
-              </div>
-            )}
-            <div className={cx(s.bubble, msg.role === 'user' ? s.bubbleUser : s.bubbleAssistant)}>
-              <pre className={s.msgText}>{msg.content || (msg.streaming ? '' : '…')}</pre>
-              {msg.streaming && <span className={s.cursor} />}
+            <div className={s.suggestions}>
+              {getSuggestions(groupSessions.map(s => s.title)).map(suggestion => (
+                <button
+                  key={suggestion}
+                  className={s.suggestionBtn}
+                  onClick={() => handleSend(suggestion)}
+                  disabled={modelMissing || ollamaOnline === false}
+                >
+                  {suggestion}
+                </button>
+              ))}
             </div>
-            {msg.role === 'user' && (
-              <div className={cx(s.avatar, s.avatarUser)}>
-                <User size={12} />
-              </div>
-            )}
           </div>
-        ))}
-
+        ) : (
+          messages.map(msg => (
+            <MessageRow
+              key={msg.id}
+              msg={msg}
+              onSaveToVault={() => handleSaveToVault(msg)}
+            />
+          ))
+        )}
         <div ref={bottomRef} />
       </div>
 
-      {/* Scroll-to-bottom button */}
       {showScrollBtn && (
         <button className={s.scrollBtn} onClick={() => scrollToBottom()}>
           <ChevronDown size={14} />
         </button>
       )}
 
-      {/* Input area */}
+      {/* Input */}
       <div className={s.inputArea}>
         <textarea
           ref={textareaRef}
@@ -330,19 +575,19 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
               ? 'Configure an Ollama model in Settings first…'
               : streaming
               ? 'Ollama is responding…'
+              : ollamaOnline === false
+              ? 'Ollama offline — start it to chat'
               : 'Ask anything — ↵ to send, Shift+↵ for newline'
           }
           disabled={modelMissing || ollamaOnline === false}
           rows={1}
         />
         {streaming ? (
-          <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleStop} title="Stop">
-            ■
-          </button>
+          <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleStop} title="Stop">■</button>
         ) : (
           <button
             className={s.sendBtn}
-            onClick={handleSend}
+            onClick={() => handleSend()}
             disabled={!input.trim() || modelMissing || ollamaOnline === false}
             title="Send (Enter)"
           >
@@ -350,7 +595,58 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
           </button>
         )}
       </div>
+    </div>
+  );
+};
 
+// ── MessageRow ─────────────────────────────────────────────────────────────────
+
+const MessageRow: React.FC<{
+  msg: DisplayMessage;
+  onSaveToVault: () => void;
+}> = ({ msg, onSaveToVault }) => {
+  const [hovered, setHovered] = useState(false);
+
+  if (msg.role === 'agent-summary') {
+    return (
+      <div className={s.agentSummaryRow}>
+        <span className={s.agentSummaryDot} style={{ backgroundColor: msg.sessionColor ?? '#475569' }} />
+        <span className={s.agentSummaryTitle}>{msg.sessionTitle}</span>
+        <span className={s.agentSummaryText}>{msg.content}</span>
+      </div>
+    );
+  }
+
+  if (msg.role === 'system') {
+    return (
+      <div
+        className={s.systemRow}
+        style={msg.sessionColor
+          ? { borderLeftColor: msg.sessionColor, backgroundColor: msg.sessionColor + '0d' }
+          : undefined}
+      >
+        {msg.content}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cx(s.msgRow, msg.role === 'user' ? s.msgRowUser : s.msgRowAssistant)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {msg.role === 'assistant' && <div className={s.avatar}><Bot size={12} /></div>}
+      <div className={cx(s.bubble, msg.role === 'user' ? s.bubbleUser : s.bubbleAssistant)}>
+        <div className={s.msgText}>{renderMarkdown(msg.content)}</div>
+        {msg.streaming && <span className={s.cursor} />}
+        {msg.role === 'assistant' && !msg.streaming && hovered && (
+          <button className={s.vaultBtn} onClick={onSaveToVault} title="Save to Prompt Vault">
+            <BookmarkPlus size={11} />
+          </button>
+        )}
+      </div>
+      {msg.role === 'user' && <div className={cx(s.avatar, s.avatarUser)}><User size={12} /></div>}
     </div>
   );
 };
@@ -359,287 +655,167 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
 const s = {
   root: css`
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    background: #070d14;
-    overflow: hidden;
-    position: relative;
+    display: flex; flex-direction: column; height: 100%;
+    background: #070d14; overflow: hidden; position: relative;
   `,
   header: css`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    border-bottom: 1px solid #0d1c2a;
-    background: #0b1520;
-    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; border-bottom: 1px solid #0d1c2a;
+    background: #0b1520; flex-shrink: 0; gap: 8px;
   `,
-  headerLeft: css`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  `,
-  botIcon: css`
-    color: #ff9d00;
-    flex-shrink: 0;
-  `,
-  headerTitle: css`
-    font-size: 12px;
-    font-weight: 700;
-    color: #e2e8f0;
-  `,
+  headerLeft: css`display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;`,
+  headerRight: css`display: flex; align-items: center; gap: 5px; flex-shrink: 0;`,
+  botIcon: css`color: #ff9d00; flex-shrink: 0;`,
+  headerTitle: css`font-size: 12px; font-weight: 700; color: #e2e8f0; white-space: nowrap;`,
   groupBadge: css`
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 99px;
-    border: 1px solid;
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; font-weight: 700; padding: 2px 7px;
+    border-radius: 99px; border: 1px solid; flex-shrink: 0; cursor: default;
   `,
-  statusRow: css`
-    display: flex;
-    align-items: center;
-    gap: 6px;
+  headerIconBtn: css`
+    width: 24px; height: 24px; border-radius: 5px; border: none;
+    background: transparent; color: #475569; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 150ms ease;
+    &:hover { background: #0d1c2a; color: #94a3b8; }
   `,
-  onlineBadge: css`
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 10px;
-    font-weight: 700;
-    color: #10b981;
+  headerIconBtnActive: css`
+    color: #10b981 !important;
+    background: rgba(16,185,129,0.1) !important;
   `,
+  onlineBadge: css`display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; color: #10b981;`,
   onlineDot: css`
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #10b981;
+    width: 6px; height: 6px; border-radius: 50%; background: #10b981;
     animation: blink 2s ease-in-out infinite;
-    @keyframes blink {
-      0%, 100% { opacity: 1 }
-      50%       { opacity: 0.4 }
-    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
   `,
-  offlineBadge: css`
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    font-weight: 700;
-    color: #ef4444;
-  `,
+  offlineBadge: css`display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; color: #ef4444;`,
   refreshBtn: css`
-    width: 22px;
-    height: 22px;
-    border-radius: 5px;
-    border: none;
-    background: transparent;
-    color: #475569;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 22px; height: 22px; border-radius: 5px; border: none;
+    background: transparent; color: #475569; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
     transition: all 150ms ease;
     &:hover { background: #0d1c2a; color: #94a3b8; }
     &:disabled { opacity: 0.5; cursor: default; }
   `,
-  spin: css`
-    animation: spin 0.8s linear infinite;
-    @keyframes spin { to { transform: rotate(360deg) } }
-  `,
+  spin: css`animation: spin 0.8s linear infinite; @keyframes spin { to { transform: rotate(360deg); } }`,
   warningBanner: css`
-    background: rgba(245, 158, 11, 0.08);
-    border-bottom: 1px solid rgba(245, 158, 11, 0.2);
-    padding: 8px 14px;
-    font-size: 11px;
-    color: #f59e0b;
-    flex-shrink: 0;
-    line-height: 1.4;
-    code {
-      font-family: 'Fira Code', monospace;
-      color: #fbbf24;
-    }
+    background: rgba(245,158,11,0.08); border-bottom: 1px solid rgba(245,158,11,0.2);
+    padding: 8px 14px; font-size: 11px; color: #f59e0b; flex-shrink: 0; line-height: 1.5;
+    code { font-family: 'Fira Code',monospace; color: #fbbf24; }
+    strong { color: #fbbf24; }
+  `,
+  inlineLinkBtn: css`
+    background: transparent; border: none; color: #fbbf24;
+    text-decoration: underline; cursor: pointer; font-size: inherit; padding: 0;
+    &:hover { color: #fff; }
   `,
   messageList: css`
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+    flex: 1; overflow-y: auto; padding: 16px 14px;
+    display: flex; flex-direction: column; gap: 10px;
     scroll-behavior: smooth;
     &::-webkit-scrollbar { width: 4px; }
     &::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 2px; }
   `,
   emptyState: css`
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 40px 24px;
-    gap: 8px;
-    color: #475569;
-    margin: auto 0;
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 40px 24px;
+    gap: 8px; margin: auto 0;
   `,
-  emptyIcon: css`
-    color: #1e3a5f;
-    margin-bottom: 4px;
+  emptyIcon: css`color: #1e3a5f; margin-bottom: 4px;`,
+  emptyTitle: css`font-size: 13px; font-weight: 700; color: #64748b; margin: 0;`,
+  emptyHint: css`font-size: 11px; color: #475569; line-height: 1.5; margin: 0; max-width: 260px;`,
+  suggestions: css`
+    display: flex; flex-direction: column; gap: 6px; margin-top: 12px; width: 100%; max-width: 280px;
   `,
-  emptyTitle: css`
-    font-size: 13px;
-    font-weight: 700;
-    color: #64748b;
-    margin: 0;
+  suggestionBtn: css`
+    background: #0b1520; border: 1px solid #1e3a5f; border-radius: 8px;
+    color: #64748b; font-size: 11px; padding: 8px 12px; cursor: pointer;
+    text-align: left; transition: all 150ms ease; line-height: 1.4; width: 100%;
+    &:hover:not(:disabled) { border-color: #ff9d00; color: #e2e8f0; background: #0d1c2a; }
+    &:disabled { opacity: 0.4; cursor: not-allowed; }
   `,
-  emptyHint: css`
-    font-size: 11px;
-    color: #475569;
-    line-height: 1.5;
-    margin: 0;
-    max-width: 260px;
-  `,
-  msgRow: css`
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-  `,
-  msgRowUser: css`
-    flex-direction: row-reverse;
-  `,
-  msgRowAssistant: css`
-    flex-direction: row;
-  `,
+  msgRow: css`display: flex; align-items: flex-end; gap: 8px; position: relative;`,
+  msgRowUser: css`flex-direction: row-reverse;`,
+  msgRowAssistant: css`flex-direction: row;`,
   avatar: css`
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: #0d1c2a;
-    border: 1px solid #1e3a5f;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #ff9d00;
-    flex-shrink: 0;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #0d1c2a; border: 1px solid #1e3a5f;
+    display: flex; align-items: center; justify-content: center;
+    color: #ff9d00; flex-shrink: 0;
   `,
-  avatarUser: css`
-    background: rgba(255, 157, 0, 0.1);
-    border-color: rgba(255, 157, 0, 0.3);
-    color: #ff9d00;
-  `,
+  avatarUser: css`background: rgba(255,157,0,0.1); border-color: rgba(255,157,0,0.3);`,
   bubble: css`
-    max-width: 82%;
-    padding: 10px 13px;
-    border-radius: 12px;
-    font-size: 12px;
-    line-height: 1.55;
-    word-break: break-word;
-    position: relative;
+    max-width: 82%; padding: 10px 13px; border-radius: 12px;
+    font-size: 12px; line-height: 1.55; word-break: break-word; position: relative;
   `,
   bubbleUser: css`
-    background: rgba(255, 157, 0, 0.12);
-    border: 1px solid rgba(255, 157, 0, 0.25);
-    border-bottom-right-radius: 3px;
-    color: #fde68a;
+    background: rgba(255,157,0,0.12); border: 1px solid rgba(255,157,0,0.25);
+    border-bottom-right-radius: 3px; color: #fde68a;
   `,
   bubbleAssistant: css`
-    background: #0d1c2a;
-    border: 1px solid #132030;
-    border-bottom-left-radius: 3px;
-    color: #cbd5e1;
+    background: #0d1c2a; border: 1px solid #132030;
+    border-bottom-left-radius: 3px; color: #cbd5e1;
   `,
-  msgText: css`
-    margin: 0;
-    font-family: inherit;
-    font-size: inherit;
-    white-space: pre-wrap;
-    line-height: 1.55;
-  `,
+  msgText: css`margin: 0; font-size: inherit; line-height: 1.55;`,
   cursor: css`
-    display: inline-block;
-    width: 7px;
-    height: 13px;
-    background: #ff9d00;
-    border-radius: 1px;
-    margin-left: 2px;
-    vertical-align: text-bottom;
-    animation: blink 0.8s step-end infinite;
-    @keyframes blink {
-      0%, 100% { opacity: 1 }
-      50%       { opacity: 0 }
-    }
+    display: inline-block; width: 7px; height: 13px; background: #ff9d00;
+    border-radius: 1px; margin-left: 2px; vertical-align: text-bottom;
+    animation: blink2 0.8s step-end infinite;
+    @keyframes blink2 { 0%,100%{opacity:1} 50%{opacity:0} }
+  `,
+  vaultBtn: css`
+    position: absolute; top: -8px; right: -8px;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #0b1520; border: 1px solid #1e3a5f;
+    color: #475569; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 150ms ease;
+    &:hover { background: rgba(255,157,0,0.12); border-color: #ff9d00; color: #ff9d00; }
+  `,
+  agentSummaryRow: css`
+    display: flex; align-items: baseline; gap: 6px;
+    padding: 5px 8px; background: rgba(0,0,0,0.2);
+    border-radius: 6px; border-left: 2px solid #1e3a5f;
+  `,
+  agentSummaryDot: css`width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 3px;`,
+  agentSummaryTitle: css`font-size: 10px; font-weight: 700; color: #475569; white-space: nowrap; flex-shrink: 0;`,
+  agentSummaryText: css`font-size: 11px; color: #64748b; line-height: 1.4;`,
+  systemRow: css`
+    font-size: 11px; color: #64748b; padding: 6px 10px;
+    border-left: 2px solid #1e3a5f; border-radius: 4px;
+    background: rgba(30,58,95,0.15); line-height: 1.4;
   `,
   scrollBtn: css`
-    position: absolute;
-    bottom: 70px;
-    right: 16px;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    border: 1px solid #1e3a5f;
-    background: #0b1520;
-    color: #64748b;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    transition: all 150ms ease;
+    position: absolute; bottom: 70px; right: 16px;
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 1px solid #1e3a5f; background: #0b1520; color: #64748b;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: all 150ms ease;
     &:hover { background: #122030; color: #e2e8f0; }
   `,
   inputArea: css`
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    padding: 10px 12px;
-    border-top: 1px solid #0d1c2a;
-    background: #0b1520;
-    flex-shrink: 0;
+    display: flex; align-items: flex-end; gap: 8px;
+    padding: 10px 12px; border-top: 1px solid #0d1c2a;
+    background: #0b1520; flex-shrink: 0;
   `,
   textarea: css`
-    flex: 1;
-    background: #071018;
-    border: 1px solid #1e3a5f;
-    border-radius: 8px;
-    padding: 9px 12px;
-    color: #e2e8f0;
-    font-size: 12px;
-    font-family: inherit;
-    line-height: 1.5;
-    resize: none;
-    outline: none;
-    max-height: 120px;
-    min-height: 36px;
+    flex: 1; background: #071018; border: 1px solid #1e3a5f;
+    border-radius: 8px; padding: 9px 12px; color: #e2e8f0;
+    font-size: 12px; font-family: inherit; line-height: 1.5;
+    resize: none; outline: none; max-height: 120px; min-height: 36px;
     transition: border-color 150ms ease;
     &:focus { border-color: #2d5a8a; }
     &::placeholder { color: #334155; }
     &:disabled { opacity: 0.5; cursor: not-allowed; }
   `,
   sendBtn: css`
-    width: 34px;
-    height: 34px;
-    flex-shrink: 0;
-    border-radius: 8px;
-    border: none;
-    background: #ff9d00;
-    color: #070d14;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    font-weight: 700;
-    transition: all 150ms ease;
+    width: 34px; height: 34px; flex-shrink: 0; border-radius: 8px; border: none;
+    background: #ff9d00; color: #070d14; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; transition: all 150ms ease;
     &:hover:not(:disabled) { background: #ffb733; }
     &:disabled { opacity: 0.35; cursor: not-allowed; }
   `,
-  stopBtn: css`
-    background: #ef4444;
-    color: #fff;
-    &:hover { background: #f87171; }
-  `,
+  stopBtn: css`background: #ef4444 !important; color: #fff !important; &:hover { background: #f87171 !important; }`,
 };
