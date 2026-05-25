@@ -62,9 +62,10 @@ function migrate(parsed: any): AppData {
     parsed.taskLogs = parsed.taskLogs.map((l: any) => {
       if ('groupId' in l && !('spaceId' in l)) {
         const { groupId, ...rest } = l;
-        return { ...rest, spaceId: groupId };
+        l = { ...rest, spaceId: groupId };
       }
-      return l;
+      // Normalise '' → null
+      return { ...l, spaceId: l.spaceId === '' ? null : (l.spaceId ?? null) };
     });
   }
 
@@ -72,9 +73,10 @@ function migrate(parsed: any): AppData {
     parsed.savedPrompts = parsed.savedPrompts.map((p: any) => {
       if ('groupId' in p && !('spaceId' in p)) {
         const { groupId, ...rest } = p;
-        return { ...rest, spaceId: groupId };
+        p = { ...rest, spaceId: groupId };
       }
-      return p;
+      // Normalise '' → null
+      return { ...p, spaceId: p.spaceId === '' ? null : (p.spaceId ?? null) };
     });
   }
 
@@ -83,11 +85,16 @@ function migrate(parsed: any): AppData {
 
 function migratePlans(plans: any[]): OrchestratorPlan[] {
   return plans.map((p: any) => {
+    // Rename groupId → spaceId (old data)
     if ('groupId' in p && !('spaceId' in p)) {
       const { groupId, ...rest } = p;
-      return { ...rest, spaceId: groupId };
+      p = { ...rest, spaceId: groupId };
     }
-    return p;
+    // Normalise empty-string spaceId → null
+    if (p.spaceId === '') {
+      p = { ...p, spaceId: null };
+    }
+    return p as OrchestratorPlan;
   });
 }
 

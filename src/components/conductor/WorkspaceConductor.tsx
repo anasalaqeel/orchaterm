@@ -172,7 +172,7 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
   const handleNewPlan = () => {
     const blank: OrchestratorPlan = {
       id: uuidv4(), goal: '', tasks: [], status: 'draft',
-      createdAt: Date.now(), workspaceId, spaceId: activeSpaceId ?? '',
+      createdAt: Date.now(), workspaceId, spaceId: activeSpaceId,
     };
     addPlan(blank);
     setActivePlanId(blank.id);

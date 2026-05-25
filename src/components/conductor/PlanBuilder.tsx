@@ -19,7 +19,7 @@ interface PlanBuilderProps {
   plan: OrchestratorPlan | null;
   sessions: TerminalSession[];
   workspaceId: string;
-  spaceId: string;
+  spaceId: string | null;
   onSave: (plan: OrchestratorPlan) => void;
   onApproveAndRun: (plan: OrchestratorPlan) => void;
 }
@@ -38,7 +38,7 @@ function makeBlankTask(): OrchestratorTask {
   };
 }
 
-function makeBlankPlan(workspaceId: string, spaceId: string): OrchestratorPlan {
+function makeBlankPlan(workspaceId: string, spaceId: string | null): OrchestratorPlan {
   return {
     id: uuidv4(),
     goal: '',
