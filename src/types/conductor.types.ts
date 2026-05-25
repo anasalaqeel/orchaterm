@@ -52,7 +52,7 @@ export interface OrchestratorPlan {
 
 // ── Per-session Buffer (in-memory only) ───────────────────────────────────────
 
-export type BufferWatchMode = 'sentinel' | 'plan' | 'idle';
+export type BufferWatchMode = 'sentinel' | 'plan' | 'summary' | 'idle';
 
 export interface SessionBuffer {
   sessionId: string;
