@@ -139,6 +139,34 @@ export const SpaceManagerModal: React.FC<SpaceManagerModalProps> = ({
                 })}
               </div>
             )}
+            {/* Stale sessions: stored in space but no longer active */}
+            {space && (() => {
+              const staleIds = space.sessionIds.filter(
+                id => !workspaceSessions.some(s => s.id === id),
+              );
+              if (staleIds.length === 0) return null;
+              return (
+                <div className={s.staleSection}>
+                  <span className={s.staleLabel}>
+                    ⚠ {staleIds.length} session{staleIds.length !== 1 ? 's' : ''} from a previous launch (no longer active)
+                  </span>
+                  {staleIds.map(id => (
+                    <div key={id} className={s.staleItem}>
+                      <span className={s.staleDot} />
+                      <span className={s.staleId}>{id.slice(0, 12)}…</span>
+                      <button
+                        type="button"
+                        className={s.staleRemoveBtn}
+                        onClick={() => setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; })}
+                        title="Remove stale session"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           <div className={s.actions}>
@@ -262,6 +290,29 @@ const s = {
   `,
   sessionName: css`
     font-size: 12px; font-weight: 600; color: #94a3b8;
+  `,
+  staleSection: css`
+    margin-top: 8px; padding: 10px 12px;
+    background: rgba(245,158,11,0.06); border: 1px solid rgba(245,158,11,0.2);
+    border-radius: 8px; display: flex; flex-direction: column; gap: 6px;
+  `,
+  staleLabel: css`
+    font-size: 10px; font-weight: 700; color: #f59e0b;
+  `,
+  staleItem: css`
+    display: flex; align-items: center; gap: 8px;
+  `,
+  staleDot: css`
+    width: 6px; height: 6px; border-radius: 50%; background: #475569; flex-shrink: 0;
+  `,
+  staleId: css`
+    font-size: 10px; color: #475569; font-family: 'Fira Code', monospace; flex: 1;
+  `,
+  staleRemoveBtn: css`
+    background: transparent; border: none; color: #64748b;
+    font-size: 9px; cursor: pointer; padding: 2px 4px;
+    border-radius: 3px; transition: color 120ms ease;
+    &:hover { color: #ef4444; }
   `,
   actions: css`
     display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px;
