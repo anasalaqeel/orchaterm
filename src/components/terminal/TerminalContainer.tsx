@@ -564,9 +564,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
             </div>
           )}
 
-          <button onClick={() => createNewTab()} className={styles.newTabBtn}>
+          <button onClick={() => createNewTab()} className={styles.newTabBtn} title="New Tab">
             <Plus className={styles.smallIcon} />
-            <span>New Tab</span>
           </button>
         </div>
       </div>
@@ -683,6 +682,9 @@ const styles = {
     min-width: 0;
     &::-webkit-scrollbar { display: none; }
     scrollbar-width: none;
+    /* Fade the right edge when content overflows */
+    mask-image: linear-gradient(to right, black calc(100% - 32px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 32px), transparent 100%);
   `,
   tab: css`
     display: flex;
@@ -1004,17 +1006,20 @@ const styles = {
   newTabBtn: css`
     display: flex;
     align-items: center;
-    gap: 4px;
+    justify-content: center;
     font-size: 11px;
     font-weight: 700;
     color: #94a3b8;
     background-color: #0d1c2a;
     border: 1px solid #1a2e40;
     border-radius: 6px;
-    padding: 4px 10px;
+    padding: 4px;
+    width: 28px;
+    height: 28px;
     cursor: pointer;
     transition: all 150ms ease;
     white-space: nowrap;
+    flex-shrink: 0;
     &:hover {
       color: #ffffff;
       background-color: #122030;
