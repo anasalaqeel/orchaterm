@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { TerminalTab, TerminalTabHandle } from './TerminalTab';
 import { useDashboard } from '../../context/DashboardContext';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, X, Terminal, Edit2, ChevronDown, Check, Palette } from 'lucide-react';
+import { Plus, X, Terminal, Edit2, Check, Palette, ChevronDown } from 'lucide-react';
 import { css, cx } from '@emotion/css';
 import type { TerminalSession } from '../../types';
 import { loadTerminalTabs, saveTerminalTabs } from '../../services/storage';
@@ -57,6 +57,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const [availableShells, setAvailableShells] = useState<ShellInfo[]>([]);
   const [selectedShell, setSelectedShell] = useState<ShellInfo | null>(null);
   const [shellPickerOpen, setShellPickerOpen] = useState(false);
+  const [shellDropdownPos, setShellDropdownPos] = useState<{ top: number; left: number } | null>(null);
   const shellPickerRef = useRef<HTMLDivElement>(null);
   const selectedShellRef = useRef<ShellInfo | null>(null);
   selectedShellRef.current = selectedShell;
@@ -515,59 +516,42 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
           })}
         </div>
 
-        {/* Right-side controls: shell picker + new-tab button */}
-        <div className={styles.headerRight}>
-          {availableShells.length > 0 && (
-            <div ref={shellPickerRef} className={styles.shellPickerWrapper}>
-              <button
-                className={styles.shellPickerBtn}
-                onClick={() => setShellPickerOpen((o) => !o)}
-                title="Select shell for new tabs"
-              >
-                <Terminal className={styles.shellPickerIcon} />
-                <span className={styles.shellPickerLabel}>{selectedShell?.name ?? '…'}</span>
-                <ChevronDown
-                  className={cx(
-                    styles.shellPickerChevron,
-                    shellPickerOpen && styles.shellPickerChevronOpen,
-                  )}
-                />
-              </button>
-
-              {shellPickerOpen && (
-                <div className={styles.shellDropdown}>
-                  <div className={styles.shellDropdownHeader}>Open new tab with</div>
-                  {availableShells.map((shell) => {
-                    const isShellActive = shell.path === selectedShell?.path;
-                    return (
-                      <button
-                        key={shell.path}
-                        className={cx(
-                          styles.shellDropdownItem,
-                          isShellActive && styles.shellDropdownItemActive,
-                        )}
-                        onClick={() => {
-                          setSelectedShell(shell);
-                          setShellPickerOpen(false);
-                          createNewTab(shell);
-                        }}
-                      >
-                        <Terminal className={styles.shellItemIcon} />
-                        <span className={styles.shellItemName}>{shell.name}</span>
-                        <span className={styles.shellItemPath}>{shell.path}</span>
-                        {isShellActive && <Check className={styles.shellItemCheck} />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          <button onClick={() => createNewTab()} className={styles.newTabBtn} title="New Tab">
+        {/* New-tab controls — flush after the last tab */}
+        <div className={styles.newTabWrapper}>
+          {/* + creates a tab with the last-used shell immediately */}
+          <button
+            className={styles.newTabBtn}
+            title={`New tab${selectedShell ? ` (${selectedShell.name})` : ''}`}
+            onClick={() => createNewTab()}
+          >
             <Plus className={styles.smallIcon} />
           </button>
+
+          {/* ▾ opens the shell picker — only shown when there are multiple shells */}
+          {availableShells.length > 1 && (
+            <button
+              className={styles.shellToggleBtn}
+              title="Choose shell"
+              onClick={(e) => {
+                if (shellPickerOpen) {
+                  setShellPickerOpen(false);
+                } else {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setShellDropdownPos({
+                    top:  rect.bottom + 6,
+                    left: rect.right - 240,
+                  });
+                  setShellPickerOpen(true);
+                }
+              }}
+            >
+              <ChevronDown className={styles.tinyIcon} />
+            </button>
+          )}
         </div>
+
+        {/* absorbs remaining space so tabs don't stretch */}
+        <div className={styles.headerSpacer} />
       </div>
 
       {/* Color picker portal — rendered at document.body to escape overflow clip */}
@@ -609,6 +593,41 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
           document.body,
         );
       })()}
+
+      {/* Shell picker portal — above everything including the sidebar */}
+      {shellPickerOpen && shellDropdownPos && createPortal(
+        <div
+          ref={shellPickerRef}
+          className={styles.shellDropdown}
+          style={{ top: shellDropdownPos.top, left: shellDropdownPos.left }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className={styles.shellDropdownHeader}>New tab with</div>
+          {availableShells.map((shell) => {
+            const isLastUsed = shell.path === selectedShell?.path && shell.name === selectedShell?.name;
+            return (
+              <button
+                key={shell.path + shell.name}
+                className={cx(
+                  styles.shellDropdownItem,
+                  isLastUsed && styles.shellDropdownItemActive,
+                )}
+                onClick={() => {
+                  setSelectedShell(shell);
+                  setShellPickerOpen(false);
+                  createNewTab(shell);
+                }}
+              >
+                <Terminal className={styles.shellItemIcon} />
+                <span className={styles.shellItemName}>{shell.name}</span>
+                <span className={styles.shellItemPath}>{shell.path}</span>
+                {isLastUsed && <Check className={styles.shellItemCheck} />}
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
 
       {/* Terminal Viewports */}
       <div className={styles.viewports}>
@@ -663,28 +682,21 @@ const styles = {
   `,
   header: css`
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    align-items: flex-end;
     background-color: var(--bg-secondary);
-    padding: 0 10px 0 0;
     border-bottom: 1px solid var(--border-color);
     user-select: none;
     flex-shrink: 0;
-    gap: 8px;
   `,
   tabsList: css`
     display: flex;
     align-items: flex-end;
     overflow-x: auto;
     padding-top: 8px;
-    flex: 1;
     gap: 4px;
     min-width: 0;
     &::-webkit-scrollbar { display: none; }
     scrollbar-width: none;
-    /* Fade the right edge when content overflows */
-    mask-image: linear-gradient(to right, black calc(100% - 32px), transparent 100%);
-    -webkit-mask-image: linear-gradient(to right, black calc(100% - 32px), transparent 100%);
   `,
   tab: css`
     display: flex;
@@ -872,65 +884,24 @@ const styles = {
     }
   `,
 
-  /* Right-side header controls */
-  headerRight: css`
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  /* New-tab button wrapper — sits flush after tabs */
+  newTabWrapper: css`
+    position: relative;
     flex-shrink: 0;
-    padding: 6px 0;
+    display: flex;
+    align-items: flex-end;
+    padding-bottom: 2px;
+    padding-left: 2px;
   `,
 
-  shellPickerWrapper: css`
-    position: relative;
-  `,
-  shellPickerBtn: css`
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    background-color: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: 5px;
-    padding: 4px 8px;
-    cursor: pointer;
-    transition: all 150ms ease;
-    white-space: nowrap;
-    &:hover {
-      color: var(--text-primary);
-      background-color: var(--bg-hover);
-      border-color: var(--border-color-hover);
-    }
-  `,
-  shellPickerIcon: css`
-    width: 12px;
-    height: 12px;
-    color: var(--color-brand);
-    flex-shrink: 0;
-  `,
-  shellPickerLabel: css`
-    max-width: 110px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  `,
-  shellPickerChevron: css`
-    width: 12px;
-    height: 12px;
-    transition: transform 150ms ease;
-    flex-shrink: 0;
-  `,
-  shellPickerChevronOpen: css`
-    transform: rotate(180deg);
+  headerSpacer: css`
+    flex: 1;
+    min-width: 8px;
   `,
 
   shellDropdown: css`
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    z-index: 200;
+    position: fixed;
+    z-index: 9999;
     min-width: 240px;
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color-hover);
@@ -1000,24 +971,35 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--text-secondary);
-    background-color: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: 5px;
-    padding: 4px;
     width: 28px;
     height: 28px;
+    border: none;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    background: transparent;
+    color: var(--text-tertiary);
     cursor: pointer;
-    transition: all 150ms ease;
-    white-space: nowrap;
     flex-shrink: 0;
+    transition: color 150ms ease, background-color 150ms ease;
     &:hover {
       color: var(--color-brand);
-      background-color: rgba(123, 104, 238, 0.10);
-      border-color: rgba(123, 104, 238, 0.30);
+      background-color: var(--bg-hover);
     }
+  `,
+  shellToggleBtn: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+    transition: color 150ms ease;
+    &:hover { color: var(--color-brand); }
   `,
 
   viewports: css`
