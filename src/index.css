@@ -27,10 +27,10 @@
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
 
-  --border-radius-sm: 6px;
-  --border-radius-md: 10px;
-  --border-radius-lg: 14px;
-  --border-radius-xl: 20px;
+  --border-radius-sm: 5px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 18px;
   --border-radius-full: 9999px;
 }
 
@@ -46,6 +46,7 @@
   --color-warning: rgb(var(--color-warning-rgb));
   --color-error-rgb: 239, 68, 68;
   --color-error: rgb(var(--color-error-rgb));
+  --color-danger: rgb(var(--color-error-rgb));
   --color-info-rgb: 59, 130, 246;
 
   --bg-primary: #f8fafc;
@@ -71,9 +72,9 @@
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
-/* Dark Theme Variables (Cobalt2 Accent Elements) */
+/* Dark Theme Variables */
 :root[data-theme="dark"] {
-  --color-primary-rgb: 255, 157, 0; /* Cobalt2 Amber/Orange */
+  --color-primary-rgb: 255, 157, 0; /* Amber brand */
   --color-primary: rgb(var(--color-primary-rgb));
   --color-brand: var(--color-primary);
   --color-secondary: #94a3b8;
@@ -83,30 +84,31 @@
   --color-warning: rgb(var(--color-warning-rgb));
   --color-error-rgb: 248, 113, 113;
   --color-error: rgb(var(--color-error-rgb));
+  --color-danger: rgb(var(--color-error-rgb));
   --color-info-rgb: 96, 165, 250;
 
-  /* Cobalt2 Specific Backgrounds */
-  --bg-primary: #193549; /* Deep Cobalt blue */
-  --bg-secondary: #0d2131; /* Contrast dark blue panels */
-  --bg-tertiary: #0b1b28; /* Deeper inputs background */
-  --bg-hover: #1e3a5f;
-  --bg-active: #0b1b28;
+  /* Near-black surfaces — modern, cohesive with terminal */
+  --bg-primary: #0e1117;   /* Main app canvas */
+  --bg-secondary: #161b22; /* Sidebar, elevated panels */
+  --bg-tertiary: #0d1117;  /* Inputs, recessed areas */
+  --bg-hover: #21262d;     /* Hover states */
+  --bg-active: #2d333b;    /* Active / selected */
 
-  --text-primary: #ffffff;
-  --text-secondary: #cbd5e1;
-  --text-tertiary: #64748b;
-  --text-inverse: #020617;
+  --text-primary: #f0f6fc;
+  --text-secondary: #c9d1d9;
+  --text-tertiary: #6e7681;
+  --text-inverse: #010409;
 
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-color-hover: rgba(255, 255, 255, 0.15);
+  --border-color: rgba(255, 255, 255, 0.09);
+  --border-color-hover: rgba(255, 255, 255, 0.18);
 
   --gradient-primary: linear-gradient(135deg, #FF9D00 0%, #d97706 100%);
-  --gradient-surface: linear-gradient(180deg, #0d2131 0%, rgba(13, 33, 49, 0.7) 100%);
-  --gradient-glow: radial-gradient(circle, rgba(255, 157, 0, 0.25) 0%, rgba(255, 157, 0, 0) 70%);
+  --gradient-surface: linear-gradient(180deg, #161b22 0%, rgba(22, 27, 34, 0.7) 100%);
+  --gradient-glow: radial-gradient(circle, rgba(255, 157, 0, 0.2) 0%, rgba(255, 157, 0, 0) 70%);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.6);
+  --shadow-md: 0 4px 8px -1px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 24px -3px rgba(0, 0, 0, 0.7), 0 4px 8px -2px rgba(0, 0, 0, 0.5);
 }
 
 /* Global Reset & Base Styles */
