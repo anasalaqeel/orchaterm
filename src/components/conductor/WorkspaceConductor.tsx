@@ -124,6 +124,12 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
   });
 
   const workspaceSessions = terminalSessions.filter(s => s.workspaceId === workspaceId);
+
+  // When a space is active, the plan builder should only show sessions in that space.
+  const planSessions = activeSpace
+    ? workspaceSessions.filter(s => activeSpace.sessionIds.includes(s.id))
+    : workspaceSessions;
+
   const historyPlans      = workspacePlans.filter(p => p.status === 'done'  || p.status === 'failed');
 
   // Keep activePlanId pointing at a valid plan for this workspace.
@@ -167,6 +173,11 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
     return () => { unsubState(); unsubLog(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Persist engine running state for the tab indicator in Overview
+  useEffect(() => {
+    localStorage.setItem(`agentdeck:conductor:running:${workspaceId}`, String(engineRunning));
+  }, [engineRunning, workspaceId]);
 
   // ── Plan CRUD ─────────────────────────────────────────────────────────────
 
@@ -365,15 +376,28 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
         {tab === 'build' && (
           <div className={s.buildLayout}>
             {activePlan ? (
-              <PlanBuilder
-                key={activePlan.id}
-                plan={activePlan}
-                sessions={workspaceSessions}
-                workspaceId={workspaceId}
-                spaceId={activePlan.spaceId}
-                onSave={updated => updatePlan(updated.id, updated)}
-                onApproveAndRun={handleApproveAndRun}
-              />
+              <>
+                {activeSpace && planSessions.length === 0 && (
+                  <div className={s.sessionHintWarning}>
+                    ⚠ No terminal sessions are assigned to <strong>{activeSpace.name}</strong>.
+                    {' '}Edit the Space from the sidebar to add sessions.
+                  </div>
+                )}
+                {activeSpace && planSessions.length > 0 && (
+                  <div className={s.sessionHint}>
+                    {planSessions.length} session{planSessions.length !== 1 ? 's' : ''} available in this space
+                  </div>
+                )}
+                <PlanBuilder
+                  key={activePlan.id}
+                  plan={activePlan}
+                  sessions={planSessions}
+                  workspaceId={workspaceId}
+                  spaceId={activePlan.spaceId}
+                  onSave={updated => updatePlan(updated.id, updated)}
+                  onApproveAndRun={handleApproveAndRun}
+                />
+              </>
             ) : (
               <div className={s.emptyState}>
                 <Network className={s.emptyIcon} />
@@ -824,6 +848,20 @@ const s = {
     flex-direction: column;
     gap: 12px;
     padding: 12px;
+  `,
+  sessionHintWarning: css`
+    font-size: 11px;
+    color: #f59e0b;
+    background: rgba(245,158,11,0.08);
+    border: 1px solid rgba(245,158,11,0.2);
+    border-radius: 6px;
+    padding: 8px 12px;
+    line-height: 1.5;
+  `,
+  sessionHint: css`
+    font-size: 10px;
+    color: var(--text-tertiary);
+    padding: 0 2px 0;
   `,
 
   /* Empty state (no plans yet) */
