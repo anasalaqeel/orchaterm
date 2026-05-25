@@ -190,6 +190,49 @@ Synthesize all the completed work into a single unified brief for the next agent
   return callOllama(ollamaHost, model, userPrompt);
 }
 
+// ── Terminal output summarisation ──────────────────────────────────────────────
+
+/**
+ * Asks Ollama to summarise a raw terminal output chunk in 1–2 sentences.
+ * Used by GroupChat's live feed to condense agent output into the chat feed.
+ *
+ * Throws if Ollama is unreachable or returns empty content — callers should
+ * catch and silently skip the summary rather than surfacing an error.
+ */
+export async function summariseChunk(
+  chunk: string,
+  tabTitle: string,
+  ollamaHost: string,
+  model: string,
+): Promise<string> {
+  const systemPrompt = `You are a terminal output summariser. Summarise the following terminal output from agent "${tabTitle}" in 1–2 concise sentences. Be direct and factual — no filler, no suggestions. Output only the summary text, nothing else.`;
+
+  // Truncate very long chunks to avoid token waste — keep the tail (most recent output)
+  const truncated = chunk.length > 2000 ? chunk.slice(-2000) : chunk;
+
+  const response = await fetch(`${ollamaHost}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: truncated },
+      ],
+      stream: false,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ollama summarise error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const text = data.message?.content ?? data.response ?? '';
+  if (!text.trim()) throw new Error('Empty summarise response');
+  return text.trim();
+}
+
 // ── Streaming group chat ───────────────────────────────────────────────────────
 
 export interface ChatMessage {
