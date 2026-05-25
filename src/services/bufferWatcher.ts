@@ -33,6 +33,11 @@ interface WatchEntry {
    * This lets the PTY echo of the sent prompt clear before we start scanning.
    */
   ignoreUntil?: number;
+  // Summary mode fields
+  onSummaryChunk?: (chunk: string) => void;
+  summaryDebounceTimer?: ReturnType<typeof setTimeout>;
+  /** Buffer length at the last debounce fire — we only send the new delta. */
+  summaryLastLength?: number;
 }
 
 // ── PTY event payload shape emitted by Rust ────────────────────────────────────
@@ -102,6 +107,9 @@ class BufferWatcher {
       case 'plan':
         this.checkPlan(entry);
         break;
+      case 'summary':
+        this.checkSummary(entry);
+        break;
       case 'idle':
         // Accumulate but don't trigger anything
         break;
@@ -159,6 +167,30 @@ class BufferWatcher {
     }
   }
 
+  // ── Internal: summary check ────────────────────────────────────────────────
+
+  private checkSummary(entry: WatchEntry): void {
+    if (!entry.onSummaryChunk) return;
+
+    const MIN_NEW_CHARS = 60;
+    const DEBOUNCE_MS   = 800;
+
+    const currentLength = entry.buffer.buffer.length;
+    const lastLength    = entry.summaryLastLength ?? 0;
+    const newChars      = currentLength - lastLength;
+
+    if (newChars < MIN_NEW_CHARS) return;
+
+    // Debounce: clear pending timer and set a new one
+    if (entry.summaryDebounceTimer) clearTimeout(entry.summaryDebounceTimer);
+    entry.summaryDebounceTimer = setTimeout(() => {
+      if (!entry.onSummaryChunk) return;
+      const newContent = entry.buffer.buffer.slice(lastLength);
+      entry.summaryLastLength = entry.buffer.buffer.length;
+      entry.onSummaryChunk(newContent);
+    }, DEBOUNCE_MS);
+  }
+
   // ── Public API ─────────────────────────────────────────────────────────────
 
   /**
@@ -199,6 +231,40 @@ class BufferWatcher {
     entry.onPlanError = onPlanError;
     entry.onSentinel = undefined;
     entry.ignoreUntil = echoSuppressMs > 0 ? Date.now() + echoSuppressMs : undefined;
+  }
+
+  /**
+   * Switch a session into summary mode. Fires onChunk with debounced terminal
+   * output deltas (min 60 new chars, 800 ms debounce). Does NOT clear the
+   * existing buffer — summary mode accumulates alongside existing content.
+   * Call clearSummary() to stop and return to idle.
+   */
+  async watchForSummary(
+    sessionId: string,
+    onChunk: (chunk: string) => void,
+  ): Promise<void> {
+    const entry = await this.ensureListening(sessionId);
+    entry.buffer.mode      = 'summary';
+    entry.onSummaryChunk   = onChunk;
+    entry.onSentinel       = undefined;
+    entry.onPlan           = undefined;
+    entry.onPlanError      = undefined;
+    // Start from current buffer length so we only emit new content
+    entry.summaryLastLength = entry.buffer.buffer.length;
+  }
+
+  /**
+   * Stop summary mode for a session and return it to idle.
+   * Clears any pending debounce timer.
+   */
+  clearSummary(sessionId: string): void {
+    const entry = this.entries.get(sessionId);
+    if (!entry) return;
+    if (entry.summaryDebounceTimer) clearTimeout(entry.summaryDebounceTimer);
+    entry.onSummaryChunk        = undefined;
+    entry.summaryDebounceTimer  = undefined;
+    entry.summaryLastLength     = undefined;
+    if (entry.buffer.mode === 'summary') entry.buffer.mode = 'idle';
   }
 
   /**
