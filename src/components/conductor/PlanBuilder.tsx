@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { OrchestratorPlan, OrchestratorTask, TerminalSession } from '../../types';
 import { bufferWatcher } from '../../services/bufferWatcher';
 import { validatePlanJSON, PLAN_START, PLAN_END } from '../../services/sentinelParser';
+import { writePtyChunked } from '../../utils/ptyUtils';
 import { TaskCard } from './TaskCard';
 import {
   Plus, PlayCircle, Save, Wand2, Target,
@@ -259,7 +260,9 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
       if (cancelledRef.current) return;
 
       // 2. Now send the prompt — the watcher is already listening.
-      await invoke('write_pty', { sessionId: genSession, data: genPrompt + '\n' });
+      // Use chunked writes: large atomic PTY writes can be silently dropped by
+      // Windows ConPTY + Claude CLI's readline before it drains the input buffer.
+      await writePtyChunked(genSession, genPrompt + '\n');
 
       if (cancelledRef.current) return;
       setGenStatus('waiting');
@@ -351,14 +354,13 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
             <button
               className={styles.genBtn}
               onClick={handleGenerateWithAgent}
-              disabled={!genSession || !plan.goal.trim() || genStatus === 'sent'}
+              disabled={!genSession || !plan.goal.trim()}
               title={genStatus === 'done'
                 ? 'Clear the current plan and generate a new one'
                 : 'Send prompt to the selected session and wait for the plan JSON'}
             >
               <Wand2 className={styles.btnIcon} />
-              {genStatus === 'sent'  ? 'Sending…'   :
-               genStatus === 'done'  ? 'Regenerate' : 'Generate'}
+              {genStatus === 'done' ? 'Regenerate' : 'Generate'}
             </button>
           )}
         </div>

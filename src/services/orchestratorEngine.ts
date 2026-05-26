@@ -19,7 +19,7 @@
  *   engine.injectMessage()     → write directly to a session (user override)
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import { writePtyChunked } from '../utils/ptyUtils';
 import {
   OrchestratorPlan,
   OrchestratorTask,
@@ -221,7 +221,7 @@ export class OrchestratorEngine {
 
   /** Injects a raw message into a terminal session, bypassing the orchestrator flow. */
   injectMessage(sessionId: string, message: string): void {
-    invoke('write_pty', { sessionId, data: message + '\n' })
+    writePtyChunked(sessionId, message + '\n')
       .catch((err: unknown) => this.log('error', `Manual inject failed: ${err}`, undefined, sessionId));
     this.log('user-override', `Manual message injected into session ${sessionId}`, undefined, sessionId);
   }
@@ -353,7 +353,7 @@ ${task.description}${buildAgentProtocol(task.id)}`;
 
     // Inject into the terminal — '\n' is mandatory to execute
     try {
-      await invoke('write_pty', { sessionId: task.assignedSessionId, data: prompt + '\n' });
+      await writePtyChunked(task.assignedSessionId, prompt + '\n');
     } catch (err: unknown) {
       this.log('error', `Failed to inject task "${task.title}" into session: ${err}`, task.id, task.assignedSessionId);
       this.updateTask(task.id, { status: 'failed' });

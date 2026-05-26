@@ -20,8 +20,8 @@ import {
   Send, Bot, User, WifiOff, RefreshCw, Users,
   ChevronDown, Activity, BookmarkPlus, Download, X as XIcon, Zap,
 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
 import { useDashboard } from '../../context/DashboardContext';
+import { writePtyChunked } from '../../utils/ptyUtils';
 import {
   streamChatWithOllama,
   summariseChunk,
@@ -442,7 +442,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
         // Handle inject pattern
         const inj = parseInject(finalContent, groupSessions);
         if (inj) {
-          invoke('write_pty', { sessionId: inj.sessionId, data: inj.message + '\n' }).catch(() => {});
+          writePtyChunked(inj.sessionId, inj.message + '\n').catch(() => {});
           setMessages(prev => [...prev, {
             id: crypto.randomUUID(),
             role: 'system',
