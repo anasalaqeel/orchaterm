@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { useDashboard } from '../../context/DashboardContext';
 import { Search, CornerDownLeft } from 'lucide-react';
 import { css, cx } from '@emotion/css';
+import { registerShortcut } from '../../services/keyboardManager';
 
 export const QuickSwitcher: React.FC = () => {
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, setViewMode, showToast } = useDashboard();
@@ -20,18 +21,17 @@ export const QuickSwitcher: React.FC = () => {
     p.description.toLowerCase().includes(search.toLowerCase())
   );
 
-  // Monitor Ctrl+K to open
+  // Ctrl+K — open/close switcher (skipped when terminal has focus)
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
+    return registerShortcut({
+      key: 'k', ctrl: true,
+      context: 'non-terminal',
+      handler: () => {
         setIsOpen(prev => !prev);
         setSearch('');
         setSelectedIndex(0);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+      },
+    });
   }, []);
 
   // Autofocus input when modal opens
@@ -43,30 +43,14 @@ export const QuickSwitcher: React.FC = () => {
     }
   }, [isOpen]);
 
-  // Handle keyboard inside list navigation
+  // Modal navigation — active only while open (global: modal is above terminal)
   useEffect(() => {
     if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setIsOpen(false);
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedIndex(prev => (prev + 1) % Math.max(1, filtered.length));
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedIndex(prev => (prev - 1 + filtered.length) % Math.max(1, filtered.length));
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        if (filtered[selectedIndex]) {
-          handleSelect(filtered[selectedIndex].id);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    const removeEsc   = registerShortcut({ key: 'Escape',    context: 'global', handler: () => setIsOpen(false) });
+    const removeDown  = registerShortcut({ key: 'ArrowDown', context: 'global', handler: () => setSelectedIndex(prev => (prev + 1) % Math.max(1, filtered.length)) });
+    const removeUp    = registerShortcut({ key: 'ArrowUp',   context: 'global', handler: () => setSelectedIndex(prev => (prev - 1 + filtered.length) % Math.max(1, filtered.length)) });
+    const removeEnter = registerShortcut({ key: 'Enter',     context: 'global', handler: () => { if (filtered[selectedIndex]) handleSelect(filtered[selectedIndex].id); } });
+    return () => { removeEsc(); removeDown(); removeUp(); removeEnter(); };
   }, [isOpen, filtered, selectedIndex]);
 
   const handleSelect = (id: string) => {
