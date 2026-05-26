@@ -17,11 +17,11 @@
  *   independently.
  */
 
-import { invoke } from '@tauri-apps/api/core';
 import { InterruptPolicy, RoutingEvent } from '../types';
 import { bufferWatcher } from './bufferWatcher';
 import { evaluateAndRoute, checkOllamaOnline } from './ollamaRelay';
 import { canInjectNow } from '../utils/interruptPolicy';
+import { writePtyChunked } from '../utils/ptyUtils';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -163,7 +163,7 @@ export class AutonomousOrchestrator {
 
     // Inject
     const injection = `\n[AgentDeck from ${fromSession.title}]: ${decision.message}\n`;
-    await invoke('write_pty', { sessionId: target.id, data: injection }).catch(() => {});
+    await writePtyChunked(target.id, injection).catch(() => {});
 
     this.emit({
       type:    'relayed',
