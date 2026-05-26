@@ -57,7 +57,7 @@ interface DisplayMessage {
 const MAX_STORED = 100;
 
 function chatStorageKey(workspaceId: string, spaceId: string | null): string {
-  return `agentdeck:chat:${workspaceId}:${spaceId ?? 'workspace'}`;
+  return `orchaterm:chat:${workspaceId}:${spaceId ?? 'workspace'}`;
 }
 
 function loadPersistedMessages(key: string): DisplayMessage[] {
@@ -136,7 +136,7 @@ function buildSystemPrompt(
     ? `Terminal sessions in this space:\n${sessionTitles.map(t => `  • ${t}`).join('\n')}`
     : 'No terminal sessions are currently assigned to this space.';
 
-  return `You are an AI orchestration assistant embedded inside AgentDeck, a developer workspace management tool.
+  return `You are an AI orchestration assistant embedded inside Orchaterm, a developer workspace management tool.
 
 Workspace: "${workspaceName}"
 ${spaceLine}
@@ -252,23 +252,23 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
   // ── Live feed (watchForSummary) ───────────────────────────────────────────
   const [liveFeedOn, setLiveFeedOn] = useState(
-    () => localStorage.getItem('agentdeck:livefeed') === 'true',
+    () => localStorage.getItem('orchaterm:livefeed') === 'true',
   );
 
   const toggleLiveFeed = () => {
     setLiveFeedOn(prev => {
-      localStorage.setItem('agentdeck:livefeed', String(!prev));
+      localStorage.setItem('orchaterm:livefeed', String(!prev));
       return !prev;
     });
   };
 
   const [autoModeOn, setAutoModeOn] = useState(
-    () => localStorage.getItem('agentdeck:automode') === 'true',
+    () => localStorage.getItem('orchaterm:automode') === 'true',
   );
 
   const toggleAutoMode = () => {
     setAutoModeOn(prev => {
-      localStorage.setItem('agentdeck:automode', String(!prev));
+      localStorage.setItem('orchaterm:automode', String(!prev));
       return !prev;
     });
   };
@@ -334,7 +334,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             setMessages(prev => [...prev, {
               id:   crypto.randomUUID(),
               role: 'system' as const,
-              content: `🔄 ${session.title} asked: "${request.ask}" → AgentDeck answered`,
+              content: `🔄 ${session.title} asked: "${request.ask}" → Orchaterm answered`,
             }]);
           },
           (err) => {
@@ -512,7 +512,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `agentdeck-chat-${today}.md`;
+    a.download = `orchaterm-chat-${today}.md`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -630,8 +630,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
           <button
             className={s.inlineLinkBtn}
             onClick={() => {
-              localStorage.setItem('agentdeck:open-space-modal', activeSpace.id);
-              window.dispatchEvent(new Event('agentdeck:open-space-modal'));
+              localStorage.setItem('orchaterm:open-space-modal', activeSpace.id);
+              window.dispatchEvent(new Event('orchaterm:open-space-modal'));
             }}
           >
             Re-add sessions

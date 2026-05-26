@@ -1,13 +1,13 @@
-# AgentDeck — Architecture & Implementation Guide (v2)
+# Orchaterm — Architecture & Implementation Guide (v2)
 
-> **The problem solved:** You run multiple AI agents (Claude Code, Antigravity, Hermes, etc.) in separate terminals. They are completely isolated — they can't see each other's work, share context, or hand off to each other. You end up manually copy-pasting between windows, acting as the messenger. AgentDeck eliminates that role by becoming the coordination layer: Ollama watches all your agent terminals, summarises their output, routes context between them, and lets you watch the whole team work from a single chat-style view.
+> **The problem solved:** You run multiple AI agents (Claude Code, Antigravity, Hermes, etc.) in separate terminals. They are completely isolated — they can't see each other's work, share context, or hand off to each other. You end up manually copy-pasting between windows, acting as the messenger. Orchaterm eliminates that role by becoming the coordination layer: Ollama watches all your agent terminals, summarises their output, routes context between them, and lets you watch the whole team work from a single chat-style view.
 
 ---
 
 ## Table of Contents
 
 1. [Revised Vision](#1-revised-vision)
-2. [What AgentDeck Is NOT](#2-what-agentdeck-is-not)
+2. [What Orchaterm Is NOT](#2-what-orchaterm-is-not)
 3. [Core Architecture](#3-core-architecture)
 4. [The Three Panels Explained](#4-the-three-panels-explained)
 5. [Agent Groups](#5-agent-groups)
@@ -39,7 +39,7 @@ Agent terminals      =  terminals where you happen to be running AI agents
                          You interact with agents through their own CLI.
                          No features lost.
 
-Agent Group          =  you tell AgentDeck "these terminals are my agents"
+Agent Group          =  you tell Orchaterm "these terminals are my agents"
                          by grouping them together.
                          From that point, Ollama watches them and
                          coordinates between them.
@@ -55,7 +55,7 @@ Conductor panel      =  structured task planning.
                          Ollama dispatches and relays automatically.
 ```
 
-### Your workflow with AgentDeck
+### Your workflow with Orchaterm
 
 ```
 1. Open terminals for your dev processes (npm run dev, etc.)
@@ -70,11 +70,11 @@ Conductor panel      =  structured task planning.
 
 ---
 
-## 2. What AgentDeck Is NOT
+## 2. What Orchaterm Is NOT
 
-- ❌ AgentDeck does not replace your agent's CLI (you still use Claude Code's slash commands, file references, etc. directly in the terminal)
-- ❌ AgentDeck does not require you to register agent profiles before use
-- ❌ AgentDeck does not have a custom chat interface for talking to agents directly
+- ❌ Orchaterm does not replace your agent's CLI (you still use Claude Code's slash commands, file references, etc. directly in the terminal)
+- ❌ Orchaterm does not require you to register agent profiles before use
+- ❌ Orchaterm does not have a custom chat interface for talking to agents directly
 - ❌ Ollama does not plan features, write code, or make architecture decisions
 - ❌ The Agents page no longer exists — it is removed
 
@@ -84,7 +84,7 @@ Conductor panel      =  structured task planning.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                            AgentDeck App (Tauri)                             │
+│                            Orchaterm App (Tauri)                             │
 │                                                                              │
 │  ┌──────────────┐    ┌────────────────────────────────────────────────────┐  │
 │  │   Sidebar    │    │              Main Content Area                     │  │
@@ -288,12 +288,12 @@ The plan builder's session picker now shows **terminals in the current group** o
 Every dispatched task ends with the instruction to output the sentinel:
 
 ```
-###AGENTDECK_DONE###
+###ORCHATERM_DONE###
 task_id: {id}
 summary: {what was done}
 files_modified: {files or "none"}
 needs: {what next agent needs or "none"}
-###AGENTDECK_END###
+###ORCHATERM_END###
 ```
 
 The BufferWatcher detects this, OrchestratorEngine marks the task done, OllamaRelay crafts the brief for the next task.
@@ -321,10 +321,10 @@ Terminal output flows via `pty-data-{sessionId}` Tauri events. Both `TerminalTab
 Same as v1. The orchestrator appends the sentinel instruction to every dispatched task prompt. Agents output the sentinel block when they complete the task. BufferWatcher detects it, parses it, and triggers the next step.
 
 ```typescript
-const SENTINEL_START = '###AGENTDECK_DONE###';
-const SENTINEL_END   = '###AGENTDECK_END###';
-const PLAN_START     = '###AGENTDECK_PLAN_START###';
-const PLAN_END       = '###AGENTDECK_PLAN_END###';
+const SENTINEL_START = '###ORCHATERM_DONE###';
+const SENTINEL_END   = '###ORCHATERM_END###';
+const PLAN_START     = '###ORCHATERM_PLAN_START###';
+const PLAN_END       = '###ORCHATERM_PLAN_END###';
 ```
 
 ANSI stripping is applied before any Ollama processing.
@@ -603,7 +603,7 @@ export interface OllamaChatResponse {
 
 13. Add `AgentGroup` type to `src/types/group.types.ts`
 14. Add `agentGroups` state + CRUD to `DashboardContext`
-15. Add group persistence to `src/services/storage.ts` (stored in `agentdeck_data.json` alongside workspaces)
+15. Add group persistence to `src/services/storage.ts` (stored in `orchaterm_data.json` alongside workspaces)
 16. Add group list to sidebar under each workspace (collapsible, with "+" to create new group)
 17. Build group management UI: name, color, add/remove terminal sessions
 18. Add `activeGroupId` state to `DashboardContext`
@@ -660,4 +660,4 @@ export interface OllamaChatResponse {
 
 ## Summary
 
-AgentDeck's revised architecture keeps everything that works — the PTY layer, sentinel protocol, Ollama relay, dependency engine — while correcting the fundamental model: **you interact with agents through their native CLIs, not through AgentDeck's UI**. AgentDeck's job is to watch, coordinate, and give you Ollama as a team lead you can talk to. Groups replace agent profiles as the organising unit. The Chat panel gives you a real-time view of the whole team without ever leaving your workflow.
+Orchaterm's revised architecture keeps everything that works — the PTY layer, sentinel protocol, Ollama relay, dependency engine — while correcting the fundamental model: **you interact with agents through their native CLIs, not through Orchaterm's UI**. Orchaterm's job is to watch, coordinate, and give you Ollama as a team lead you can talk to. Groups replace agent profiles as the organising unit. The Chat panel gives you a real-time view of the whole team without ever leaving your workflow.

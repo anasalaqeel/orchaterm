@@ -186,7 +186,7 @@ export const SettingsView: React.FC = () => {
       
       const link = document.createElement('a');
       link.href = url;
-      link.download = `agentdeck_backup_${new Date().toISOString().split('T')[0]}.json`;
+      link.download = `orchaterm_backup_${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

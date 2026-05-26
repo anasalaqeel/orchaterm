@@ -55,8 +55,8 @@ export const DashboardView: React.FC = () => {
   const [rightPanel,    setRightPanel]    = useState<'workspace' | 'conductor' | 'chat'>('workspace');
 
   useEffect(() => {
-    if (localStorage.getItem('agentdeck:open-new-workspace') === '1') {
-      localStorage.removeItem('agentdeck:open-new-workspace');
+    if (localStorage.getItem('orchaterm:open-new-workspace') === '1') {
+      localStorage.removeItem('orchaterm:open-new-workspace');
       setShowAddProj(true);
     }
   }, []);
@@ -155,7 +155,7 @@ export const DashboardView: React.FC = () => {
                 const Icon = icons[tab];
                 const isActive = rightPanel === tab;
                 const hasRunning = tab === 'conductor' &&
-                  localStorage.getItem(`agentdeck:conductor:running:${activeProject.id}`) === 'true';
+                  localStorage.getItem(`orchaterm:conductor:running:${activeProject.id}`) === 'true';
 
                 return (
                   <button
