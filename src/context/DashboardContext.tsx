@@ -92,7 +92,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [theme, setTheme]               = useState<'dark' | 'light'>('dark');
   const [isLoaded, setIsLoaded]         = useState<boolean>(false);
   const [settings, setSettings]         = useState<AppSettings>({
-    shellPath: 'powershell.exe',
+    shellPath: '',   // resolved at runtime by get_available_shells → shells[0]
     ollamaHost: 'http://localhost:11434',
     openaiApiKey: '',
     anthropicApiKey: '',
