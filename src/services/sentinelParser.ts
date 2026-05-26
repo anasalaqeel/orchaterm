@@ -250,6 +250,11 @@ export function validatePlanJSON(rawJson: string): Array<{
   // Pattern: after , or { (with optional whitespace), an unquoted identifier, then "  :
   sanitised = sanitised.replace(/([,{]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)("\s*:)/g, '$1"$2$3');
 
+  // Fix unescaped backslashes in string values — common when the agent embeds
+  // Windows paths (e.g. C:\Users\foo). Valid JSON escape sequences after \ are:
+  // " \ / b f n r t u — anything else is illegal. Escape bare backslashes.
+  sanitised = sanitised.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
+
   const parsed = JSON.parse(sanitised);
   if (!Array.isArray(parsed)) throw new Error('Plan JSON must be an array');
 
