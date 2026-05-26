@@ -28,9 +28,9 @@ type Tab = 'build' | 'run' | 'history';
 
 // ─── Protocol instructions (shown in UI modal — auto-injected with every task) ──
 
-const PROTOCOL_MD = `# AgentDeck Agent Protocol
+const PROTOCOL_MD = `# Orchaterm Agent Protocol
 
-You are running inside AgentDeck, a multi-agent coordination tool. AgentDeck sends task prompts to your terminal and watches for the signals below. Output each block on its own lines with no extra text before or after.
+You are running inside Orchaterm, a multi-agent coordination tool. Orchaterm sends task prompts to your terminal and watches for the signals below. Output each block on its own lines with no extra text before or after.
 
 ## 1. Signal Task Complete
 
@@ -76,7 +76,7 @@ ask: <one clear question>
 context: <brief description of what you are working on>
 ${NEEDS_END}
 
-AgentDeck will inject the answer into your terminal. Use only when genuinely blocked. Do not repeat the same question.
+Orchaterm will inject the answer into your terminal. Use only when genuinely blocked. Do not repeat the same question.
 `;
 
 // ─── Component ────────────────────────────────────────────────────────────────
