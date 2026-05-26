@@ -230,14 +230,17 @@ class BufferWatcher {
    * onPlanError fires if the JSON is malformed.
    *
    * @param echoSuppressMs - milliseconds to discard incoming data before
-   *   starting real detection (default 1500). Use this to let the PTY echo
-   *   of the sent prompt clear before scanning for plan markers.
+   *   starting real detection (default 400). Covers PTY echo latency (~200 ms
+   *   with chunked writes) while expiring well before Claude CLI starts
+   *   streaming its response (typically > 500 ms after receiving the prompt).
+   *   1500 ms was too long: fast agents (Claude CLI) start streaming within
+   *   the old window, causing PLAN_START chunks to be wiped before detection.
    */
   async watchForPlan(
     sessionId: string,
     onPlan: (rawJson: string) => void,
     onPlanError: (err: string) => void,
-    echoSuppressMs = 1500,
+    echoSuppressMs = 400,
   ): Promise<void> {
     const entry = await this.ensureListening(sessionId);
     entry.buffer.buffer = '';

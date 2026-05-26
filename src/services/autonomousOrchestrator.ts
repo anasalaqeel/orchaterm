@@ -162,7 +162,7 @@ export class AutonomousOrchestrator {
     }
 
     // Inject
-    const injection = `\n[AgentDeck from ${fromSession.title}]: ${decision.message}\n`;
+    const injection = `\n[AgentDeck from ${fromSession.title}]: ${decision.message}\r`;
     await writePtyChunked(target.id, injection).catch(() => {});
 
     this.emit({
