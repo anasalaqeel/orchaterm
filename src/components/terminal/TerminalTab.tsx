@@ -57,15 +57,17 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // reset this flag because they come from the retry button, not from the
     // effect re-running with the same deps.
     const effectActiveRef = useRef(false);
+    // True once the PTY is alive — allows the term.onResize handler to call
+    // resize_pty without racing a spawn that hasn't returned yet.
+    const isSpawnedRef = useRef(false);
 
     // ── Expose fit() to parent via ref ───────────────────────────────────
+    // safeFit → fit() → term.onResize fires → resize_pty (if spawned).
+    // No need to call resize_pty directly here.
     useImperativeHandle(ref, () => ({
       fit: () => {
-        if (!fitAddonRef.current || !termRef.current) return;
-        const dims = safeFit(fitAddonRef.current);
-        if (dims) {
-          invoke('resize_pty', { sessionId, cols: dims.cols, rows: dims.rows }).catch(() => {});
-        }
+        if (!fitAddonRef.current) return;
+        safeFit(fitAddonRef.current);
       },
     }));
 
@@ -78,11 +80,13 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       setErrorMsg('');
 
       // Fit first so the PTY starts with the real terminal dimensions.
-      // If the container hasn't settled yet, safeFit returns null and we fall
-      // back to 80×24; the ResizeObserver will correct it shortly after.
+      // When called from the rAF (normal start-up) the container has already
+      // settled so safeFit returns real dims. On Retry clicks the container
+      // is already sized too. Use current xterm.js cols/rows as fallback
+      // (safer than the hardcoded 80×24 — xterm may have already been fitted).
       const fitted = fitAddonRef.current ? safeFit(fitAddonRef.current) : null;
-      const cols = fitted?.cols ?? 80;
-      const rows = fitted?.rows ?? 24;
+      const cols = fitted?.cols ?? term.cols;
+      const rows = fitted?.rows ?? term.rows;
 
       try {
         await invoke('spawn_pty', {
@@ -93,7 +97,21 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           shell,
           shellArgs: shellArgs ?? [],
         });
+
+        // Mark PTY as live so the onResize handler starts forwarding size changes.
+        isSpawnedRef.current = true;
         setSpawnState('running');
+
+        // If xterm.js was resized while we were awaiting spawn_pty (unlikely
+        // but possible), correct the PTY now.
+        const liveterm = termRef.current;
+        if (liveterm && (liveterm.cols !== cols || liveterm.rows !== rows)) {
+          invoke('resize_pty', {
+            sessionId,
+            cols: liveterm.cols,
+            rows: liveterm.rows,
+          }).catch(() => {});
+        }
       } catch (err: any) {
         const msg = typeof err === 'string' ? err : err?.message ?? 'Unknown error';
         setSpawnState('error');
@@ -155,16 +173,23 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       termRef.current = term;
       fitAddonRef.current = fitAddon;
 
-      // ─ Initial fit (on next frame so the DOM has settled) ────────────
-      requestAnimationFrame(() => {
-        safeFit(fitAddon);
-      });
-
       // ─ Forward keyboard input → PTY ──────────────────────────────────
       const dataDispose = term.onData((data) => {
         invoke('write_pty', { sessionId, data }).catch((err) =>
           console.error('[TerminalTab] write_pty failed:', err),
         );
+      });
+
+      // ─ xterm.js → PTY size sync (primary resize mechanism) ──────────
+      // term.onResize fires whenever xterm.js cols/rows actually change —
+      // whether from fit() after a container resize or from switchTab.
+      // This is the most direct path: no polling, no comparison bugs.
+      // We guard on isSpawnedRef so we never call resize_pty before the
+      // PTY process exists.
+      const resizeDispose = term.onResize(({ cols, rows }) => {
+        if (isSpawnedRef.current) {
+          invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
+        }
       });
 
       // ─ Listen to session-scoped event from Rust ──────────────────────
@@ -192,16 +217,16 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         );
 
       // ─ ResizeObserver with debounce ──────────────────────────────────
+      // Only responsibility: call safeFit when the container element changes
+      // size. The term.onResize handler above forwards any resulting dimension
+      // change to the PTY — no resize_pty call needed here.
       let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
       const resizeObserver = new ResizeObserver(() => {
         if (resizeTimer !== null) clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
-          if (!fitAddonRef.current || !termRef.current) return;
-          const dims = safeFit(fitAddonRef.current);
-          if (dims && (dims.cols !== termRef.current.cols || dims.rows !== termRef.current.rows)) {
-            invoke('resize_pty', { sessionId, cols: dims.cols, rows: dims.rows }).catch(() => {});
-          }
+          if (!fitAddonRef.current) return;
+          safeFit(fitAddonRef.current); // triggers onResize → resize_pty if spawned
         }, 100);
       });
 
@@ -209,19 +234,27 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         resizeObserver.observe(containerRef.current);
       }
 
-      // ─ Spawn the PTY process ─────────────────────────────────────────
-      // spawnSession() reads termRef.current (set above) and invokes spawn_pty.
-      spawnSession();
+      // ─ Spawn the PTY process (inside rAF so dims are correct) ──────────
+      // Deferring to rAF ensures CSS flex layout has resolved and safeFit
+      // returns the real terminal dimensions before spawn_pty is called.
+      const rafId = requestAnimationFrame(() => {
+        if (!effectActiveRef.current) return; // guard: component may have unmounted
+        safeFit(fitAddon);   // fit xterm.js; onResize fires but isSpawnedRef=false → no-op
+        spawnSession();      // reads fitted dims, spawns PTY, then sets isSpawnedRef=true
+      });
 
       // ─ Cleanup ───────────────────────────────────────────────────────
       return () => {
         // Reset the guard so a genuine re-run (deps change) works correctly.
         effectActiveRef.current = false;
+        isSpawnedRef.current = false;
         cancelled = true;
+        cancelAnimationFrame(rafId);
         if (resizeTimer !== null) clearTimeout(resizeTimer);
         resizeObserver.disconnect();
         dataDispose.dispose();
         if (unlisten) unlisten();
+        resizeDispose.dispose();
         term.dispose();
         termRef.current = null;
         fitAddonRef.current = null;

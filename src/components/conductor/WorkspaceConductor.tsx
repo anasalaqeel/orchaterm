@@ -22,7 +22,7 @@ import {
   TerminalSession,
 } from '../../types';
 import { orchestratorEngine } from '../../services/orchestratorEngine';
-import { SENTINEL_START, SENTINEL_END, PLAN_START, PLAN_END } from '../../services/sentinelParser';
+import { SENTINEL_START, SENTINEL_END, PLAN_START, PLAN_END, NEEDS_START, NEEDS_END } from '../../services/sentinelParser';
 import { PlanBuilder } from './PlanBuilder';
 import { PipelineBoard, PipelineSummary } from './PipelineBoard';
 import { ConductorLog } from './ConductorLog';
@@ -44,31 +44,30 @@ interface WorkspaceConductorProps {
 
 // ── Sentinel Protocol text ─────────────────────────────────────────────────────
 
-const PROTOCOL_MD = `# AgentDeck Sentinel Protocol
+const PROTOCOL_MD = `# AgentDeck Agent Protocol
 
-This workspace is orchestrated by AgentDeck. You will receive task prompts via
-your terminal. When you have FULLY completed a task, output this exact signal
-block on its own lines — no extra text before or after:
+You are running inside AgentDeck, a multi-agent coordination tool. AgentDeck sends task prompts to your terminal and watches for the signals below. Output each block on its own lines with no extra text before or after.
+
+## 1. Signal Task Complete
+
+When your task is fully done, output:
 
 ${SENTINEL_START}
-task_id: <copy the task_id from your prompt exactly>
-summary: [2-3 sentences: what you built, what changed, key decisions made]
-files_modified: [comma-separated list of files created or modified, or "none"]
-needs: [what the next agent must know to continue, or "none"]
+task_id: <exact task_id from your prompt>
+summary: <2-3 sentences: what you built, what changed, key decisions>
+files_modified: <comma-separated files, or "none">
+needs: <what the next agent must know to continue, or "none">
 ${SENTINEL_END}
 
-## Rules
-- Output this block ONLY when the task is truly complete.
-- Do not output it mid-task or as a draft.
-- Copy the task_id character-for-character from your prompt.
-- Be specific in "needs" — it is relayed to the next agent as their brief.
+- Only output this when the task is truly done — not as a draft or mid-task.
+- Copy task_id exactly from your prompt, character for character.
+- Be specific in "needs" — it becomes the next agent's briefing.
 
 ---
 
-## Plan Generation (optional)
+## 2. Generate a Plan (optional)
 
-If asked to generate an orchestration plan, output a JSON task array wrapped
-in these exact markers (nothing outside the markers):
+If asked to create an orchestration plan, output only this — nothing outside the markers:
 
 ${PLAN_START}
 [
@@ -81,6 +80,19 @@ ${PLAN_START}
   }
 ]
 ${PLAN_END}
+
+---
+
+## 3. Ask for Help Mid-task (optional)
+
+If you are blocked and need info from a peer agent, output this then WAIT:
+
+${NEEDS_START}
+ask: <one clear question>
+context: <brief description of what you are working on>
+${NEEDS_END}
+
+AgentDeck will inject the answer into your terminal. Use only when genuinely blocked. Do not repeat the same question.
 `;
 
 // ── Status colors ──────────────────────────────────────────────────────────────
