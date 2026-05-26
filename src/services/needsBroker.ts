@@ -11,11 +11,11 @@
  * This is a singleton service — one instance shared across the app.
  */
 
-import { invoke } from '@tauri-apps/api/core';
 import { AgentNeedsRequest, InterruptPolicy, RoutingEvent } from '../types';
 import { resolveNeedsRequest, checkOllamaOnline } from './ollamaRelay';
 import { bufferWatcher } from './bufferWatcher';
 import { canInjectNow } from '../utils/interruptPolicy';
+import { writePtyChunked } from '../utils/ptyUtils';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -122,7 +122,7 @@ export class NeedsBroker {
     const currentBuffer = bufferWatcher.getBuffer(requestingSessionId);
     if (canInjectNow(currentBuffer, requestingSession.interruptPolicy)) {
       const injection = `\n[AgentDeck answer to your question]: ${answer}\n`;
-      await invoke('write_pty', { sessionId: requestingSessionId, data: injection }).catch(() => {});
+      await writePtyChunked(requestingSessionId, injection).catch(() => {});
     }
 
     this.emit({
