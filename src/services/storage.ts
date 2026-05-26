@@ -1,10 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { AppData, AppSettings, OrchestratorPlan } from '../types';
 
-const FILE_DATA  = 'agentdeck_data.json';
-const FILE_PLANS = 'agentdeck_plans.json';
-const FILE_UI    = 'agentdeck_ui.json';
-const FILE_TERMS = 'agentdeck_terminals.json';
+const FILE_DATA  = 'orchaterm_data.json';
+const FILE_PLANS = 'orchaterm_plans.json';
+const FILE_UI    = 'orchaterm_ui.json';
+const FILE_TERMS = 'orchaterm_terminals.json';
 
 // ── Tauri detection ────────────────────────────────────────────────────────────
 
@@ -37,14 +37,14 @@ async function readFile(name: string): Promise<string> {
   if (isTauri()) {
     return invoke<string>('load_store', { file: name });
   }
-  return localStorage.getItem(`agentdeck:${name}`) ?? '';
+  return localStorage.getItem(`orchaterm:${name}`) ?? '';
 }
 
 async function writeFile(name: string, content: string): Promise<void> {
   if (isTauri()) {
     await invoke('save_store', { file: name, data: content });
   } else {
-    localStorage.setItem(`agentdeck:${name}`, content);
+    localStorage.setItem(`orchaterm:${name}`, content);
   }
 }
 

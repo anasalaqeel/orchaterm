@@ -46,7 +46,7 @@ export function Sidebar() {
         <div className={s.logo}>
           <Blocks className={s.logoIcon} />
         </div>
-        <h1 className={s.title}>AgentDeck</h1>
+        <h1 className={s.title}>Orchaterm</h1>
         <span className={s.version}>β</span>
       </div>
 
@@ -63,7 +63,7 @@ export function Sidebar() {
             onClick={() => {
               navigate('/');
               setViewMode('grid');
-              localStorage.setItem('agentdeck:open-new-workspace', '1');
+              localStorage.setItem('orchaterm:open-new-workspace', '1');
             }}
           >
             <Plus size={11} />
@@ -78,7 +78,7 @@ export function Sidebar() {
           {workspaces.map((w, i) => {
             const isConsoleOpen = !!onDashboard && viewMode === 'console' && w.id === activeWorkspaceId;
             const isWsHovered   = hoveredWsId === w.id;
-            const isRunning     = localStorage.getItem(`agentdeck:conductor:running:${w.id}`) === 'true';
+            const isRunning     = localStorage.getItem(`orchaterm:conductor:running:${w.id}`) === 'true';
 
             return (
               <motion.div
