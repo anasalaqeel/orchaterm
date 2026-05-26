@@ -384,6 +384,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
   const handleDrop = (e: React.DragEvent, targetId: string) => {
     e.preventDefault();
+    e.stopPropagation(); // don't let tab-level drops bubble to the strip handler
     const fromId = dragIdRef.current;
     if (!fromId || fromId === targetId) {
       dragIdRef.current = null;
@@ -420,13 +421,43 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     setDragOverId(null);
   };
 
+  // Dropping anywhere on the tab strip (empty space / spacer) moves the tab to the end.
+  const handleDropOnStrip = (e: React.DragEvent) => {
+    e.preventDefault();
+    const fromId = dragIdRef.current;
+    if (!fromId) {
+      setDragId(null);
+      setDragOverId(null);
+      return;
+    }
+    const capturedFromId = fromId;
+    setSessions((prev) => {
+      const from = prev.findIndex((s) => s.id === capturedFromId);
+      if (from === -1 || from === prev.length - 1) return prev; // already last
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.push(moved);
+      return next.map((s, i) => {
+        if (s.order !== i) updateTerminalSession(s.id, { order: i });
+        return { ...s, order: i };
+      });
+    });
+    dragIdRef.current = null;
+    setDragId(null);
+    setDragOverId(null);
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className={styles.container}>
       {/* Tabs Header */}
-      <div className={styles.header}>
-        <div className={styles.tabsList}>
+      <div
+        className={styles.header}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleDropOnStrip}
+      >
+        <div className={styles.tabsList} onDragOver={(e) => e.preventDefault()}>
           {sessions.map((session) => {
             const isActive   = session.id === activeSessionId;
             const isEditing  = session.id === editingSessionId;
