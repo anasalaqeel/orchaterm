@@ -5,7 +5,7 @@ import { useDashboard } from '../../context/DashboardContext';
 import { invoke } from '@tauri-apps/api/core';
 import { Plus, X, Terminal, Edit2, Check, Palette, ChevronDown } from 'lucide-react';
 import { css, cx } from '@emotion/css';
-import type { TerminalSession } from '../../types';
+import type { TerminalSession, InterruptPolicy } from '../../types';
 import { loadTerminalTabs, saveTerminalTabs } from '../../services/storage';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -115,6 +115,13 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const [colorPickerPos, setColorPickerPos]       = useState<{ top: number; left: number } | null>(null);
   const colorPickerRef = useRef<HTMLDivElement>(null);
 
+  // ── Interrupt policy context menu ────────────────────────────────────────
+  const [policyMenu, setPolicyMenu] = useState<{
+    sessionId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
   useEffect(() => {
     if (!colorPickerOpenId) return;
     const close = (e: MouseEvent) => {
@@ -205,6 +212,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
               workspaceId,
               color: tab.color,
               order: i,
+              interruptPolicy: 'always' as const,
             };
           });
         setSessions(restored);
@@ -214,7 +222,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         tabCounter.current = 1;
         const defaultId = crypto.randomUUID();
         tabRefs.current.set(defaultId, React.createRef<TerminalTabHandle | null>());
-        setSessions([{ id: defaultId, title: `${shellName} 1`, shell: shellPath, shellArgs, workspaceId, color: null, order: 0 }]);
+        setSessions([{ id: defaultId, title: `${shellName} 1`, shell: shellPath, shellArgs, workspaceId, color: null, order: 0, interruptPolicy: 'always' }]);
         setActiveSessionId(defaultId);
       }
 
@@ -279,6 +287,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       workspaceId,
       color: null,
       order: tabCounter.current - 1,
+      interruptPolicy: 'always',
     };
     setSessions((prev) => [...prev, newSession]);
     setActiveSessionId(newId);
@@ -340,6 +349,20 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     );
     updateTerminalSession(sessionId, { color });
     setColorPickerOpenId(null);
+  };
+
+  const handleTabContextMenu = (e: React.MouseEvent, sessionId: string) => {
+    e.preventDefault();
+    setPolicyMenu({ sessionId, x: e.clientX, y: e.clientY });
+  };
+
+  const handlePolicySelect = (policy: InterruptPolicy) => {
+    if (!policyMenu) return;
+    setSessions((prev) =>
+      prev.map((s) => (s.id === policyMenu.sessionId ? { ...s, interruptPolicy: policy } : s)),
+    );
+    updateTerminalSession(policyMenu.sessionId, { interruptPolicy: policy });
+    setPolicyMenu(null);
   };
 
   // ── Drag-to-reorder logic ─────────────────────────────────────────────────
@@ -421,6 +444,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 onDrop={(e)      => handleDrop(e, session.id)}
                 onDragEnd={handleDragEnd}
                 onClick={() => switchTab(session.id)}
+                onContextMenu={(e) => handleTabContextMenu(e, session.id)}
                 className={cx(
                   styles.tab,
                   isActive   ? styles.activeTab    : styles.inactiveTab,
@@ -626,6 +650,66 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
             );
           })}
         </div>,
+        document.body,
+      )}
+
+      {/* Interrupt policy context menu portal */}
+      {policyMenu && createPortal(
+        <>
+          {/* Backdrop — click outside to close */}
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+            onClick={() => setPolicyMenu(null)}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: policyMenu.y,
+              left: policyMenu.x,
+              zIndex: 100,
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 6,
+              padding: '4px 0',
+              minWidth: 210,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+              fontSize: 12,
+            }}
+          >
+            <div style={{ padding: '4px 12px 6px', fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Auto-inject policy
+            </div>
+            {(['never', 'prompt-only', 'always'] as const).map(policy => {
+              const sess   = sessions.find(s => s.id === policyMenu.sessionId);
+              const active = sess?.interruptPolicy === policy;
+              const labels: Record<InterruptPolicy, string> = {
+                'never':       '🔒 Never — block all injections',
+                'prompt-only': '⏸ Prompt only — wait for idle',
+                'always':      '⚡ Always — inject immediately',
+              };
+              return (
+                <button
+                  key={policy}
+                  onClick={() => handlePolicySelect(policy)}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '6px 12px',
+                    background: active ? 'rgba(123,104,238,0.12)' : 'transparent',
+                    border: 'none',
+                    color: active ? 'var(--color-brand)' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    fontWeight: active ? 700 : 400,
+                  }}
+                >
+                  {labels[policy]}
+                </button>
+              );
+            })}
+          </div>
+        </>,
         document.body,
       )}
 

@@ -18,7 +18,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { css, cx } from '@emotion/css';
 import {
   Send, Bot, User, WifiOff, RefreshCw, Users,
-  ChevronDown, Activity, BookmarkPlus, Download, X as XIcon,
+  ChevronDown, Activity, BookmarkPlus, Download, X as XIcon, Zap,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useDashboard } from '../../context/DashboardContext';
@@ -29,6 +29,8 @@ import {
   ChatMessage,
 } from '../../services/ollamaRelay';
 import { bufferWatcher } from '../../services/bufferWatcher';
+import { needsBroker } from '../../services/needsBroker';
+import { autonomousOrchestrator } from '../../services/autonomousOrchestrator';
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
@@ -260,13 +262,26 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     });
   };
 
+  const [autoModeOn, setAutoModeOn] = useState(
+    () => localStorage.getItem('agentdeck:automode') === 'true',
+  );
+
+  const toggleAutoMode = () => {
+    setAutoModeOn(prev => {
+      localStorage.setItem('agentdeck:automode', String(!prev));
+      return !prev;
+    });
+  };
+
   const groupSessionIds = groupSessions.map(s => s.id).join(',');
 
   useEffect(() => {
     if (!liveFeedOn || !settings.conductorOllamaModel || !settings.ollamaHost) return;
 
+    const unsubscribers: (() => void)[] = [];
+
     groupSessions.forEach(session => {
-      bufferWatcher.watchForSummary(session.id, async (chunk: string) => {
+      const onChunk = async (chunk: string) => {
         try {
           const summary = await summariseChunk(
             chunk, session.title,
@@ -280,12 +295,104 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             sessionColor: session.color,
           }]);
         } catch { /* silently skip */ }
+      };
+
+      bufferWatcher.watchForSummary(session.id, onChunk).then(unsub => {
+        unsubscribers.push(unsub);
       });
     });
 
-    return () => { groupSessions.forEach(s => bufferWatcher.clearSummary(s.id)); };
+    return () => { unsubscribers.forEach(fn => fn()); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveFeedOn, groupSessionIds, settings.conductorOllamaModel, settings.ollamaHost]);
+
+  // ── NeedsBroker wiring ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!activeSpaceId) return;
+
+    needsBroker.updateConfig({
+      ollamaHost:  settings.ollamaHost,
+      ollamaModel: settings.conductorOllamaModel,
+    });
+
+    needsBroker.registerSpace(activeSpaceId, groupSessions.map(s => ({
+      id:              s.id,
+      title:           s.title,
+      color:           s.color,
+      interruptPolicy: s.interruptPolicy ?? 'never',
+    })));
+
+    const unsubNeeds: (() => void)[] = [];
+
+    groupSessions.forEach(session => {
+      bufferWatcher.watchForNeeds(session.id, async (request) => {
+        await needsBroker.handleNeedsRequest(
+          session.id,
+          activeSpaceId,
+          request,
+          (_answer) => {
+            setMessages(prev => [...prev, {
+              id:   crypto.randomUUID(),
+              role: 'system' as const,
+              content: `🔄 ${session.title} asked: "${request.ask}" → AgentDeck answered`,
+            }]);
+          },
+          (err) => {
+            setMessages(prev => [...prev, {
+              id:   crypto.randomUUID(),
+              role: 'system' as const,
+              content: `⚠ Could not resolve ${session.title}'s request: ${err}`,
+            }]);
+          },
+        );
+      }).then(unsub => unsubNeeds.push(unsub));
+    });
+
+    return () => {
+      unsubNeeds.forEach(fn => fn());
+      if (activeSpaceId) needsBroker.unregisterSpace(activeSpaceId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSpaceId, groupSessionIds, settings.ollamaHost, settings.conductorOllamaModel]);
+
+  // ── Autonomous mode effect ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!autoModeOn || !activeSpaceId || !settings.conductorOllamaModel) return;
+
+    autonomousOrchestrator.updateConfig({
+      ollamaHost:  settings.ollamaHost,
+      ollamaModel: settings.conductorOllamaModel,
+    });
+
+    autonomousOrchestrator.startSpace({
+      spaceId:  activeSpaceId,
+      sessions: groupSessions.map(s => ({
+        id:              s.id,
+        title:           s.title,
+        color:           s.color,
+        interruptPolicy: s.interruptPolicy ?? 'never',
+      })),
+    });
+
+    // Listen to routing events and show them in the Chat feed
+    const unsubEvents = autonomousOrchestrator.onEvent((event) => {
+      let content = '';
+      if (event.type === 'relayed') {
+        content = `⚡ Auto-relayed from ${event.from} → ${event.to}: "${event.message}"`;
+      } else if (event.type === 'relay-skipped') {
+        content = `⏸ Relay to ${event.target} skipped (${event.reason})`;
+      }
+      if (content) {
+        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'system' as const, content }]);
+      }
+    });
+
+    return () => {
+      unsubEvents();
+      autonomousOrchestrator.stopSpace(activeSpaceId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoModeOn, activeSpaceId, groupSessionIds, settings.ollamaHost, settings.conductorOllamaModel]);
 
   // ── Send message ──────────────────────────────────────────────────────────
 
@@ -459,6 +566,18 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
               title={liveFeedOn ? 'Disable live terminal summaries' : 'Enable live terminal summaries'}
             >
               <Activity size={12} />
+            </button>
+          )}
+          {/* Autonomous mode toggle */}
+          {!modelMissing && (
+            <button
+              className={cx(s.headerIconBtn, autoModeOn && s.headerIconBtnAutoMode)}
+              onClick={toggleAutoMode}
+              title={autoModeOn
+                ? 'Autonomous mode ON — Ollama is proactively routing context'
+                : 'Enable autonomous mode — Ollama watches and routes context between agents'}
+            >
+              <Zap size={12} />
             </button>
           )}
           {/* Export */}
@@ -683,6 +802,10 @@ const s = {
   headerIconBtnActive: css`
     color: #3fb950 !important;
     background: rgba(63,185,80,0.1) !important;
+  `,
+  headerIconBtnAutoMode: css`
+    color: #e3b341 !important;
+    background: rgba(227,179,65,0.1) !important;
   `,
   onlineBadge: css`display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: #3fb950;`,
   onlineDot: css`

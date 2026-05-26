@@ -17,7 +17,7 @@
 
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { OrchestratorTaskOutput, SessionBuffer, BufferWatchMode } from '../types';
-import { parseSentinel, parsePlanBlock, validatePlanJSON } from './sentinelParser';
+import { parseSentinel, parsePlanBlock, validatePlanJSON, parseNeedsBlock } from './sentinelParser';
 
 // ── Internal entry ─────────────────────────────────────────────────────────────
 
@@ -27,14 +27,15 @@ interface WatchEntry {
   onSentinel?: (output: OrchestratorTaskOutput) => void;
   onPlan?: (rawJson: string) => void;
   onPlanError?: (err: string) => void;
+  onNeedsRequest?: (request: import('../types').AgentNeedsRequest) => void;
   /**
    * Epoch ms after which plan/sentinel detection should actually fire.
    * While Date.now() < ignoreUntil, incoming data is wiped and not checked.
    * This lets the PTY echo of the sent prompt clear before we start scanning.
    */
   ignoreUntil?: number;
-  // Summary mode fields
-  onSummaryChunk?: (chunk: string) => void;
+  // Summary mode — supports multiple concurrent subscribers
+  summarySubscribers: Array<(chunk: string) => void>;
   summaryDebounceTimer?: ReturnType<typeof setTimeout>;
   /** Buffer length at the last debounce fire — we only send the new delta. */
   summaryLastLength?: number;
@@ -81,7 +82,7 @@ class BufferWatcher {
         this.onData(sessionId, event.payload.data);
       });
 
-      const entry: WatchEntry = { buffer, unlisten };
+      const entry: WatchEntry = { buffer, unlisten, summarySubscribers: [] };
       this.entries.set(sessionId, entry);
       this.pending.delete(sessionId);
       return entry;
@@ -100,19 +101,16 @@ class BufferWatcher {
     entry.buffer.buffer += chunk;
     entry.buffer.lastActivity = Date.now();
 
+    // NEEDS detection runs regardless of mode — agents can request help at any time
+    if (entry.onNeedsRequest) {
+      this.checkNeeds(entry);
+    }
+
     switch (entry.buffer.mode) {
-      case 'sentinel':
-        this.checkSentinel(entry);
-        break;
-      case 'plan':
-        this.checkPlan(entry);
-        break;
-      case 'summary':
-        this.checkSummary(entry);
-        break;
-      case 'idle':
-        // Accumulate but don't trigger anything
-        break;
+      case 'sentinel': this.checkSentinel(entry); break;
+      case 'plan':     this.checkPlan(entry); break;
+      case 'summary':  this.checkSummary(entry); break;
+      case 'idle': break;
     }
   }
 
@@ -172,7 +170,7 @@ class BufferWatcher {
   // ── Internal: summary check ────────────────────────────────────────────────
 
   private checkSummary(entry: WatchEntry): void {
-    if (!entry.onSummaryChunk) return;
+    if (entry.summarySubscribers.length === 0) return;
 
     const MIN_NEW_CHARS = 60;
     const DEBOUNCE_MS   = 800;
@@ -186,11 +184,26 @@ class BufferWatcher {
     // Debounce: clear pending timer and set a new one
     if (entry.summaryDebounceTimer) clearTimeout(entry.summaryDebounceTimer);
     entry.summaryDebounceTimer = setTimeout(() => {
-      if (!entry.onSummaryChunk) return;
+      if (entry.summarySubscribers.length === 0) return;
       const newContent = entry.buffer.buffer.slice(lastLength);
       entry.summaryLastLength = entry.buffer.buffer.length;
-      entry.onSummaryChunk(newContent);
+      // Call all subscribers with the same delta
+      for (const cb of entry.summarySubscribers) cb(newContent);
     }, DEBOUNCE_MS);
+  }
+
+  // ── Internal: needs check ──────────────────────────────────────────────────
+
+  private checkNeeds(entry: WatchEntry): void {
+    const request = parseNeedsBlock(entry.buffer.buffer);
+    if (!request) return;
+
+    // Avoid re-firing for the same block — deduplicate by the ask field.
+    if ((entry as any)._lastNeedsAsk === request.ask) return;
+    (entry as any)._lastNeedsAsk = request.ask;
+
+    const cb = entry.onNeedsRequest;
+    if (cb) cb(request);
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -236,37 +249,67 @@ class BufferWatcher {
   }
 
   /**
-   * Switch a session into summary mode. Fires onChunk with debounced terminal
-   * output deltas (min 60 new chars, 800 ms debounce). Does NOT clear the
-   * existing buffer — summary mode accumulates alongside existing content.
-   * Call clearSummary() to stop and return to idle.
+   * Switch a session into summary mode and add a subscriber. Fires onChunk with
+   * debounced terminal output deltas (min 60 new chars, 800 ms debounce). Does
+   * NOT clear the existing buffer. Multiple subscribers may watch the same session.
+   *
+   * Returns an unsubscribe function. Call it to remove this specific subscriber.
+   * When the last subscriber is removed, the session returns to idle.
    */
   async watchForSummary(
     sessionId: string,
     onChunk: (chunk: string) => void,
-  ): Promise<void> {
+  ): Promise<() => void> {
     const entry = await this.ensureListening(sessionId);
-    entry.buffer.mode      = 'summary';
-    entry.onSummaryChunk   = onChunk;
-    entry.onSentinel       = undefined;
-    entry.onPlan           = undefined;
-    entry.onPlanError      = undefined;
-    // Start from current buffer length so we only emit new content
-    entry.summaryLastLength = entry.buffer.buffer.length;
+    entry.buffer.mode = 'summary';
+    entry.onSentinel  = undefined;
+    entry.onPlan      = undefined;
+    entry.onPlanError = undefined;
+    if (!entry.summarySubscribers.includes(onChunk)) {
+      entry.summarySubscribers.push(onChunk);
+    }
+    // Start from current buffer length so only new content fires
+    entry.summaryLastLength = entry.summaryLastLength ?? entry.buffer.buffer.length;
+
+    // Return an unsubscribe function for this specific subscriber
+    return () => {
+      entry.summarySubscribers = entry.summarySubscribers.filter(cb => cb !== onChunk);
+      if (entry.summarySubscribers.length === 0) {
+        if (entry.summaryDebounceTimer) clearTimeout(entry.summaryDebounceTimer);
+        entry.buffer.mode = 'idle';
+      }
+    };
   }
 
   /**
-   * Stop summary mode for a session and return it to idle.
+   * Stop summary mode for a session, removing ALL subscribers and returning to idle.
    * Clears any pending debounce timer.
    */
   clearSummary(sessionId: string): void {
     const entry = this.entries.get(sessionId);
     if (!entry) return;
     if (entry.summaryDebounceTimer) clearTimeout(entry.summaryDebounceTimer);
-    entry.onSummaryChunk        = undefined;
-    entry.summaryDebounceTimer  = undefined;
-    entry.summaryLastLength     = undefined;
+    entry.summarySubscribers   = [];
+    entry.summaryDebounceTimer = undefined;
+    entry.summaryLastLength    = undefined;
     if (entry.buffer.mode === 'summary') entry.buffer.mode = 'idle';
+  }
+
+  /**
+   * Register a callback for NEEDS block detection on a session.
+   * Can be called alongside any other watch mode — NEEDS runs independently.
+   * Returns an unsubscribe function.
+   */
+  async watchForNeeds(
+    sessionId: string,
+    onNeedsRequest: (request: import('../types').AgentNeedsRequest) => void,
+  ): Promise<() => void> {
+    const entry = await this.ensureListening(sessionId);
+    entry.onNeedsRequest = onNeedsRequest;
+    (entry as any)._lastNeedsAsk = undefined; // reset dedup state
+    return () => {
+      entry.onNeedsRequest = undefined;
+    };
   }
 
   /**

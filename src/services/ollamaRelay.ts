@@ -323,3 +323,126 @@ export function buildPassThroughBrief(
 
 Your task: ${nextTaskDescription}`;
 }
+
+// ── Needs request resolution ───────────────────────────────────────────────────
+
+export interface NeedsResolutionInput {
+  /** The question the requesting agent asked. */
+  ask: string;
+  /** The context the requesting agent provided. */
+  context: string;
+  /** Display title of the requesting agent's terminal. */
+  requestingAgent: string;
+  /**
+   * Peer agent context: title + recent buffer content for each sibling session.
+   * Pre-truncated by the caller to avoid token bloat.
+   */
+  peerContext: Array<{ title: string; recentOutput: string }>;
+  ollamaHost: string;
+  model: string;
+}
+
+/**
+ * Synthesises an answer to a mid-task help request from a peer agent's output.
+ * Used by NeedsBroker. Throws if Ollama is unreachable.
+ *
+ * Response is ≤ 150 words, direct, and references specific identifiers from
+ * the peer's output.
+ */
+export async function resolveNeedsRequest(input: NeedsResolutionInput): Promise<string> {
+  const { ask, context, requestingAgent, peerContext, ollamaHost, model } = input;
+
+  const peerBlocks = peerContext.length > 0
+    ? peerContext.map(p =>
+        `=== ${p.title} ===\n${p.recentOutput || '(no recent output)'}`
+      ).join('\n\n')
+    : '(no peer agents have recent output)';
+
+  const userPrompt = `Agent "${requestingAgent}" is asking for help mid-task.
+
+QUESTION: ${ask}
+THEIR CONTEXT: ${context || '(none provided)'}
+
+WHAT OTHER AGENTS HAVE BEEN DOING:
+${peerBlocks}
+
+Write a direct, actionable answer (≤ 150 words) synthesised from the other agents' work.
+Include specific identifiers (function names, file paths, variable names) where relevant.
+If the peer output contains no relevant information, say so in one sentence.
+Do NOT add suggestions beyond what was asked.`;
+
+  return callOllama(ollamaHost, model, userPrompt);
+}
+
+// ── Autonomous routing evaluation ──────────────────────────────────────────────
+
+export interface RoutingCandidate {
+  title: string;
+  recentOutput: string;
+}
+
+export interface RoutingDecision {
+  type: 'no_relay' | 'inject';
+  targetTitle?: string;
+  message?: string;
+}
+
+/**
+ * Asks Ollama whether a terminal's recent output should be proactively relayed
+ * to any sibling agent. Used by AutonomousOrchestrator.
+ *
+ * Throws if Ollama is unreachable — callers should catch and skip silently.
+ *
+ * Returns { type: 'no_relay' } if nothing useful should be sent.
+ * Returns { type: 'inject', targetTitle, message } if a relay is warranted.
+ */
+export async function evaluateAndRoute(params: {
+  fromTitle: string;
+  recentChunk: string;
+  siblings: RoutingCandidate[];
+  ollamaHost: string;
+  model: string;
+}): Promise<RoutingDecision> {
+  const { fromTitle, recentChunk, siblings, ollamaHost, model } = params;
+
+  if (siblings.length === 0) return { type: 'no_relay' };
+
+  const siblingsDesc = siblings
+    .map(s => `• ${s.title}:\n${s.recentOutput.slice(-300) || '(no recent output)'}`)
+    .join('\n\n');
+
+  const userPrompt = `You are monitoring a team of AI coding agents.
+
+Agent "${fromTitle}" just produced this output:
+${recentChunk.slice(-600)}
+
+Other active agents:
+${siblingsDesc}
+
+Should any part of "${fromTitle}"'s output be relayed to another agent right now?
+
+Rules:
+1. Only relay if it would DIRECTLY unblock or help another agent with what they are doing.
+2. Routine build output, status messages, and progress logs should NOT be relayed.
+3. Keep any injected message under 80 words. Be direct — no filler.
+4. Do NOT relay if the agents are working on completely independent tasks.
+
+If nothing should be relayed, output exactly: NO_RELAY
+If relaying, output exactly one line: INJECT → <exact-terminal-title>: <message>`;
+
+  const response = await callOllama(ollamaHost, model, userPrompt);
+  const trimmed  = response.trim();
+
+  if (trimmed === 'NO_RELAY' || !trimmed.includes('INJECT')) {
+    return { type: 'no_relay' };
+  }
+
+  const match = trimmed.match(/INJECT\s*→\s*([^:\n]+):\s*(.+)/i);
+  if (!match) return { type: 'no_relay' };
+
+  return {
+    type:        'inject',
+    targetTitle: match[1].trim(),
+    message:     match[2].trim(),
+  };
+}
