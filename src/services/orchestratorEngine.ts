@@ -34,6 +34,7 @@ import {
   checkOllamaOnline,
   CompletedTaskContext,
 } from './ollamaRelay';
+import { SENTINEL_START, SENTINEL_END, NEEDS_START, NEEDS_END } from './sentinelParser';
 
 // ── Engine configuration ────────────────────────────────────────────────────────
 
@@ -46,20 +47,33 @@ export interface EngineConfig {
   sessionTitles: Map<string, string>;
 }
 
-// ── Sentinel instruction template ───────────────────────────────────────────────
+// ── Agent protocol template (injected with every task — no CLAUDE.md needed) ───
 
-function buildSentinelInstruction(taskId: string): string {
+function buildAgentProtocol(taskId: string): string {
   return `
 
-When you have fully completed this task — and only when fully complete — output the following block exactly, on its own lines:
-###AGENTDECK_DONE###
-task_id: ${taskId}
-summary: [2-3 sentences: what you built, what changed, key decisions]
-files_modified: [comma-separated list of files created or modified, or "none"]
-needs: [what the next agent will need to know, or "none"]
-###AGENTDECK_END###
+---
+AGENTDECK PROTOCOL
 
-Do not output this signal until the task is truly complete.`;
+When this task is fully done, output this block exactly on its own lines:
+
+${SENTINEL_START}
+task_id: ${taskId}
+summary: <2-3 sentences: what you built, what changed, key decisions>
+files_modified: <comma-separated files, or "none">
+needs: <what the next agent must know to continue, or "none">
+${SENTINEL_END}
+
+Only output this when truly done. Copy task_id exactly as shown above.
+
+If you are blocked mid-task and need info from a peer agent, output this then WAIT:
+
+${NEEDS_START}
+ask: <one clear question>
+context: <brief description of what you are working on>
+${NEEDS_END}
+
+AgentDeck will inject the answer. Use only when genuinely blocked.`;
 }
 
 // ── OrchestratorEngine ──────────────────────────────────────────────────────────
@@ -330,12 +344,12 @@ CONTEXT FROM PREVIOUS WORK:
 ${contextBrief}
 
 YOUR TASK:
-${task.description}${buildSentinelInstruction(task.id)}`
+${task.description}${buildAgentProtocol(task.id)}`
       : `TASK ID: ${task.id}
 OVERALL GOAL: ${this.plan.goal}
 
 YOUR TASK:
-${task.description}${buildSentinelInstruction(task.id)}`;
+${task.description}${buildAgentProtocol(task.id)}`;
 
     // Inject into the terminal — '\n' is mandatory to execute
     try {

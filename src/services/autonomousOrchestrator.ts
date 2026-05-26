@@ -1,0 +1,183 @@
+/**
+ * autonomousOrchestrator.ts
+ *
+ * Watches all agent terminals in an active Space. When an agent produces
+ * significant output, asks Ollama whether that output should be proactively
+ * relayed to a peer agent. If yes, and if the target's interrupt policy allows,
+ * injects the relay message via write_pty.
+ *
+ * This is a singleton service — one instance for the whole app.
+ *
+ * Key design decisions:
+ * - Reactive, not polling: triggered by BufferWatcher's summary debounce (800ms)
+ * - Skips Conductor-managed sessions: sessions currently in 'sentinel' watch
+ *   mode are being managed by the Conductor pipeline — we must not inject into
+ *   them unsolicited as that would corrupt the task prompt.
+ * - Per-space: each Space has its own autonomous monitoring context. Start/stop
+ *   independently.
+ */
+
+import { invoke } from '@tauri-apps/api/core';
+import { InterruptPolicy, RoutingEvent } from '../types';
+import { bufferWatcher } from './bufferWatcher';
+import { evaluateAndRoute, checkOllamaOnline } from './ollamaRelay';
+import { canInjectNow } from '../utils/interruptPolicy';
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+interface SessionDescriptor {
+  id: string;
+  title: string;
+  color: string | null;
+  interruptPolicy: InterruptPolicy;
+}
+
+interface SpaceConfig {
+  spaceId: string;
+  sessions: SessionDescriptor[];
+}
+
+interface ActiveSpace {
+  config: SpaceConfig;
+  /** Unsubscribe functions — one per session summary watcher. */
+  unsubscribers: Array<() => void>;
+}
+
+// ── AutonomousOrchestrator ─────────────────────────────────────────────────────
+
+export class AutonomousOrchestrator {
+  private config = {
+    ollamaHost:  'http://localhost:11434',
+    ollamaModel: 'llama3.2',
+  };
+
+  private activeSpaces = new Map<string, ActiveSpace>();
+  private eventListeners: Array<(event: RoutingEvent) => void> = [];
+
+  updateConfig(config: { ollamaHost: string; ollamaModel: string }): void {
+    this.config = config;
+  }
+
+  /** Subscribe to routing events (for GroupChat display). Returns unsubscribe fn. */
+  onEvent(cb: (event: RoutingEvent) => void): () => void {
+    this.eventListeners.push(cb);
+    return () => {
+      this.eventListeners = this.eventListeners.filter(l => l !== cb);
+    };
+  }
+
+  /** Start autonomous monitoring for a Space. */
+  startSpace(spaceConfig: SpaceConfig): void {
+    // Stop any existing watchers for this space first (idempotent)
+    this.stopSpace(spaceConfig.spaceId);
+
+    const unsubscribers: Array<() => void> = [];
+
+    for (const session of spaceConfig.sessions) {
+      const onChunk = async (chunk: string) => {
+        await this.onSummaryChunk(spaceConfig.spaceId, session, chunk);
+      };
+      bufferWatcher.watchForSummary(session.id, onChunk).then(unsub => {
+        unsubscribers.push(unsub);
+      });
+    }
+
+    this.activeSpaces.set(spaceConfig.spaceId, { config: spaceConfig, unsubscribers });
+  }
+
+  /** Stop autonomous monitoring for a Space and clean up all watchers. */
+  stopSpace(spaceId: string): void {
+    const active = this.activeSpaces.get(spaceId);
+    if (!active) return;
+    for (const unsub of active.unsubscribers) unsub();
+    this.activeSpaces.delete(spaceId);
+  }
+
+  /** Returns true if autonomous mode is running for the given Space. */
+  isRunning(spaceId: string): boolean {
+    return this.activeSpaces.has(spaceId);
+  }
+
+  // ── Private ──────────────────────────────────────────────────────────────────
+
+  private async onSummaryChunk(
+    spaceId: string,
+    fromSession: SessionDescriptor,
+    chunk: string,
+  ): Promise<void> {
+    const active = this.activeSpaces.get(spaceId);
+    if (!active) return;
+
+    const siblings = active.config.sessions.filter(s => s.id !== fromSession.id);
+    if (siblings.length === 0) return;
+
+    // Don't try to route if Ollama is offline
+    const online = await checkOllamaOnline(this.config.ollamaHost);
+    if (!online) return;
+
+    let decision;
+    try {
+      decision = await evaluateAndRoute({
+        fromTitle:    fromSession.title,
+        recentChunk:  chunk,
+        siblings:     siblings.map(s => ({
+          title:        s.title,
+          recentOutput: bufferWatcher.getBuffer(s.id).slice(-600),
+        })),
+        ollamaHost: this.config.ollamaHost,
+        model:      this.config.ollamaModel,
+      });
+    } catch {
+      return; // Ollama error — skip silently
+    }
+
+    if (decision.type === 'no_relay' || !decision.targetTitle || !decision.message) return;
+
+    // Find the target session
+    const target = siblings.find(
+      s => s.title.toLowerCase().includes(decision.targetTitle!.toLowerCase())
+    );
+    if (!target) return;
+
+    // Safety check: never inject into a session currently managed by Conductor
+    const targetMode = bufferWatcher.getMode(target.id);
+    if (targetMode === 'sentinel') {
+      this.emit({
+        type:   'relay-skipped',
+        reason: 'interrupt-policy',
+        target: target.title,
+      });
+      return;
+    }
+
+    // Respect interrupt policy
+    const targetBuffer = bufferWatcher.getBuffer(target.id);
+    if (!canInjectNow(targetBuffer, target.interruptPolicy)) {
+      this.emit({
+        type:   'relay-skipped',
+        reason: 'interrupt-policy',
+        target: target.title,
+      });
+      return;
+    }
+
+    // Inject
+    const injection = `\n[AgentDeck from ${fromSession.title}]: ${decision.message}\n`;
+    await invoke('write_pty', { sessionId: target.id, data: injection }).catch(() => {});
+
+    this.emit({
+      type:    'relayed',
+      from:    fromSession.title,
+      to:      target.title,
+      message: decision.message,
+    });
+  }
+
+  private emit(event: RoutingEvent): void {
+    for (const cb of this.eventListeners) cb(event);
+  }
+}
+
+// ── Singleton export ──────────────────────────────────────────────────────────
+
+export const autonomousOrchestrator = new AutonomousOrchestrator();

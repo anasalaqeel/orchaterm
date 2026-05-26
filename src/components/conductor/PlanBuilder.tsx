@@ -143,6 +143,10 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
   const [genPrompt, setGenPrompt] = useState('');
   const [copied, setCopied]       = useState(false);
 
+  // Cancellation flag — set to true in handleCancelWatch so the in-flight
+  // handleGenerateWithAgent async bails out after each await.
+  const cancelledRef = useRef(false);
+
   // Keep genPrompt updated when goal or sessions change
   useEffect(() => {
     setGenPrompt(buildGeneratePrompt(plan.goal, sessions));
@@ -220,8 +224,9 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
 
   const handleGenerateWithAgent = async () => {
     if (!genSession || !genPrompt.trim()) return;
-    if (genStatus === 'waiting') return; // already waiting
+    if (genStatus === 'waiting' || genStatus === 'sent') return;
 
+    cancelledRef.current = false;
     setGenStatus('sent');
     setGenError('');
 
@@ -232,6 +237,7 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
         genSession,
         // onPlan — fires when ###AGENTDECK_PLAN_START### ... ###AGENTDECK_PLAN_END### detected
         (rawJson: string) => {
+          if (cancelledRef.current) return;
           try {
             const validated = validatePlanJSON(rawJson);
             const newTasks  = hydrateTasks(validated, sessions);
@@ -244,22 +250,33 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
         },
         // onPlanError — fires when markers detected but JSON is invalid
         (err: string) => {
+          if (cancelledRef.current) return;
           setGenStatus('error');
           setGenError(err);
         }
       );
 
+      if (cancelledRef.current) return;
+
       // 2. Now send the prompt — the watcher is already listening.
       await invoke('write_pty', { sessionId: genSession, data: genPrompt + '\n' });
+
+      if (cancelledRef.current) return;
       setGenStatus('waiting');
     } catch (err: any) {
+      if (cancelledRef.current) return;
       setGenStatus('error');
       setGenError(err?.message ?? String(err));
     }
   };
 
   const handleCancelWatch = () => {
+    cancelledRef.current = true;
     bufferWatcher.clearBuffer(genSession);
+    // Send Ctrl+C to the PTY to interrupt the running agent process
+    if (genSession) {
+      invoke('write_pty', { sessionId: genSession, data: '\x03' }).catch(() => {});
+    }
     setGenStatus('idle');
     setGenError('');
   };
@@ -325,7 +342,7 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
           </button>
 
           {/* Send / Cancel button */}
-          {genStatus === 'waiting' ? (
+          {genStatus === 'waiting' || genStatus === 'sent' ? (
             <button className={styles.cancelBtn} onClick={handleCancelWatch}>
               <X className={styles.btnIcon} />
               Cancel
@@ -335,10 +352,13 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
               className={styles.genBtn}
               onClick={handleGenerateWithAgent}
               disabled={!genSession || !plan.goal.trim() || genStatus === 'sent'}
-              title='Send prompt to the selected session and wait for the plan JSON'
+              title={genStatus === 'done'
+                ? 'Clear the current plan and generate a new one'
+                : 'Send prompt to the selected session and wait for the plan JSON'}
             >
               <Wand2 className={styles.btnIcon} />
-              {genStatus === 'sent' ? 'Sending…' : 'Generate'}
+              {genStatus === 'sent'  ? 'Sending…'   :
+               genStatus === 'done'  ? 'Regenerate' : 'Generate'}
             </button>
           )}
         </div>
