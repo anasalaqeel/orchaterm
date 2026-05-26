@@ -15,7 +15,7 @@ export function isTauri(): boolean {
 // ── Defaults ───────────────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS: AppSettings = {
-  shellPath: 'powershell.exe',
+  shellPath: '',   // resolved at runtime by get_available_shells → shells[0]
   ollamaHost: 'http://localhost:11434',
   openaiApiKey: '',
   anthropicApiKey: '',

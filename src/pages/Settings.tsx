@@ -26,12 +26,18 @@ interface ShellInfo {
   args: string[];
 }
 
-const FALLBACK_SHELLS: ShellInfo[] = [
-  { name: 'PowerShell',       path: 'powershell.exe', args: [] },
-  { name: 'Command Prompt',   path: 'cmd.exe',        args: [] },
-  { name: 'WSL',              path: 'wsl.exe',        args: [] },
-  { name: 'Git Bash',         path: 'bash',           args: [] },
-];
+const FALLBACK_SHELLS: ShellInfo[] = navigator.userAgent.toLowerCase().includes('win')
+  ? [
+      { name: 'PowerShell',     path: 'powershell.exe', args: [] },
+      { name: 'Command Prompt', path: 'cmd.exe',        args: [] },
+      { name: 'WSL',            path: 'wsl',            args: [] },
+      { name: 'Git Bash',       path: 'bash',           args: [] },
+    ]
+  : [
+      { name: 'zsh',  path: '/bin/zsh',  args: [] },
+      { name: 'bash', path: '/bin/bash', args: [] },
+      { name: 'sh',   path: '/bin/sh',   args: [] },
+    ];
 
 function shellDisplayName(path: string, shells: ShellInfo[]): string {
   const match = shells.find(s => s.path === path);
@@ -72,7 +78,7 @@ export const SettingsView: React.FC = () => {
 
   // Terminal settings state
   const [detectedShells, setDetectedShells] = useState<ShellInfo[]>([]);
-  const [defaultShell, setDefaultShell]     = useState<string>(settings.shellPath || 'powershell.exe');
+  const [defaultShell, setDefaultShell]     = useState<string>(settings.shellPath || '');
   const [shellsLoading, setShellsLoading]   = useState(false);
   const [shellsError, setShellsError]       = useState('');
   const [useCustomPath, setUseCustomPath]   = useState(false);
@@ -103,7 +109,7 @@ export const SettingsView: React.FC = () => {
     setConductorTaskTimeoutMinutes(settings.conductorTaskTimeoutMinutes);
     // Sync defaultShell when settings change externally (e.g. importSettings)
     if (!useCustomPath) {
-      setDefaultShell(settings.shellPath || 'powershell.exe');
+      setDefaultShell(settings.shellPath || '');
     }
   }, [settings, useCustomPath]);
 
@@ -162,7 +168,7 @@ export const SettingsView: React.FC = () => {
         setDetectedShells(FALLBACK_SHELLS);
         const saved = settings.shellPath || '';
         const match = saved ? FALLBACK_SHELLS.find(s => s.path === saved) : null;
-        setDefaultShell(match?.path ?? (saved || 'powershell.exe'));
+        setDefaultShell(match?.path ?? saved ?? FALLBACK_SHELLS[0]?.path ?? '');
       })
       .finally(() => setShellsLoading(false));
   }, [activeTab, settings.shellPath]);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { css, cx } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useDashboard } from '../context/DashboardContext';
 import { TerminalContainer } from '../components/terminal/TerminalContainer';
 import { WorkspacePanel } from '../components/ui/WorkspacePanel';
@@ -67,6 +68,18 @@ export const DashboardView: React.FC = () => {
     updateWorkspace(projId, { currentTask: editTaskValue });
     setEditingTaskId(null);
     showToast('Task updated', 'success');
+  };
+
+  const handleBrowseDirectory = async () => {
+    const selected = await openDialog({ directory: true, multiple: false, recursive: false });
+    if (typeof selected === 'string' && selected) {
+      setNewProjPath(selected);
+      // Auto-fill name from the last path segment if the field is empty
+      if (!newProjName.trim()) {
+        const parts = selected.replace(/\\/g, '/').split('/').filter(Boolean);
+        setNewProjName(parts[parts.length - 1] ?? '');
+      }
+    }
   };
 
   const handleAddProjectSubmit = (e: React.FormEvent) => {
@@ -400,14 +413,25 @@ export const DashboardView: React.FC = () => {
                 </div>
                 <div className={s.fieldGroup}>
                   <label className={s.fieldLabel}>Directory path</label>
-                  <input
-                    type="text"
-                    placeholder="C:\Users\me\projects\my-app"
-                    value={newProjPath}
-                    onChange={e => setNewProjPath(e.target.value)}
-                    className={s.fieldInput}
-                    required
-                  />
+                  <div className={s.pathInputRow}>
+                    <input
+                      type="text"
+                      placeholder="C:\Users\me\projects\my-app"
+                      value={newProjPath}
+                      onChange={e => setNewProjPath(e.target.value)}
+                      className={cx(s.fieldInput, s.pathInput)}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className={s.browseBtn}
+                      onClick={handleBrowseDirectory}
+                      title="Browse for folder"
+                    >
+                      <FolderOpen size={14} />
+                      <span>Browse</span>
+                    </button>
+                  </div>
                 </div>
                 <div className={s.fieldGroup}>
                   <label className={s.fieldLabel}>Description <span className={s.optional}>(optional)</span></label>
@@ -866,6 +890,30 @@ const s = {
     }
     &::placeholder { color: var(--text-tertiary); }
     resize: none;
+  `,
+  pathInputRow: css`
+    display: flex; align-items: center; gap: 8px;
+  `,
+  pathInput: css`
+    flex: 1; min-width: 0;
+    font-family: var(--font-family-mono);
+    font-size: 11px;
+  `,
+  browseBtn: css`
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 12px; font-weight: 600;
+    cursor: pointer; white-space: nowrap; flex-shrink: 0;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    &:hover {
+      background: var(--bg-secondary);
+      border-color: var(--color-brand);
+      color: var(--text-primary);
+    }
   `,
   colorRow: css`
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
