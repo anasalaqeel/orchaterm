@@ -37,6 +37,9 @@ export interface DashboardContextType {
   theme: 'dark' | 'light';
   toggleTheme: () => void;
   isLoaded: boolean;
+  /** Signals the Overview page to open the New Workspace modal immediately. */
+  newWorkspaceModalOpen: boolean;
+  setNewWorkspaceModalOpen: (open: boolean) => void;
 
   // ── Workspace CRUD ──────────────────────────────────────────────────────────
   addWorkspace: (workspace: Omit<Workspace, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
@@ -91,6 +94,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [toast, setToast]               = useState<ToastInfo | null>(null);
   const [theme, setTheme]               = useState<'dark' | 'light'>('dark');
   const [isLoaded, setIsLoaded]         = useState<boolean>(false);
+  const [newWorkspaceModalOpen, setNewWorkspaceModalOpen] = useState(false);
   const [settings, setSettings]         = useState<AppSettings>({
     shellPath: '',   // resolved at runtime by get_available_shells → shells[0]
     ollamaHost: 'http://localhost:11434',
@@ -435,6 +439,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       toast, setToast, showToast,
       theme, toggleTheme,
       isLoaded,
+      newWorkspaceModalOpen, setNewWorkspaceModalOpen,
       addWorkspace, updateWorkspace, deleteWorkspace,
       addSpace, updateSpace, deleteSpace,
       addTaskLog, updateTaskLog, deleteTaskLog,
