@@ -21,6 +21,7 @@ export function Sidebar() {
     workspaces, activeWorkspaceId, setActiveWorkspaceId,
     deleteWorkspace,
     viewMode, setViewMode,
+    setNewWorkspaceModalOpen,
   } = useDashboard();
 
   const navigate    = useNavigate();
@@ -61,9 +62,9 @@ export function Sidebar() {
             className={s.addBtn}
             title="New Workspace"
             onClick={() => {
-              navigate('/');
               setViewMode('grid');
-              localStorage.setItem('orchaterm:open-new-workspace', '1');
+              navigate('/');
+              setNewWorkspaceModalOpen(true);
             }}
           >
             <Plus size={11} />

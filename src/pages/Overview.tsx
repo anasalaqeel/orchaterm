@@ -44,6 +44,7 @@ export const DashboardView: React.FC = () => {
     activeSpaceId,
     updateWorkspace, showToast, addWorkspace,
     viewMode, setViewMode,
+    newWorkspaceModalOpen, setNewWorkspaceModalOpen,
   } = useDashboard();
 
   const [showAddProj,   setShowAddProj]   = useState(false);
@@ -55,12 +56,13 @@ export const DashboardView: React.FC = () => {
   const [editTaskValue, setEditTaskValue] = useState('');
   const [rightPanel,    setRightPanel]    = useState<'workspace' | 'conductor' | 'chat'>('workspace');
 
+  // Open the New Workspace modal whenever the sidebar + button sets the flag.
   useEffect(() => {
-    if (localStorage.getItem('orchaterm:open-new-workspace') === '1') {
-      localStorage.removeItem('orchaterm:open-new-workspace');
+    if (newWorkspaceModalOpen) {
       setShowAddProj(true);
+      setNewWorkspaceModalOpen(false);
     }
-  }, []);
+  }, [newWorkspaceModalOpen, setNewWorkspaceModalOpen]);
 
   const activeProject = workspaces.find(p => p.id === activeWorkspaceId) || workspaces[0];
 
