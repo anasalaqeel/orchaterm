@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { NavLink, useNavigate, useMatch } from 'react-router';
 import { css, cx } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
@@ -6,7 +6,7 @@ import { useDashboard } from '../../context/DashboardContext';
 import {
   History, Sparkles, Settings,
   Sun, Moon, Blocks, LayoutDashboard,
-  Plus, Trash2,
+  Plus, Trash2, ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -14,6 +14,10 @@ const NAV_ITEMS = [
   { to: '/prompts',  label: 'Prompt Vault', icon: Sparkles },
   { to: '/settings', label: 'Settings',     icon: Settings },
 ] as const;
+
+const W_EXPANDED  = 248;
+const W_COLLAPSED =  56;
+const ANIM_MS     = 220; // must match the motion transition duration
 
 export function Sidebar() {
   const {
@@ -29,6 +33,39 @@ export function Sidebar() {
 
   const [hoveredWsId, setHoveredWsId] = useState<string | null>(null);
 
+  // Lazy initialisers so localStorage is only read once (on mount).
+  const [collapsed,       setCollapsed]       = useState<boolean>(
+    () => localStorage.getItem('orchaterm:sidebar-collapsed') === '1',
+  );
+  // layoutCollapsed drives CSS centering classes. It trails `collapsed` by
+  // ANIM_MS when collapsing (waits for the width to finish shrinking) but
+  // updates immediately when expanding so items don't stay centred while
+  // the sidebar is still opening.
+  const [layoutCollapsed, setLayoutCollapsed] = useState<boolean>(
+    () => localStorage.getItem('orchaterm:sidebar-collapsed') === '1',
+  );
+
+  // Keep a ref to the pending timer so we can cancel it if the component
+  // unmounts before the animation finishes.
+  const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (collapseTimerRef.current !== null) clearTimeout(collapseTimerRef.current);
+  }, []);
+
+  const toggleCollapsed = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    localStorage.setItem('orchaterm:sidebar-collapsed', next ? '1' : '0');
+    if (collapseTimerRef.current !== null) clearTimeout(collapseTimerRef.current);
+    if (next) {
+      // Collapsing — delay centering until the width animation is done.
+      collapseTimerRef.current = setTimeout(() => setLayoutCollapsed(true), ANIM_MS);
+    } else {
+      // Expanding — restore left-alignment immediately.
+      setLayoutCollapsed(false);
+    }
+  };
+
   const openInConsole = (id: string) => {
     setActiveWorkspaceId(id);
     setViewMode('console');
@@ -37,25 +74,53 @@ export function Sidebar() {
 
   const isOverviewActive = !!onDashboard && viewMode === 'grid';
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    cx(s.navBtn, isActive && s.navBtnActive);
+    cx(s.navBtn, layoutCollapsed && s.navBtnCollapsed, isActive && s.navBtnActive);
 
   return (
-    <aside className={s.sidebar}>
+    <motion.aside
+      className={s.sidebar}
+      animate={{ width: collapsed ? W_COLLAPSED : W_EXPANDED }}
+      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+    >
 
       {/* Brand */}
-      <div className={s.brand}>
+      <div className={cx(s.brand, layoutCollapsed && s.brandCollapsed)}>
         <div className={s.logo}>
           <Blocks className={s.logoIcon} />
         </div>
-        <h1 className={s.title}>Orchaterm</h1>
-        <span className={s.version}>β</span>
+        <AnimatePresence initial={false}>
+          {!collapsed && (
+            <motion.div
+              className={s.brandText}
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: 'auto' }}
+              exit={{ opacity: 0, width: 0 }}
+              transition={{ duration: 0.18 }}
+            >
+              <h1 className={s.title}>Orchaterm</h1>
+              <span className={s.version}>β</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className={s.body}>
 
         {/* ── Workspaces ── */}
-        <div className={s.sectionHead}>
-          <span className={s.sectionLabel}>Workspaces</span>
+        <div className={cx(s.sectionHead, layoutCollapsed && s.sectionHeadCollapsed)}>
+          <AnimatePresence initial={false}>
+            {!collapsed && (
+              <motion.span
+                className={s.sectionLabel}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                Workspaces
+              </motion.span>
+            )}
+          </AnimatePresence>
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.92 }}
@@ -72,7 +137,7 @@ export function Sidebar() {
         </div>
 
         <div className={s.workspaceList}>
-          {workspaces.length === 0 && (
+          {workspaces.length === 0 && !collapsed && (
             <p className={s.empty}>No workspaces yet.</p>
           )}
 
@@ -89,16 +154,16 @@ export function Sidebar() {
                 transition={{ delay: i * 0.04, duration: 0.2 }}
               >
                 <div
-                  className={cx(s.wsRow, isConsoleOpen && s.wsRowActive)}
+                  className={cx(s.wsRow, isConsoleOpen && s.wsRowActive, layoutCollapsed && s.wsRowCollapsed)}
                   style={isConsoleOpen ? { '--ws-color': w.color } as CSSProperties : undefined}
                   onMouseEnter={() => setHoveredWsId(w.id)}
                   onMouseLeave={() => setHoveredWsId(null)}
+                  title={collapsed ? w.name : undefined}
                 >
                   <button
-                    className={s.wsClickArea}
+                    className={cx(s.wsClickArea, layoutCollapsed && s.wsClickAreaCollapsed)}
                     onClick={() => openInConsole(w.id)}
                   >
-                    {/* Workspace avatar */}
                     <span
                       className={s.wsAvatar}
                       style={{ backgroundColor: w.color + '22', borderColor: w.color + '44' }}
@@ -106,12 +171,25 @@ export function Sidebar() {
                       <span className={s.wsAvatarDot} style={{ backgroundColor: w.color }} />
                     </span>
 
-                    <span className={s.wsName}>{w.name}</span>
+                    <AnimatePresence initial={false}>
+                      {!collapsed && (
+                        <motion.span
+                          className={s.wsName}
+                          initial={{ opacity: 0, width: 0 }}
+                          animate={{ opacity: 1, width: 'auto' }}
+                          exit={{ opacity: 0, width: 0 }}
+                          transition={{ duration: 0.15 }}
+                        >
+                          {w.name}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+
                     {isRunning && <span className={s.wsRunDot} />}
                   </button>
 
                   <AnimatePresence>
-                    {isWsHovered && (
+                    {isWsHovered && !collapsed && (
                       <motion.div
                         className={s.wsActions}
                         initial={{ opacity: 0, scale: 0.85 }}
@@ -143,23 +221,51 @@ export function Sidebar() {
           <NavLink
             to="/"
             end
-            className={cx(s.navBtn, isOverviewActive && s.navBtnActive)}
+            className={cx(s.navBtn, layoutCollapsed && s.navBtnCollapsed, isOverviewActive && s.navBtnActive)}
             onClick={() => setViewMode('grid')}
+            title={collapsed ? 'Overview' : undefined}
           >
             {() => (
               <>
                 <LayoutDashboard className={s.navIcon} />
-                <span>Overview</span>
+                <AnimatePresence initial={false}>
+                  {!collapsed && (
+                    <motion.span
+                      initial={{ opacity: 0, width: 0 }}
+                      animate={{ opacity: 1, width: 'auto' }}
+                      exit={{ opacity: 0, width: 0 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      Overview
+                    </motion.span>
+                  )}
+                </AnimatePresence>
               </>
             )}
           </NavLink>
 
           {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} className={navLinkClass}>
+            <NavLink
+              key={to}
+              to={to}
+              className={navLinkClass}
+              title={collapsed ? label : undefined}
+            >
               {() => (
                 <>
                   <Icon className={s.navIcon} />
-                  <span>{label}</span>
+                  <AnimatePresence initial={false}>
+                    {!collapsed && (
+                      <motion.span
+                        initial={{ opacity: 0, width: 0 }}
+                        animate={{ opacity: 1, width: 'auto' }}
+                        exit={{ opacity: 0, width: 0 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        {label}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
                 </>
               )}
             </NavLink>
@@ -169,21 +275,48 @@ export function Sidebar() {
       </div>
 
       {/* Footer */}
-      <div className={s.footer}>
-        <span className={s.footerLabel}>v0.1</span>
-        <motion.button
-          whileHover={{ scale: 1.08 }}
-          whileTap={{ scale: 0.92 }}
-          onClick={toggleTheme}
-          className={s.themeBtn}
-          title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-        >
-          {theme === 'dark'
-            ? <Sun className={s.themeIcon} />
-            : <Moon className={s.themeIcon} />}
-        </motion.button>
+      <div className={cx(s.footer, layoutCollapsed && s.footerCollapsed)}>
+        <AnimatePresence initial={false}>
+          {!collapsed && (
+            <motion.span
+              className={s.footerLabel}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              v0.1
+            </motion.span>
+          )}
+        </AnimatePresence>
+
+        <div className={cx(s.footerActions, layoutCollapsed && s.footerActionsCollapsed)}>
+          <motion.button
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.92 }}
+            onClick={toggleTheme}
+            className={s.footerBtn}
+            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          >
+            {theme === 'dark'
+              ? <Sun className={s.themeIcon} />
+              : <Moon className={s.themeIcon} />}
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.92 }}
+            onClick={toggleCollapsed}
+            className={s.footerBtn}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed
+              ? <ChevronsRight className={s.themeIcon} />
+              : <ChevronsLeft  className={s.themeIcon} />}
+          </motion.button>
+        </div>
       </div>
-    </aside>
+    </motion.aside>
   );
 }
 
@@ -191,13 +324,14 @@ export function Sidebar() {
 
 const s = {
   sidebar: css`
-    width: 248px;
     border-right: 1px solid var(--border-color);
     background: var(--bg-secondary);
     display: flex;
     flex-direction: column;
     height: 100vh;
     flex-shrink: 0;
+    overflow: hidden;          /* clip content during width animation */
+    will-change: width;
   `,
 
   /* Brand */
@@ -209,6 +343,15 @@ const s = {
     gap: 10px;
     user-select: none;
     flex-shrink: 0;
+    min-width: 0;
+  `,
+  brandCollapsed: css`
+    padding: 16px 0 14px;
+    justify-content: center;
+  `,
+  brandText: css`
+    display: flex; align-items: center; gap: 8px;
+    overflow: hidden; white-space: nowrap; min-width: 0;
   `,
   logo: css`
     width: 30px; height: 30px;
@@ -224,7 +367,7 @@ const s = {
     font-weight: 800;
     letter-spacing: -0.03em;
     color: var(--text-primary);
-    flex: 1;
+    white-space: nowrap;
   `,
   version: css`
     font-size: 10px;
@@ -233,6 +376,7 @@ const s = {
     background: rgba(123, 104, 238, 0.14);
     padding: 1px 6px;
     border-radius: 99px;
+    white-space: nowrap;
   `,
 
   /* Body */
@@ -240,6 +384,7 @@ const s = {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 16px 10px 0;
     display: flex;
     flex-direction: column;
@@ -257,12 +402,19 @@ const s = {
     justify-content: space-between;
     padding: 0 6px;
     margin-bottom: 4px;
+    min-width: 0;
+  `,
+  sectionHeadCollapsed: css`
+    justify-content: center;
+    padding: 0;
   `,
   sectionLabel: css`
     font-size: 10px;
     font-weight: 600;
     color: var(--text-tertiary);
     user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
   `,
   addBtn: css`
     width: 20px; height: 20px;
@@ -273,6 +425,7 @@ const s = {
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
     &:hover { background: rgba(123, 104, 238, 0.12); color: var(--color-brand); }
   `,
 
@@ -288,6 +441,7 @@ const s = {
     color: var(--text-tertiary);
     padding: 6px 10px;
     font-style: italic;
+    white-space: nowrap;
   `,
 
   /* Workspace row */
@@ -299,6 +453,10 @@ const s = {
     padding-right: 4px;
     position: relative;
     &:hover { background: var(--bg-hover); }
+  `,
+  wsRowCollapsed: css`
+    padding-right: 0;
+    justify-content: center;
   `,
   wsRowActive: css`
     background: rgba(123, 104, 238, 0.10) !important;
@@ -321,6 +479,10 @@ const s = {
     transition: color 0.15s;
     &:hover { color: var(--text-primary); }
   `,
+  wsClickAreaCollapsed: css`
+    flex: none;
+    padding: 7px;
+  `,
   wsAvatar: css`
     width: 22px; height: 22px;
     border-radius: 6px;
@@ -333,7 +495,6 @@ const s = {
     border-radius: 50%;
   `,
   wsName: css`
-    flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -391,7 +552,13 @@ const s = {
     text-decoration: none;
     transition: color 0.15s, background 0.15s;
     position: relative;
+    white-space: nowrap;
+    overflow: hidden;
     &:hover { color: var(--text-primary); background: var(--bg-hover); }
+  `,
+  navBtnCollapsed: css`
+    justify-content: center;
+    padding: 8px;
   `,
   navBtnActive: css`
     color: #fff !important;
@@ -410,12 +577,28 @@ const s = {
     justify-content: space-between;
     flex-shrink: 0;
   `,
+  footerCollapsed: css`
+    padding: 10px 0;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  `,
   footerLabel: css`
     font-size: 10px;
     color: var(--text-tertiary);
     font-weight: 600;
+    white-space: nowrap;
   `,
-  themeBtn: css`
+  footerActions: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  `,
+  footerActionsCollapsed: css`
+    flex-direction: column;
+    gap: 4px;
+  `,
+  footerBtn: css`
     width: 30px; height: 30px;
     border-radius: 8px;
     border: 1px solid var(--border-color);
@@ -424,6 +607,7 @@ const s = {
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
+    flex-shrink: 0;
     &:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-color-hover); }
   `,
   themeIcon: css`width: 14px; height: 14px;`,
