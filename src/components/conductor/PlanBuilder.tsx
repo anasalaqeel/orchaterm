@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { css, cx } from '@emotion/css';
+import { registerShortcut } from '../../services/keyboardManager';
 import { v4 as uuidv4 } from 'uuid';
 import { invoke } from '@tauri-apps/api/core';
 import { OrchestratorPlan, OrchestratorTask, TerminalSession } from '../../types';
@@ -209,16 +210,13 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
     onApproveAndRun({ ...plan, status: 'approved' });
   }, [isValid, plan, onApproveAndRun]);
 
-  // Ctrl/Cmd + Enter — approve & run from anywhere in the plan builder
+  // Ctrl/Cmd+Enter — approve & run (skipped when terminal has focus)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        handleApproveAndRun();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return registerShortcut({
+      key: 'Enter', ctrl: true,
+      context: 'non-terminal',
+      handler: handleApproveAndRun,
+    });
   }, [handleApproveAndRun]);
 
   // ── Generate with Agent ───────────────────────────────────────────────────────

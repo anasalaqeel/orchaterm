@@ -11,11 +11,14 @@ import { FitAddon } from 'xterm-addon-fit';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { css } from '@emotion/css';
+import { terminalGainedFocus, terminalLostFocus } from '../../services/terminalFocus';
 
 // ── Public ref handle exposed to TerminalContainer ─────────────────────────
 export interface TerminalTabHandle {
   /** Re-fit the terminal to its container (call after tab becomes visible). */
   fit: () => void;
+  /** Focus the xterm instance so keyboard input is captured. */
+  focus: () => void;
 }
 
 interface TerminalTabProps {
@@ -69,6 +72,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         if (!fitAddonRef.current) return;
         safeFit(fitAddonRef.current);
       },
+      focus: () => {
+        termRef.current?.focus();
+      },
     }));
 
     // ── Spawn helper (used for initial spawn AND retry) ──────────────────
@@ -102,6 +108,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         isSpawnedRef.current = true;
         setSpawnState('running');
 
+        // Focus xterm now that the PTY is alive and ready for input.
+        termRef.current?.focus();
+
         // If xterm.js was resized while we were awaiting spawn_pty (unlikely
         // but possible), correct the PTY now.
         const liveterm = termRef.current;
@@ -134,6 +143,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         cursorBlink: true,
         cursorStyle: 'block',
         scrollback: 5000,
+        // On macOS, Option should act as Meta so bash word-jump shortcuts
+        // (Option+B, Option+F, etc.) work correctly.
+        macOptionIsMeta: true,
+        macOptionClickForcesSelection: false,
         theme: {
           background: '#0C0C0C',
           foreground: '#d4d4d4',
@@ -172,6 +185,14 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
       termRef.current = term;
       fitAddonRef.current = fitAddon;
+
+      // ─ Track focus so keyboardManager knows when terminal is active ───
+      // xterm's hidden textarea is the actual keyboard-capture element.
+      // We listen on it directly since onFocus/onBlur are proposed-API only.
+      const onFocusIn  = () => terminalGainedFocus();
+      const onFocusOut = () => terminalLostFocus();
+      term.textarea?.addEventListener('focus', onFocusIn);
+      term.textarea?.addEventListener('blur',  onFocusOut);
 
       // ─ Forward keyboard input → PTY ──────────────────────────────────
       const dataDispose = term.onData((data) => {
@@ -252,6 +273,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         cancelAnimationFrame(rafId);
         if (resizeTimer !== null) clearTimeout(resizeTimer);
         resizeObserver.disconnect();
+        term.textarea?.removeEventListener('focus', onFocusIn);
+        term.textarea?.removeEventListener('blur',  onFocusOut);
+        terminalLostFocus(); // ensure count stays consistent on unmount
         dataDispose.dispose();
         if (unlisten) unlisten();
         resizeDispose.dispose();
