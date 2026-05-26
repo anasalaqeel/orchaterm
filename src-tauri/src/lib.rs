@@ -62,63 +62,101 @@ fn get_available_shells() -> Vec<ShellInfo> {
 
     let mut shells: Vec<ShellInfo> = Vec::new();
     let mut seen_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut wsl_found = false;
 
-    // ── Windows shells looked up by name in PATH ─────────────────────────
-    // Do NOT include bash/zsh/fish here. On Windows, bash is always either
-    // Git Bash (found via absolute path below) or WSL bash (synthetic entry).
-    // Including it in PATH lookup creates unavoidable duplicates.
-    let named: &[(&str, &str)] = &[
-        ("PowerShell 7",   "pwsh"),
-        ("PowerShell",     "powershell"),
-        ("Command Prompt", "cmd"),
-        ("WSL",            "wsl"),
-    ];
-
-    for (label, exe) in named {
-        if let Some(full_path) = resolve_in_path(exe) {
-            let key = canonical_key(&full_path);
+    // ── macOS / Linux ────────────────────────────────────────────────────
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Shells with well-known absolute paths (checked first so the stored
+        // path is always the canonical absolute one, not a bare name).
+        let abs: &[(&str, &str)] = &[
+            ("zsh",  "/bin/zsh"),
+            ("bash", "/bin/bash"),
+            ("sh",   "/bin/sh"),
+            ("dash", "/bin/dash"),
+        ];
+        for (label, abs_path) in abs {
+            let p = Path::new(abs_path);
+            if !p.exists() { continue; }
+            let key = canonical_key(p);
             if seen_keys.contains(&key) { continue; }
             seen_keys.insert(key);
-            if *exe == "wsl" { wsl_found = true; }
-            shells.push(simple(label, exe));
+            shells.push(simple(label, abs_path));
+        }
+
+        // Shells that live in user-managed locations (Homebrew, etc.) and are
+        // only reachable via PATH.
+        let by_name: &[(&str, &str)] = &[
+            ("fish", "fish"),
+            ("nu",   "nu"),
+            ("elvish", "elvish"),
+        ];
+        for (label, exe) in by_name {
+            if let Some(full_path) = resolve_in_path(exe) {
+                let key = canonical_key(&full_path);
+                if seen_keys.contains(&key) { continue; }
+                seen_keys.insert(key);
+                shells.push(simple(label, full_path.to_string_lossy().as_ref()));
+            }
+        }
+
+        // Guarantee a fallback — /bin/sh exists on every POSIX system.
+        if shells.is_empty() {
+            shells.push(simple("sh", "/bin/sh"));
         }
     }
 
-    // ── Synthetic: bash inside WSL ────────────────────────────────────────
-    // Only added when wsl.exe is present. Uses `wsl -- bash` so it always
-    // opens bash regardless of what WSL's default shell is set to.
-    // Named "WSL bash" to distinguish it from "WSL" (default shell) and
-    // from the native Windows "Git Bash" (MSYS2) entry below.
-    if wsl_found {
-        shells.push(ShellInfo {
-            name: "WSL bash".to_string(),
-            path: "wsl".to_string(),
-            args: vec!["--".to_string(), "bash".to_string()],
-        });
-    }
+    // ── Windows ──────────────────────────────────────────────────────────
+    #[cfg(target_os = "windows")]
+    {
+        let mut wsl_found = false;
 
-    // ── Git Bash via known absolute paths ────────────────────────────────
-    // bin\bash.exe sets up the correct MSYS2 environment; usr\bin\bash.exe
-    // is the raw internal binary and must not be exposed.
-    let abs: &[(&str, &str)] = &[
-        ("Git Bash",     r"C:\Program Files\Git\bin\bash.exe"),
-        ("Git Bash",     r"C:\Program Files (x86)\Git\bin\bash.exe"),
-        ("PowerShell 7", r"C:\Program Files\PowerShell\7\pwsh.exe"),
-    ];
+        // Shells looked up by name in PATH.
+        // Do NOT include bash/zsh/fish here — on Windows bash is either
+        // Git Bash (absolute path below) or WSL bash (synthetic entry).
+        let named: &[(&str, &str)] = &[
+            ("PowerShell 7",   "pwsh"),
+            ("PowerShell",     "powershell"),
+            ("Command Prompt", "cmd"),
+            ("WSL",            "wsl"),
+        ];
+        for (label, exe) in named {
+            if let Some(full_path) = resolve_in_path(exe) {
+                let key = canonical_key(&full_path);
+                if seen_keys.contains(&key) { continue; }
+                seen_keys.insert(key);
+                if *exe == "wsl" { wsl_found = true; }
+                shells.push(simple(label, exe));
+            }
+        }
 
-    for (label, abs_path) in abs {
-        let p = Path::new(abs_path);
-        if !p.exists() { continue; }
-        let key = canonical_key(p);
-        if seen_keys.contains(&key) { continue; }
-        seen_keys.insert(key);
-        shells.push(simple(label, abs_path));
-    }
+        // Synthetic: bash inside WSL.
+        if wsl_found {
+            shells.push(ShellInfo {
+                name: "WSL bash".to_string(),
+                path: "wsl".to_string(),
+                args: vec!["--".to_string(), "bash".to_string()],
+            });
+        }
 
-    // ── Guarantee a fallback ─────────────────────────────────────────────
-    if shells.is_empty() {
-        shells.push(simple("Command Prompt", "cmd"));
+        // Git Bash / PowerShell 7 via known absolute paths.
+        let abs: &[(&str, &str)] = &[
+            ("Git Bash",     r"C:\Program Files\Git\bin\bash.exe"),
+            ("Git Bash",     r"C:\Program Files (x86)\Git\bin\bash.exe"),
+            ("PowerShell 7", r"C:\Program Files\PowerShell\7\pwsh.exe"),
+        ];
+        for (label, abs_path) in abs {
+            let p = Path::new(abs_path);
+            if !p.exists() { continue; }
+            let key = canonical_key(p);
+            if seen_keys.contains(&key) { continue; }
+            seen_keys.insert(key);
+            shells.push(simple(label, abs_path));
+        }
+
+        // Guarantee a fallback.
+        if shells.is_empty() {
+            shells.push(simple("Command Prompt", "cmd"));
+        }
     }
 
     shells
@@ -160,6 +198,44 @@ fn lock_sessions(state: &PtyState) -> Result<std::sync::MutexGuard<'_, HashMap<S
     }
 }
 
+// ── Platform shell helpers ─────────────────────────────────────────────────────
+
+/// Returns the best available shell for the current platform.
+/// Mirrors the priority order used by `get_available_shells` so the two
+/// functions always agree on what the "default" shell is.
+fn platform_default_shell() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        // Prefer pwsh (PowerShell 7) if installed, else fall back to powershell.
+        for exe in &["pwsh", "powershell"] {
+            if resolve_in_path(exe).is_some() {
+                return exe.to_string();
+            }
+        }
+        "powershell".to_string()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Walk the same absolute-path list as get_available_shells.
+        for path in &["/bin/zsh", "/bin/bash", "/bin/sh"] {
+            if std::path::Path::new(path).exists() {
+                return path.to_string();
+            }
+        }
+        "/bin/sh".to_string() // POSIX guarantee
+    }
+}
+
+/// Returns the platform's last-resort fallback shell (used when the primary
+/// shell fails to spawn).
+fn platform_fallback_shell() -> &'static str {
+    #[cfg(target_os = "windows")]
+    { "cmd" }
+    #[cfg(not(target_os = "windows"))]
+    { "/bin/sh" }
+}
+
 // ── Tauri Commands ─────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -186,8 +262,12 @@ fn spawn_pty(
         })
         .map_err(|e| format!("Failed to open PTY: {e}"))?;
 
-    // Build shell command — try user preference first, fallback to cmd.exe.
-    let shell_to_use = shell.unwrap_or_else(|| "powershell.exe".to_string());
+    // Build shell command — use caller's preference or the first available
+    // platform shell (same priority order as get_available_shells).
+    let shell_to_use = shell
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| platform_default_shell());
+
     let mut cmd = CommandBuilder::new(&shell_to_use);
     // Append any extra args (e.g. ["--", "bash"] for wsl).
     if let Some(args) = shell_args {
@@ -199,7 +279,7 @@ fn spawn_pty(
     cmd.env("TERM", "xterm-256color");
 
     let child = pair.slave.spawn_command(cmd).or_else(|_| {
-        let mut fallback = CommandBuilder::new("cmd.exe");
+        let mut fallback = CommandBuilder::new(platform_fallback_shell());
         fallback.cwd(&workspace_path);
         fallback.env("TERM", "xterm-256color");
         pair.slave.spawn_command(fallback)
@@ -402,6 +482,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_available_shells,
             spawn_pty,

@@ -108,9 +108,12 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         setSelectedShell(findPreferredShell(shells, settings.shellPath) ?? shells[0]);
       })
       .catch(() => {
+        // get_available_shells failed (dev mode / non-Tauri). Use whatever
+        // the user saved, or leave the path empty so spawn_pty picks the
+        // platform default on the Rust side.
         const fallback: ShellInfo = {
           name: shellBasename(settings.shellPath) || 'Shell',
-          path: settings.shellPath || 'powershell',
+          path: settings.shellPath || '',
           args: [],
         };
         setAvailableShells([fallback]);
@@ -226,7 +229,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
     const restoreOrCreate = async () => {
       const shell = selectedShellRef.current;
-      const shellPath = shell?.path ?? settings.shellPath ?? 'powershell';
+      const shellPath = shell?.path ?? settings.shellPath ?? '';
       const shellArgs = shell?.args ?? [];
       const shellName = shell?.name ?? shellBasename(shellPath);
 
@@ -313,7 +316,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
   const createNewTab = useCallback((shell?: ShellInfo) => {
     const s = shell ?? selectedShellRef.current;
-    const shellPath = s?.path ?? settings.shellPath ?? 'powershell';
+    const shellPath = s?.path ?? settings.shellPath ?? '';
     const shellArgs = s?.args ?? [];
     const shellName = s?.name ?? shellBasename(shellPath);
 

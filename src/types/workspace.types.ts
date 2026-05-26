@@ -52,7 +52,7 @@ export interface SavedPrompt {
 }
 
 export interface AppSettings {
-  shellPath: string;     // e.g. "powershell.exe", "cmd.exe", "bash", "wsl"
+  shellPath: string;     // e.g. "/bin/zsh", "/bin/bash" (macOS/Linux) or "powershell.exe", "cmd.exe" (Windows). Empty = platform default.
   ollamaHost: string;    // e.g. "http://localhost:11434"
   openaiApiKey: string;
   anthropicApiKey: string;
