@@ -355,7 +355,10 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     setActiveSessionId(sessionId);
     requestAnimationFrame(() => {
       const ref = tabRefs.current.get(sessionId);
-      if (ref?.current) ref.current.fit();
+      if (ref?.current) {
+        ref.current.fit();
+        ref.current.focus();
+      }
     });
   }, []);
 
@@ -808,6 +811,10 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   styles.viewportWrapper,
                   !isActive && styles.viewportWrapperHidden,
                 )}
+                onClick={() => {
+                  const ref = tabRefs.current.get(session.id);
+                  ref?.current?.focus();
+                }}
               >
                 <TerminalTab
                   ref={tabRef}

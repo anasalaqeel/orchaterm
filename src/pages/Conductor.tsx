@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { registerShortcut } from '../services/keyboardManager';
 import { css, cx } from '@emotion/css';
 import { v4 as uuidv4 } from 'uuid';
 import { useDashboard } from '../context/DashboardContext';
@@ -138,27 +139,6 @@ export const ConductorView: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Keyboard shortcuts ────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const inInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
-
-      // P — Pause, R — Resume, S — Stop  (only when not typing)
-      if (!inInput && !e.ctrlKey && !e.metaKey) {
-        if (e.key === 'p' || e.key === 'P') { e.preventDefault(); handlePause(); }
-        if (e.key === 'r' || e.key === 'R') { e.preventDefault(); handleResume(); }
-        if (e.key === 's' || e.key === 'S') { e.preventDefault(); handleStop(); }
-      }
-      // Escape — close protocol modal
-      if (e.key === 'Escape') setShowProtocol(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // ── Plan CRUD helpers ─────────────────────────────────────────────────────────
 
   const handleNewPlan = () => {
@@ -201,9 +181,21 @@ export const ConductorView: React.FC = () => {
     orchestratorEngine.start(plan);
   };
 
-  const handlePause  = () => orchestratorEngine.pause();
-  const handleResume = () => orchestratorEngine.resume();
-  const handleStop   = () => orchestratorEngine.stop();
+  const handlePause  = useCallback(() => orchestratorEngine.pause(),  []);
+  const handleResume = useCallback(() => orchestratorEngine.resume(), []);
+  const handleStop   = useCallback(() => orchestratorEngine.stop(),   []);
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    // P / R / S — Pause / Resume / Stop (skipped when terminal or input has focus)
+    const removeP   = registerShortcut({ key: 'p', context: 'non-terminal', handler: handlePause });
+    const removeR   = registerShortcut({ key: 'r', context: 'non-terminal', handler: handleResume });
+    const removeS   = registerShortcut({ key: 's', context: 'non-terminal', handler: handleStop });
+    // Escape — close protocol modal
+    const removeEsc = registerShortcut({ key: 'Escape', context: 'non-terminal', handler: () => setShowProtocol(false) });
+    return () => { removeP(); removeR(); removeS(); removeEsc(); };
+  }, [handlePause, handleResume, handleStop]);
 
   // ── Protocol copy ─────────────────────────────────────────────────────────────
 
