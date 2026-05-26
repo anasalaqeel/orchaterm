@@ -44,6 +44,44 @@ function shellBasename(path: string): string {
   return part.replace(/\.(exe|cmd|bat|sh)$/i, '');
 }
 
+/**
+ * Find the best matching shell for a given shellPath setting.
+ *
+ * Priority (highest wins):
+ *   3 — exact path match          e.g. settings="C:\...\bash.exe" vs shell.path="C:\...\bash.exe"
+ *   2 — path-basename match       e.g. settings="bash"            vs shellBasename("C:\...\bash.exe")="bash"
+ *   1 — name substring match      e.g. settings="bash"            vs shell.name="Git Bash"
+ *
+ * Scoring beats the old `.find()` approach, which would match "WSL bash" before
+ * "Git Bash" when shellPath="bash" because "WSL bash" appears first in the list.
+ */
+function findPreferredShell(shells: ShellInfo[], shellPath: string): ShellInfo | null {
+  const saved = (shellPath ?? '').trim();
+  if (!saved || shells.length === 0) return null;
+  const savedBase = shellBasename(saved).toLowerCase();
+
+  let best: ShellInfo | null = null;
+  let bestScore = 0;
+
+  for (const s of shells) {
+    let score = 0;
+    if (s.path === saved) {
+      score = 3;
+    } else if (savedBase && shellBasename(s.path).toLowerCase() === savedBase) {
+      score = 2;
+    } else if (savedBase && s.name.toLowerCase().includes(savedBase)) {
+      score = 1;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = s;
+      if (score === 3) break; // can't do better than exact match
+    }
+  }
+
+  return best;
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export const TerminalContainer: React.FC<TerminalContainerProps> = ({
@@ -67,12 +105,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       .then((shells) => {
         if (shells.length === 0) return;
         setAvailableShells(shells);
-        const preferred = shells.find(
-          (s) =>
-            s.path === settings.shellPath ||
-            s.name.toLowerCase().includes(shellBasename(settings.shellPath).toLowerCase()),
-        );
-        setSelectedShell(preferred ?? shells[0]);
+        setSelectedShell(findPreferredShell(shells, settings.shellPath) ?? shells[0]);
       })
       .catch(() => {
         const fallback: ShellInfo = {
@@ -85,6 +118,14 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Re-select the preferred shell whenever the user changes the default in Settings
+  // while this terminal container is already mounted.
+  useEffect(() => {
+    if (availableShells.length === 0) return;
+    const preferred = findPreferredShell(availableShells, settings.shellPath);
+    if (preferred) setSelectedShell(preferred);
+  }, [settings.shellPath, availableShells]);
 
   useEffect(() => {
     if (!shellPickerOpen) return;

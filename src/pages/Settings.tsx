@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { css, cx } from '@emotion/css';
+import { invoke } from '@tauri-apps/api/core';
 import { useDashboard } from '../context/DashboardContext';
 import { Workspace } from '../types';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -14,7 +15,30 @@ import {
   Settings,
   RefreshCw,
   Network,
+  Terminal,
 } from 'lucide-react';
+
+// ── Terminal tab helpers ────────────────────────────────────────────────────
+
+interface ShellInfo {
+  name: string;
+  path: string;
+  args: string[];
+}
+
+const FALLBACK_SHELLS: ShellInfo[] = [
+  { name: 'PowerShell',       path: 'powershell.exe', args: [] },
+  { name: 'Command Prompt',   path: 'cmd.exe',        args: [] },
+  { name: 'WSL',              path: 'wsl.exe',        args: [] },
+  { name: 'Git Bash',         path: 'bash',           args: [] },
+];
+
+function shellDisplayName(path: string, shells: ShellInfo[]): string {
+  const match = shells.find(s => s.path === path);
+  if (match) return match.name;
+  // strip directory and extension for custom paths
+  return path.replace(/\\/g, '/').split('/').pop()?.replace(/\.(exe|cmd|bat|sh)$/i, '') ?? path;
+}
 
 export const SettingsView: React.FC = () => {
   const {
@@ -33,7 +57,6 @@ export const SettingsView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Integration Settings form states
-  const [shellPath, setShellPath] = useState(settings.shellPath);
   const [ollamaHost, setOllamaHost] = useState(settings.ollamaHost);
   const [openaiApiKey, setOpenaiApiKey] = useState(settings.openaiApiKey);
   const [anthropicApiKey, setAnthropicApiKey] = useState(settings.anthropicApiKey);
@@ -46,6 +69,15 @@ export const SettingsView: React.FC = () => {
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState('');
+
+  // Terminal settings state
+  const [detectedShells, setDetectedShells] = useState<ShellInfo[]>([]);
+  const [defaultShell, setDefaultShell]     = useState<string>(settings.shellPath || 'powershell.exe');
+  const [shellsLoading, setShellsLoading]   = useState(false);
+  const [shellsError, setShellsError]       = useState('');
+  const [useCustomPath, setUseCustomPath]   = useState(false);
+  const [customShellPath, setCustomShellPath] = useState('');
+  const shellsFetchedRef = React.useRef(false);
 
   const loadOllamaModels = async () => {
     setModelsLoading(true);
@@ -64,13 +96,16 @@ export const SettingsView: React.FC = () => {
   };
 
   useEffect(() => {
-    setShellPath(settings.shellPath);
     setOllamaHost(settings.ollamaHost);
     setOpenaiApiKey(settings.openaiApiKey);
     setAnthropicApiKey(settings.anthropicApiKey);
     setConductorOllamaModel(settings.conductorOllamaModel);
     setConductorTaskTimeoutMinutes(settings.conductorTaskTimeoutMinutes);
-  }, [settings]);
+    // Sync defaultShell when settings change externally (e.g. importSettings)
+    if (!useCustomPath) {
+      setDefaultShell(settings.shellPath || 'powershell.exe');
+    }
+  }, [settings, useCustomPath]);
 
   // Pre-load models when component mounts so the dropdown is ready
   useEffect(() => {
@@ -83,7 +118,6 @@ export const SettingsView: React.FC = () => {
   const handleSaveIntegrations = (e: React.FormEvent) => {
     e.preventDefault();
     updateSettings({
-      shellPath,
       ollamaHost,
       openaiApiKey,
       anthropicApiKey,
@@ -99,7 +133,39 @@ export const SettingsView: React.FC = () => {
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
 
   // Tabs for settings sections
-  const [activeTab, setActiveTab] = useState<'general' | 'projects'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'projects' | 'terminal'>('general');
+
+  useEffect(() => {
+    if (activeTab !== 'terminal') return;
+    if (shellsFetchedRef.current) return; // fetch only once per mount
+    shellsFetchedRef.current = true;
+    setShellsLoading(true);
+    setShellsError('');
+    invoke<ShellInfo[]>('get_available_shells')
+      .then((shells) => {
+        if (shells.length === 0) throw new Error('empty');
+        setDetectedShells(shells);
+        // Pre-select the shell that matches settings.shellPath
+        const saved = settings.shellPath || '';
+        const match = saved
+          ? shells.find(
+              s => s.path === saved ||
+                s.name.toLowerCase().includes(
+                  (saved.replace(/\\/g, '/').split('/').pop()?.replace(/\.(exe|cmd|bat|sh)$/i, '') ?? saved).toLowerCase()
+                )
+            )
+          : null;
+        setDefaultShell(match?.path ?? shells[0].path);
+      })
+      .catch(() => {
+        setShellsError('Could not detect shells — using common defaults');
+        setDetectedShells(FALLBACK_SHELLS);
+        const saved = settings.shellPath || '';
+        const match = saved ? FALLBACK_SHELLS.find(s => s.path === saved) : null;
+        setDefaultShell(match?.path ?? (saved || 'powershell.exe'));
+      })
+      .finally(() => setShellsLoading(false));
+  }, [activeTab, settings.shellPath]);
 
   // Modals / forms state
   const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null);
@@ -219,6 +285,16 @@ export const SettingsView: React.FC = () => {
           Workspaces ({workspaces.length})
           {activeTab === 'projects' && <span className={styles.tabActiveLine} />}
         </button>
+        <button
+          onClick={() => setActiveTab('terminal')}
+          className={cx(
+            styles.tabButton,
+            activeTab === 'terminal' ? styles.tabButtonActive : styles.tabButtonInactive
+          )}
+        >
+          Terminal
+          {activeTab === 'terminal' && <span className={styles.tabActiveLine} />}
+        </button>
       </div>
 
       {/* GENERAL & BACKUPS TAB */}
@@ -299,25 +375,10 @@ export const SettingsView: React.FC = () => {
               <span>Developer Integrations & APIs</span>
             </h3>
             <p className={styles.cardDescription}>
-              Configure your default interactive terminal shell path, local Ollama API host, and backup cloud keys for OpenAI/Anthropic model execution.
+              Configure local Ollama API host and backup cloud keys for OpenAI/Anthropic model execution.
             </p>
             <form onSubmit={handleSaveIntegrations} className={styles.integrationForm}>
               <div className={styles.grid2Col}>
-                <div>
-                  <label className={styles.formLabel}>Terminal Shell Executable</label>
-                  <select
-                    value={shellPath}
-                    onChange={(e) => setShellPath(e.target.value)}
-                    className={styles.integrationSelect}
-                  >
-                    <option value="">— Select a shell —</option>
-                    <option value="powershell.exe">PowerShell (powershell.exe)</option>
-                    <option value="cmd.exe">Command Prompt (cmd.exe)</option>
-                    <option value="wsl.exe">WSL (wsl.exe)</option>
-                    <option value="bash">Git Bash (bash)</option>
-                    <option value="C:\Program Files\Git\bin\bash.exe">Git Bash — full path</option>
-                  </select>
-                </div>
                 <div>
                   <label className={styles.formLabel}>Ollama API Host</label>
                   <input
@@ -508,6 +569,97 @@ export const SettingsView: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* TERMINAL TAB */}
+      {activeTab === 'terminal' && (
+        <div className={styles.tabContentContainer}>
+          <div className={styles.integrationsCard}>
+            <h3 className={styles.cardTitle}>
+              <Terminal className={cx(styles.cardTitleIcon, styles.terminalIcon)} />
+              <span>Default Terminal Shell</span>
+            </h3>
+            <p className={styles.cardDescription}>
+              Shell launched when opening a new terminal tab in any workspace.
+              Detected from your system — changes take effect the next time you open a terminal.
+            </p>
+
+            {shellsLoading ? (
+              <div className={styles.flexCenterGap3}>
+                <RefreshCw className={cx(styles.refreshIcon, styles.spin)} />
+                <span className={styles.cardDescription}>Detecting installed shells…</span>
+              </div>
+            ) : (
+              <>
+                {!useCustomPath ? (
+                  <div>
+                    <label className={styles.formLabel}>Shell</label>
+                    <div style={{ display: 'flex' }}>
+                      <select
+                        className={styles.integrationSelect}
+                        value={defaultShell}
+                        onChange={e => setDefaultShell(e.target.value)}
+                      >
+                        {(detectedShells.length > 0 ? detectedShells : FALLBACK_SHELLS).map(s => (
+                          <option key={s.path} value={s.path}>
+                            {s.name} — {s.path}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {shellsError && <p className={styles.modelsError}>{shellsError}</p>}
+                  </div>
+                ) : (
+                  <div>
+                    <label className={styles.formLabel}>Custom Shell Path</label>
+                    <input
+                      type="text"
+                      className={styles.integrationInput}
+                      value={customShellPath}
+                      onChange={e => setCustomShellPath(e.target.value)}
+                      placeholder={`e.g. C:\\Program Files\\Git\\bin\\bash.exe`}
+                    />
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className={styles.linkBtn}
+                  onClick={() => {
+                    if (!useCustomPath) setCustomShellPath(defaultShell);
+                    setUseCustomPath(p => !p);
+                  }}
+                >
+                  {useCustomPath ? '← Use detected shell' : 'Use custom path'}
+                </button>
+
+                <p className={styles.shellHelperText}>
+                  {'✓ New terminals will open with: '}
+                  <strong>
+                    {useCustomPath
+                      ? (customShellPath.trim() || '—')
+                      : shellDisplayName(defaultShell, detectedShells.length > 0 ? detectedShells : FALLBACK_SHELLS)}
+                  </strong>
+                </p>
+
+                <div className={styles.flexEndPt2}>
+                  <button
+                    type="button"
+                    className={styles.amberButton}
+                    onClick={() => {
+                      const path = (useCustomPath ? customShellPath : defaultShell).trim();
+                      if (!path) { showToast('Shell path is required', 'error'); return; }
+                      updateSettings({ shellPath: path });
+                      showToast('Terminal settings saved', 'success');
+                    }}
+                  >
+                    Save Terminal Settings
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1443,5 +1595,40 @@ const styles = {
     font-size: 10px;
     color: #fb7185;
     margin-top: 4px;
+  `,
+
+  // ── Terminal tab ───────────────────────────────────────────────────────────
+  terminalIcon: css`
+    color: #7B68EE;
+  `,
+  linkBtn: css`
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: var(--font-size-xs);
+    color: #60a5fa;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    align-self: flex-start;
+
+    &:hover { color: #93c5fd; }
+
+    body.light & {
+      color: #2563eb;
+      &:hover { color: #1d4ed8; }
+    }
+  `,
+  shellHelperText: css`
+    font-size: var(--font-size-xs);
+    color: #94a3b8;
+    margin-top: 2px;
+
+    strong { color: #e2e8f0; }
+
+    body.light & {
+      color: #64748b;
+      strong { color: #0f172a; }
+    }
   `,
 };
