@@ -221,7 +221,7 @@ export class OrchestratorEngine {
 
   /** Injects a raw message into a terminal session, bypassing the orchestrator flow. */
   injectMessage(sessionId: string, message: string): void {
-    writePtyChunked(sessionId, message + '\n')
+    writePtyChunked(sessionId, message + '\r')
       .catch((err: unknown) => this.log('error', `Manual inject failed: ${err}`, undefined, sessionId));
     this.log('user-override', `Manual message injected into session ${sessionId}`, undefined, sessionId);
   }
@@ -353,7 +353,7 @@ ${task.description}${buildAgentProtocol(task.id)}`;
 
     // Inject into the terminal — '\n' is mandatory to execute
     try {
-      await writePtyChunked(task.assignedSessionId, prompt + '\n');
+      await writePtyChunked(task.assignedSessionId, prompt + '\r');
     } catch (err: unknown) {
       this.log('error', `Failed to inject task "${task.title}" into session: ${err}`, task.id, task.assignedSessionId);
       this.updateTask(task.id, { status: 'failed' });
