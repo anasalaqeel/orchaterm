@@ -3,7 +3,7 @@ import { css, cx } from '@emotion/css';
 import { invoke } from '@tauri-apps/api/core';
 import { useDashboard } from '../context/DashboardContext';
 import { Workspace } from '../types';
-import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { ConfirmDialog, Select } from '../components/ui';
 import { fetchOllamaModels } from '../services/ollamaRelay';
 import {
   Sun,
@@ -594,23 +594,17 @@ export const SettingsView: React.FC = () => {
             ) : (
               <>
                 {!useCustomPath ? (
-                  <div>
-                    <label className={styles.formLabel}>Shell</label>
-                    <div style={{ display: 'flex' }}>
-                      <select
-                        className={styles.integrationSelect}
-                        value={defaultShell}
-                        onChange={e => setDefaultShell(e.target.value)}
-                      >
-                        {(detectedShells.length > 0 ? detectedShells : FALLBACK_SHELLS).map(s => (
-                          <option key={s.path} value={s.path}>
-                            {s.name} — {s.path}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    {shellsError && <p className={styles.modelsError}>{shellsError}</p>}
-                  </div>
+                  <Select
+                    label="Shell"
+                    value={defaultShell}
+                    onChange={setDefaultShell}
+                    options={(detectedShells.length > 0 ? detectedShells : FALLBACK_SHELLS).map((s) => ({
+                      value: s.path,
+                      name: s.name,
+                      description: s.path,
+                    }))}
+                    error={shellsError}
+                  />
                 ) : (
                   <div>
                     <label className={styles.formLabel}>Custom Shell Path</label>
