@@ -262,7 +262,7 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
       // 2. Now send the prompt — the watcher is already listening.
       // Use chunked writes: large atomic PTY writes can be silently dropped by
       // Windows ConPTY + Claude CLI's readline before it drains the input buffer.
-      await writePtyChunked(genSession, genPrompt + '\n');
+      await writePtyChunked(genSession, genPrompt + '\r');
 
       if (cancelledRef.current) return;
       setGenStatus('waiting');

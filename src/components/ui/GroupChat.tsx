@@ -442,7 +442,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
         // Handle inject pattern
         const inj = parseInject(finalContent, groupSessions);
         if (inj) {
-          writePtyChunked(inj.sessionId, inj.message + '\n').catch(() => {});
+          writePtyChunked(inj.sessionId, inj.message + '\r').catch(() => {});
           setMessages(prev => [...prev, {
             id: crypto.randomUUID(),
             role: 'system',

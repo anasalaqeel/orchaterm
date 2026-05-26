@@ -121,7 +121,7 @@ export class NeedsBroker {
     // Inject the answer back into the requesting terminal if policy allows.
     const currentBuffer = bufferWatcher.getBuffer(requestingSessionId);
     if (canInjectNow(currentBuffer, requestingSession.interruptPolicy)) {
-      const injection = `\n[AgentDeck answer to your question]: ${answer}\n`;
+      const injection = `\n[AgentDeck answer to your question]: ${answer}\r`;
       await writePtyChunked(requestingSessionId, injection).catch(() => {});
     }
 
