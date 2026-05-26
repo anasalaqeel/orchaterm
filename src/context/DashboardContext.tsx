@@ -137,7 +137,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         // Restore view mode
         setViewMode(ui.viewMode);
 
-        const savedTheme = localStorage.getItem('agentdeck_theme');
+        const savedTheme = localStorage.getItem('orchaterm_theme');
         setTheme(savedTheme === 'light' ? 'light' : 'dark');
       } catch (err) {
         console.error('Error loading initial data', err);
@@ -164,10 +164,10 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const root = window.document.body;
     if (theme === 'light') {
       root.classList.add('light');
-      localStorage.setItem('agentdeck_theme', 'light');
+      localStorage.setItem('orchaterm_theme', 'light');
     } else {
       root.classList.remove('light');
-      localStorage.setItem('agentdeck_theme', 'dark');
+      localStorage.setItem('orchaterm_theme', 'dark');
     }
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);

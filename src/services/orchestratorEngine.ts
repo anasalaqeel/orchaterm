@@ -53,7 +53,7 @@ function buildAgentProtocol(taskId: string): string {
   return `
 
 ---
-AGENTDECK PROTOCOL
+ORCHATERM PROTOCOL
 
 When this task is fully done, output this block exactly on its own lines:
 
@@ -73,7 +73,7 @@ ask: <one clear question>
 context: <brief description of what you are working on>
 ${NEEDS_END}
 
-AgentDeck will inject the answer. Use only when genuinely blocked.`;
+Orchaterm will inject the answer. Use only when genuinely blocked.`;
 }
 
 // ── OrchestratorEngine ──────────────────────────────────────────────────────────

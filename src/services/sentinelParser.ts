@@ -1,39 +1,39 @@
 /**
  * sentinelParser.ts
  *
- * Pure functions for detecting and parsing the AgentDeck sentinel block that
+ * Pure functions for detecting and parsing the Orchaterm sentinel block that
  * agents output when they complete a task, and for stripping ANSI escape codes
  * from raw terminal output before it is processed by Ollama or displayed.
  *
  * Sentinel format agents must output:
  *
- *   ###AGENTDECK_DONE###
+ *   ###ORCHATERM_DONE###
  *   task_id: <id>
  *   summary: <2-3 sentences>
  *   files_modified: <comma list, or "none">
  *   needs: <what next agent needs, or "none">
- *   ###AGENTDECK_END###
+ *   ###ORCHATERM_END###
  *
  * Plan-generation format (used only during plan creation from a capable agent):
  *
- *   ###AGENTDECK_PLAN_START###
+ *   ###ORCHATERM_PLAN_START###
  *   [...JSON array of tasks...]
- *   ###AGENTDECK_PLAN_END###
+ *   ###ORCHATERM_PLAN_END###
  */
 
 import { OrchestratorTaskOutput, AgentNeedsRequest } from '../types';
 
 // ── Sentinel markers ────────────────────────────────────────────────────────────
-export const SENTINEL_START = '###AGENTDECK_DONE###';
-export const SENTINEL_END   = '###AGENTDECK_END###';
+export const SENTINEL_START = '###ORCHATERM_DONE###';
+export const SENTINEL_END   = '###ORCHATERM_END###';
 
 // ── Plan markers ────────────────────────────────────────────────────────────────
-export const PLAN_START = '###AGENTDECK_PLAN_START###';
-export const PLAN_END   = '###AGENTDECK_PLAN_END###';
+export const PLAN_START = '###ORCHATERM_PLAN_START###';
+export const PLAN_END   = '###ORCHATERM_PLAN_END###';
 
 // ── Needs markers ────────────────────────────────────────────────────────────────
-export const NEEDS_START = '###AGENTDECK_NEEDS###';
-export const NEEDS_END   = '###AGENTDECK_NEEDS_END###';
+export const NEEDS_START = '###ORCHATERM_NEEDS###';
+export const NEEDS_END   = '###ORCHATERM_NEEDS_END###';
 
 // ── ANSI stripping ──────────────────────────────────────────────────────────────
 
@@ -186,10 +186,10 @@ export function parsePlanBlock(buffer: string): string | null {
  *
  * Agents output this block mid-task to request information from peer agents:
  *
- *   ###AGENTDECK_NEEDS###
+ *   ###ORCHATERM_NEEDS###
  *   ask: <question>
  *   context: <what the agent is currently working on>
- *   ###AGENTDECK_NEEDS_END###
+ *   ###ORCHATERM_NEEDS_END###
  */
 export function parseNeedsBlock(buffer: string): AgentNeedsRequest | null {
   const clean = stripAnsiCodes(buffer);

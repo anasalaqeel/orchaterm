@@ -7,8 +7,8 @@
  * depending on the mode the session is in.
  *
  * Modes per session:
- *   'sentinel' — watches for ###AGENTDECK_DONE### / ###AGENTDECK_END###
- *   'plan'     — watches for ###AGENTDECK_PLAN_START### / ###AGENTDECK_PLAN_END###
+ *   'sentinel' — watches for ###ORCHATERM_DONE### / ###ORCHATERM_END###
+ *   'plan'     — watches for ###ORCHATERM_PLAN_START### / ###ORCHATERM_PLAN_END###
  *   'idle'     — listening and accumulating but not triggering callbacks
  *
  * Each session can only be in one mode at a time. Switching modes clears the

@@ -7,17 +7,17 @@ describe('parseNeedsBlock', () => {
   });
 
   it('returns null when block is incomplete (start but no end)', () => {
-    const buf = 'output\n###AGENTDECK_NEEDS###\nask: something\n';
+    const buf = 'output\n###ORCHATERM_NEEDS###\nask: something\n';
     expect(parseNeedsBlock(buf)).toBeNull();
   });
 
   it('parses a complete NEEDS block', () => {
     const buf = [
       'Some agent output',
-      '###AGENTDECK_NEEDS###',
+      '###ORCHATERM_NEEDS###',
       'ask: What is the database schema?',
       'context: I need to write a migration',
-      '###AGENTDECK_NEEDS_END###',
+      '###ORCHATERM_NEEDS_END###',
     ].join('\n');
 
     const result = parseNeedsBlock(buf);
@@ -28,15 +28,15 @@ describe('parseNeedsBlock', () => {
 
   it('uses the LAST complete block in the buffer (handles repeated attempts)', () => {
     const buf = [
-      '###AGENTDECK_NEEDS###',
+      '###ORCHATERM_NEEDS###',
       'ask: First question',
       'context: first context',
-      '###AGENTDECK_NEEDS_END###',
+      '###ORCHATERM_NEEDS_END###',
       'more output',
-      '###AGENTDECK_NEEDS###',
+      '###ORCHATERM_NEEDS###',
       'ask: Second question',
       'context: second context',
-      '###AGENTDECK_NEEDS_END###',
+      '###ORCHATERM_NEEDS_END###',
     ].join('\n');
 
     const result = parseNeedsBlock(buf);
@@ -45,10 +45,10 @@ describe('parseNeedsBlock', () => {
 
   it('strips ANSI codes before parsing', () => {
     const buf = [
-      '\x1b[32m###AGENTDECK_NEEDS###\x1b[0m',
+      '\x1b[32m###ORCHATERM_NEEDS###\x1b[0m',
       'ask: What is X?',
       'context: doing Y',
-      '###AGENTDECK_NEEDS_END###',
+      '###ORCHATERM_NEEDS_END###',
     ].join('\n');
 
     expect(parseNeedsBlock(buf)).not.toBeNull();
@@ -57,9 +57,9 @@ describe('parseNeedsBlock', () => {
 
   it('returns empty string for context when field is missing', () => {
     const buf = [
-      '###AGENTDECK_NEEDS###',
+      '###ORCHATERM_NEEDS###',
       'ask: What is X?',
-      '###AGENTDECK_NEEDS_END###',
+      '###ORCHATERM_NEEDS_END###',
     ].join('\n');
 
     const result = parseNeedsBlock(buf);

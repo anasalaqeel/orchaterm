@@ -44,9 +44,9 @@ interface WorkspaceConductorProps {
 
 // ── Sentinel Protocol text ─────────────────────────────────────────────────────
 
-const PROTOCOL_MD = `# AgentDeck Agent Protocol
+const PROTOCOL_MD = `# Orchaterm Agent Protocol
 
-You are running inside AgentDeck, a multi-agent coordination tool. AgentDeck sends task prompts to your terminal and watches for the signals below. Output each block on its own lines with no extra text before or after.
+You are running inside Orchaterm, a multi-agent coordination tool. Orchaterm sends task prompts to your terminal and watches for the signals below. Output each block on its own lines with no extra text before or after.
 
 ## 1. Signal Task Complete
 
@@ -92,7 +92,7 @@ ask: <one clear question>
 context: <brief description of what you are working on>
 ${NEEDS_END}
 
-AgentDeck will inject the answer into your terminal. Use only when genuinely blocked. Do not repeat the same question.
+Orchaterm will inject the answer into your terminal. Use only when genuinely blocked. Do not repeat the same question.
 `;
 
 // ── Status colors ──────────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
 
   // Persist engine running state for the tab indicator in Overview
   useEffect(() => {
-    localStorage.setItem(`agentdeck:conductor:running:${workspaceId}`, String(engineRunning));
+    localStorage.setItem(`orchaterm:conductor:running:${workspaceId}`, String(engineRunning));
   }, [engineRunning, workspaceId]);
 
   // ── Plan CRUD ─────────────────────────────────────────────────────────────

@@ -67,7 +67,7 @@ function buildGeneratePrompt(
   const exampleId1 = sessions[0]?.id ?? 'session-id-here';
   const exampleId2 = sessions[1]?.id ?? sessions[0]?.id ?? 'session-id-here';
 
-  return `You are acting as an orchestration planner for AgentDeck, a multi-agent coordination system.
+  return `You are acting as an orchestration planner for Orchaterm, a multi-agent coordination system.
 
 GOAL: ${goal || '(fill in your goal)'}
 
@@ -234,7 +234,7 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
       //    output is missed during the async listen() setup.
       await bufferWatcher.watchForPlan(
         genSession,
-        // onPlan — fires when ###AGENTDECK_PLAN_START### ... ###AGENTDECK_PLAN_END### detected
+        // onPlan — fires when ###ORCHATERM_PLAN_START### ... ###ORCHATERM_PLAN_END### detected
         (rawJson: string) => {
           if (cancelledRef.current) return;
           try {

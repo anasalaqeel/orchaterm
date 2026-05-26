@@ -2,7 +2,7 @@
  * needsBroker.ts
  *
  * Handles mid-task help requests from agents. When an agent outputs a
- * ###AGENTDECK_NEEDS### block, the NeedsBroker:
+ * ###ORCHATERM_NEEDS### block, the NeedsBroker:
  *  1. Identifies peer agents in the same Space
  *  2. Asks Ollama to synthesise an answer from their recent output
  *  3. Injects the answer back into the requesting terminal (if policy allows)
@@ -121,7 +121,7 @@ export class NeedsBroker {
     // Inject the answer back into the requesting terminal if policy allows.
     const currentBuffer = bufferWatcher.getBuffer(requestingSessionId);
     if (canInjectNow(currentBuffer, requestingSession.interruptPolicy)) {
-      const injection = `\n[AgentDeck answer to your question]: ${answer}\r`;
+      const injection = `\n[Orchaterm answer to your question]: ${answer}\r`;
       await writePtyChunked(requestingSessionId, injection).catch(() => {});
     }
 
