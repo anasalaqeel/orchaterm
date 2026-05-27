@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { useDashboard } from '../context/DashboardContext';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { Select } from '../components/ui/Select';
 import { SavedPrompt } from '../types';
-import { 
-  Search, 
-  Copy, 
-  Plus, 
-  Edit2, 
-  Trash2, 
-  ChevronDown, 
-  ChevronUp, 
-  Tag, 
+import {
+  Search,
+  Copy,
+  Plus,
+  Edit2,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  Tag,
   Calendar,
   X
 } from 'lucide-react';
@@ -185,17 +186,15 @@ export const PromptVaultView: React.FC = () => {
         
         {/* Workspace Filter */}
         <div className={styles.filterGroup}>
-          <label className={styles.filterLabel}>Filter Workspace</label>
-          <select
+          <Select
+            label='Filter Workspace'
             value={filterWorkspace}
-            onChange={(e) => setFilterWorkspace(e.target.value)}
-            className={styles.filterSelect}
-          >
-            <option value="all">All Workspaces</option>
-            {workspaces.map(w => (
-              <option key={w.id} value={w.id}>{w.name}</option>
-            ))}
-          </select>
+            onChange={setFilterWorkspace}
+            options={[
+              { value: 'all', name: 'All Workspaces' },
+              ...workspaces.map(w => ({ value: w.id, name: w.name })),
+            ]}
+          />
         </div>
 
         {/* Global Search (title, content, tags) */}
@@ -356,18 +355,15 @@ export const PromptVaultView: React.FC = () => {
               </div>
 
               <div>
-                <label className={styles.fieldLabel}>Associate Workspace</label>
-                <select
+                <Select
+                  label='Associate Workspace'
                   value={promptWorkspaceId}
-                  onChange={(e) => setPromptWorkspaceId(e.target.value)}
-                  className={styles.input}
-                  required
-                >
-                  <option value="" disabled>-- Select Workspace --</option>
-                  {workspaces.map(w => (
-                    <option key={w.id} value={w.id}>{w.name}</option>
-                  ))}
-                </select>
+                  onChange={setPromptWorkspaceId}
+                  options={[
+                    { value: '', name: '— Select Workspace —' },
+                    ...workspaces.map(w => ({ value: w.id, name: w.name })),
+                  ]}
+                />
               </div>
 
               <div>
@@ -447,17 +443,15 @@ export const PromptVaultView: React.FC = () => {
               </div>
 
               <div>
-                <label className={styles.fieldLabel}>Associate Workspace</label>
-                <select
+                <Select
+                  label='Associate Workspace'
                   value={promptWorkspaceId}
-                  onChange={(e) => setPromptWorkspaceId(e.target.value)}
-                  className={styles.input}
-                  required
-                >
-                  {workspaces.map(w => (
-                    <option key={w.id} value={w.id}>{w.name}</option>
-                  ))}
-                </select>
+                  onChange={setPromptWorkspaceId}
+                  options={[
+                    { value: '', name: '— Select Workspace —' },
+                    ...workspaces.map(w => ({ value: w.id, name: w.name })),
+                  ]}
+                />
               </div>
 
               <div>
@@ -605,21 +599,6 @@ const styles = {
     color: var(--text-tertiary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-  `,
-  filterSelect: css`
-    width: 100%;
-    background-color: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
-    padding: var(--spacing-sm);
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    outline: none;
-    transition: border-color 0.2s ease;
-
-    &:focus {
-      border-color: var(--color-brand);
-    }
   `,
   searchFilterGroup: css`
     display: flex;

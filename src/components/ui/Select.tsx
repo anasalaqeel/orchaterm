@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { css, cx } from '@emotion/css';
 import { ChevronDown, Check, Terminal, LucideIcon } from 'lucide-react';
 
@@ -15,6 +16,16 @@ interface SelectProps {
   onChange: (value: string) => void;
   label?: string;
   error?: string;
+  disabled?: boolean;
+  /** Compact mode: tighter padding + smaller font for inline/toolbar use */
+  compact?: boolean;
+}
+
+interface DropdownPos {
+  top?: number;
+  bottom?: number;
+  left: number;
+  width: number;
 }
 
 export const Select: React.FC<SelectProps> = ({
@@ -23,82 +34,151 @@ export const Select: React.FC<SelectProps> = ({
   onChange,
   label,
   error,
+  disabled = false,
+  compact = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState<DropdownPos | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
-  // Close dropdown on click outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
+  const calculatePos = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const maxDropdownH = 208; // max-height + padding
+    const gap = 4;
+
+    const spaceBelow = viewportHeight - rect.bottom - gap;
+    const spaceAbove = rect.top - gap;
+
+    if (spaceBelow >= Math.min(maxDropdownH, 80) || spaceBelow >= spaceAbove) {
+      // Open downward
+      setDropdownPos({
+        top: rect.bottom + gap,
+        left: rect.left,
+        width: rect.width,
+      });
+    } else {
+      // Open upward
+      setDropdownPos({
+        bottom: viewportHeight - rect.top + gap,
+        left: rect.left,
+        width: rect.width,
+      });
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
   }, []);
+
+  const openDropdown = useCallback(() => {
+    if (disabled) return;
+    calculatePos();
+    setIsOpen(true);
+  }, [disabled, calculatePos]);
+
+  const closeDropdown = useCallback(() => {
+    setIsOpen(false);
+    setDropdownPos(null);
+  }, []);
+
+  // Close on click outside (both trigger area and portal dropdown)
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleClick(e: MouseEvent) {
+      const target = e.target as Node;
+      // Check trigger container
+      if (containerRef.current?.contains(target)) return;
+      // Check portal dropdown (by class)
+      const portalEl = document.querySelector('[data-select-dropdown]');
+      if (portalEl?.contains(target)) return;
+      closeDropdown();
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [isOpen, closeDropdown]);
+
+  // Recalculate on scroll/resize while open
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = () => calculatePos();
+    window.addEventListener('scroll', handler, true);
+    window.addEventListener('resize', handler);
+    return () => {
+      window.removeEventListener('scroll', handler, true);
+      window.removeEventListener('resize', handler);
+    };
+  }, [isOpen, calculatePos]);
 
   const selectedOption = options.find((opt) => opt.value === value) ?? options[0];
   const ActiveIcon = selectedOption?.icon ?? Terminal;
 
+  const dropdown = isOpen && dropdownPos
+    ? ReactDOM.createPortal(
+        <div
+          data-select-dropdown
+          className={styles.dropdown}
+          style={{
+            position: 'fixed',
+            top: dropdownPos.top,
+            bottom: dropdownPos.bottom,
+            left: dropdownPos.left,
+            width: dropdownPos.width,
+          }}
+        >
+          {options.map((opt) => {
+            const isActive = opt.value === value;
+            const OptIcon = opt.icon ?? Terminal;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                className={cx(styles.item, isActive && styles.itemActive)}
+                onMouseDown={e => {
+                  e.preventDefault(); // prevent blur before click
+                  onChange(opt.value);
+                  closeDropdown();
+                }}
+              >
+                <OptIcon className={styles.itemIcon} />
+                <div className={styles.itemText}>
+                  <span className={styles.itemName}>{opt.name}</span>
+                  {opt.description && (
+                    <span className={styles.itemDescription}>{opt.description}</span>
+                  )}
+                </div>
+                {isActive && <Check className={styles.itemCheck} />}
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )
+    : null;
+
   return (
     <div className={styles.container} ref={containerRef}>
       {label && <label className={styles.label}>{label}</label>}
-      <div style={{ position: 'relative' }}>
-        <button
-          type="button"
-          className={styles.trigger}
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          <ActiveIcon className={styles.triggerIcon} />
-          <div className={styles.textContainer}>
-            <span className={styles.activeName}>
-              {selectedOption?.name ?? 'Select option...'}
+      <button
+        ref={triggerRef}
+        type="button"
+        className={cx(styles.trigger, compact && styles.triggerCompact)}
+        onClick={() => (isOpen ? closeDropdown() : openDropdown())}
+        disabled={disabled}
+      >
+        <ActiveIcon className={styles.triggerIcon} />
+        <div className={styles.textContainer}>
+          <span className={styles.activeName}>
+            {selectedOption?.name ?? 'Select option...'}
+          </span>
+          {selectedOption?.description && (
+            <span className={styles.activeDescription}>
+              {selectedOption.description}
             </span>
-            {selectedOption?.description && (
-              <span className={styles.activeDescription}>
-                {selectedOption.description}
-              </span>
-            )}
-          </div>
-          <ChevronDown className={styles.chevron} />
-        </button>
-
-        {isOpen && (
-          <div className={styles.dropdown}>
-            {options.map((opt) => {
-              const isActive = opt.value === value;
-              const OptIcon = opt.icon ?? Terminal;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  className={cx(
-                    styles.item,
-                    isActive && styles.itemActive
-                  )}
-                  onClick={() => {
-                    onChange(opt.value);
-                    setIsOpen(false);
-                  }}
-                >
-                  <OptIcon className={styles.itemIcon} />
-                  <div className={styles.itemText}>
-                    <span className={styles.itemName}>{opt.name}</span>
-                    {opt.description && (
-                      <span className={styles.itemDescription}>{opt.description}</span>
-                    )}
-                  </div>
-                  {isActive && <Check className={styles.itemCheck} />}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+        <ChevronDown className={cx(styles.chevron, isOpen && styles.chevronOpen)} />
+      </button>
       {error && <p className={styles.errorText}>{error}</p>}
+      {dropdown}
     </div>
   );
 };
@@ -138,6 +218,14 @@ const styles = {
       border-color: var(--color-brand);
       box-shadow: 0 0 0 1px var(--color-brand);
     }
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+  `,
+  triggerCompact: css`
+    padding: 5px 8px;
+    font-size: var(--font-size-xs);
   `,
   triggerIcon: css`
     width: 14px;
@@ -156,6 +244,9 @@ const styles = {
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-semibold);
     line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   `,
   activeDescription: css`
     font-size: 10px;
@@ -174,13 +265,11 @@ const styles = {
     flex-shrink: 0;
     transition: transform 0.15s ease;
   `,
+  chevronOpen: css`
+    transform: rotate(180deg);
+  `,
   dropdown: css`
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    z-index: 10;
-    margin-top: 4px;
+    z-index: 9999;
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);

@@ -18,8 +18,11 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { css, cx } from '@emotion/css';
 import {
   Send, Bot, User, WifiOff, RefreshCw, Users,
-  ChevronDown, Activity, BookmarkPlus, Download, X as XIcon, Zap,
+  ChevronDown, BookmarkPlus, Download, X as XIcon, SlidersHorizontal, Check,
+  MessageSquare, Network, Info,
 } from 'lucide-react';
+import { WorkspacePanel } from './WorkspacePanel';
+import { Select } from './Select';
 import { useDashboard } from '../../context/DashboardContext';
 import { writePtyChunked } from '../../utils/ptyUtils';
 import {
@@ -27,10 +30,16 @@ import {
   summariseChunk,
   checkOllamaOnline,
   ChatMessage,
+  generatePlanFromNL,
+  RawPlanTask,
+  classifyChatIntent,
 } from '../../services/ollamaRelay';
 import { bufferWatcher } from '../../services/bufferWatcher';
+import { stripAnsiCodes } from '../../services/sentinelParser';
 import { needsBroker } from '../../services/needsBroker';
 import { autonomousOrchestrator } from '../../services/autonomousOrchestrator';
+import { orchestratorEngine } from '../../services/orchestratorEngine';
+import type { OrchestratorTask, OrchestratorPlan, ConductorLogEntry } from '../../types';
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
@@ -40,7 +49,7 @@ interface GroupChatProps {
 
 // ── Display message ────────────────────────────────────────────────────────────
 
-type MsgRole = 'user' | 'assistant' | 'system' | 'agent-summary';
+type MsgRole = 'user' | 'assistant' | 'system' | 'agent-summary' | 'conductor';
 
 interface DisplayMessage {
   id: string;
@@ -50,6 +59,14 @@ interface DisplayMessage {
   sessionTitle?: string;
   sessionColor?: string | null;
   injectedSessionTitle?: string;
+  /** Set on 'conductor' messages — controls icon and colour. */
+  conductorType?: ConductorLogEntry['type'];
+}
+
+/** Pending plan awaiting user confirmation before starting. */
+interface PendingPlan {
+  goal: string;
+  tasks: OrchestratorTask[];
 }
 
 // ── Storage helpers ────────────────────────────────────────────────────────────
@@ -183,7 +200,7 @@ function getSuggestions(sessionTitles: string[]): string[] {
 export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   const {
     workspaces, spaces, terminalSessions,
-    activeSpaceId, settings, addSavedPrompt, showToast,
+    activeSpaceId, settings, addSavedPrompt, showToast, addPlan,
   } = useDashboard();
 
   const workspace     = workspaces.find(w => w.id === workspaceId);
@@ -216,6 +233,34 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   const [apiHistory, setApiHistory] = useState<ChatMessage[]>([]);
   const [input,      setInput]      = useState('');
   const [streaming,  setStreaming]  = useState(false);
+
+  // ── Plan mode state ───────────────────────────────────────────────────────
+  const [pendingPlan,    setPendingPlan]    = useState<PendingPlan | null>(null);
+  const [generatingPlan, setGeneratingPlan] = useState(false);
+
+  // ── Input mode (chat vs manual pipeline builder) ──────────────────────────
+  const [inputMode,      setInputMode]      = useState<'chat' | 'pipeline'>('chat');
+  const [buildTitle,     setBuildTitle]     = useState('');
+  const [buildSessionId, setBuildSessionId] = useState('');
+  const [buildTasks,     setBuildTasks]     = useState<OrchestratorTask[]>([]);
+
+  // ── Workspace info panel ──────────────────────────────────────────────────
+  const [showWorkspaceInfo, setShowWorkspaceInfo] = useState(false);
+
+  // ── Features popover ─────────────────────────────────────────────────────
+  const [featuresOpen,   setFeaturesOpen]   = useState(false);
+  const featuresRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!featuresOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (featuresRef.current && !featuresRef.current.contains(e.target as Node)) {
+        setFeaturesOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [featuresOpen]);
 
   // Tracks streaming content so onDone never needs to read state
   const streamingContentRef = useRef('');
@@ -282,6 +327,11 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
     groupSessions.forEach(session => {
       const onChunk = async (chunk: string) => {
+        // Skip chunks with no readable content — avoids flooding chat with
+        // "output consists entirely of ANSI escape codes" noise messages.
+        const readable = stripAnsiCodes(chunk).replace(/\s+/g, ' ').trim();
+        if (readable.length < 25) return;
+
         try {
           const summary = await summariseChunk(
             chunk, session.title,
@@ -394,77 +444,256 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoModeOn, activeSpaceId, groupSessionIds, settings.ollamaHost, settings.conductorOllamaModel]);
 
+  // ── Conductor engine log → chat feed ────────────────────────────────────
+  // Bridges OrchestratorEngine events into the chat so the user sees every
+  // dispatch, relay, sentinel, and error alongside the conversational feed.
+  // Engine is a singleton — subscribe once on mount, never re-subscribe.
+  useEffect(() => {
+    const unsub = orchestratorEngine.onLog((entry) => {
+      setMessages(prev => [...prev, {
+        id:            crypto.randomUUID(),
+        role:          'conductor',
+        content:       entry.message,
+        conductorType: entry.type,
+      }]);
+    });
+    return unsub;
+  }, []);
+
+  // ── Plan: confirm and start ───────────────────────────────────────────────
+
+  const handleRunPlan = useCallback(() => {
+    if (!pendingPlan) return;
+
+    const currentPlan = orchestratorEngine.getCurrentPlan();
+    if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(), role: 'system',
+        content: '⚠ A plan is already running. Stop it first via the Conductor.',
+      }]);
+      return;
+    }
+
+    const plan: OrchestratorPlan = {
+      id:          crypto.randomUUID(),
+      goal:        pendingPlan.goal,
+      tasks:       pendingPlan.tasks,
+      status:      'approved',
+      createdAt:   Date.now(),
+      workspaceId,
+      spaceId:     activeSpaceId ?? null,
+    };
+
+    orchestratorEngine.updateConfig({
+      ollamaHost:         settings.ollamaHost,
+      ollamaModel:        settings.conductorOllamaModel,
+      taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
+      sessionTitles:      new Map(groupSessions.map(s => [s.id, s.title])),
+    });
+
+    orchestratorEngine.start(plan);
+    addPlan(plan);
+    setPendingPlan(null);
+
+    setMessages(prev => [...prev, {
+      id: crypto.randomUUID(), role: 'system',
+      content: `▶ Plan started — ${plan.tasks.length} task${plan.tasks.length !== 1 ? 's' : ''} dispatched`,
+    }]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPlan, activeSpaceId, workspaceId, groupSessions, settings, addPlan]);
+
+  const handleDiscardPlan = useCallback(() => {
+    setPendingPlan(null);
+    setMessages(prev => [...prev, {
+      id: crypto.randomUUID(), role: 'system', content: '✕ Plan discarded',
+    }]);
+  }, []);
+
+  // ── Pipeline builder (manual mode) ───────────────────────────────────────
+
+  const handleAddBuildTask = useCallback(() => {
+    if (!buildTitle.trim() || !buildSessionId) return;
+    const session = groupSessions.find(s => s.id === buildSessionId);
+    if (!session) return;
+    setBuildTasks(prev => [...prev, {
+      id:                   crypto.randomUUID(),
+      title:                buildTitle.trim(),
+      description:          buildTitle.trim(),
+      assignedSessionId:    session.id,
+      assignedSessionTitle: session.title,
+      dependsOn:            [],
+      status:               'pending' as const,
+    }]);
+    setBuildTitle('');
+  }, [buildTitle, buildSessionId, groupSessions]);
+
+  const handleRemoveBuildTask = useCallback((id: string) => {
+    setBuildTasks(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  const handleRunBuildPlan = useCallback(() => {
+    if (buildTasks.length === 0) return;
+
+    const currentPlan = orchestratorEngine.getCurrentPlan();
+    if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(), role: 'system',
+        content: '⚠ A plan is already running. Stop it first via the Conductor.',
+      }]);
+      return;
+    }
+
+    const plan: OrchestratorPlan = {
+      id:          crypto.randomUUID(),
+      goal:        buildTasks.map(t => t.title).join(' → '),
+      tasks:       buildTasks,
+      status:      'approved',
+      createdAt:   Date.now(),
+      workspaceId,
+      spaceId:     activeSpaceId ?? null,
+    };
+
+    orchestratorEngine.updateConfig({
+      ollamaHost:         settings.ollamaHost,
+      ollamaModel:        settings.conductorOllamaModel,
+      taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
+      sessionTitles:      new Map(groupSessions.map(s => [s.id, s.title])),
+    });
+
+    orchestratorEngine.start(plan);
+    addPlan(plan);
+    setBuildTasks([]);
+
+    setMessages(prev => [...prev, {
+      id: crypto.randomUUID(), role: 'system',
+      content: `▶ Pipeline started — ${plan.tasks.length} task${plan.tasks.length !== 1 ? 's' : ''} dispatched`,
+    }]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildTasks, activeSpaceId, workspaceId, groupSessions, settings, addPlan]);
+
+  const handleClearBuild = useCallback(() => {
+    setBuildTasks([]);
+    setBuildTitle('');
+    setBuildSessionId('');
+  }, []);
+
   // ── Send message ──────────────────────────────────────────────────────────
 
   const handleSend = useCallback((overrideText?: string) => {
     const text = (overrideText ?? input).trim();
-    if (!text || streaming || !settings.conductorOllamaModel) return;
+    if (!text || streaming || generatingPlan || !settings.conductorOllamaModel) return;
+    if (inputMode !== 'chat') return; // pipeline mode uses handleRunBuildPlan instead
 
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    streamingContentRef.current = '';
 
-    const userMsg: DisplayMessage      = { id: crypto.randomUUID(), role: 'user', content: text };
-    const assistantId                  = crypto.randomUUID();
-    const assistantMsg: DisplayMessage = { id: assistantId, role: 'assistant', content: '', streaming: true };
+    // ── Intent Classification & Autonomous Routing ──────────────────────────
+    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content: text }]);
+    setGeneratingPlan(true); // Show thinking state while classifying
 
-    setMessages(prev => [...prev, userMsg, assistantMsg]);
-    const newHistory: ChatMessage[] = [...apiHistory, { role: 'user', content: text }];
-    setApiHistory(newHistory);
-    setStreaming(true);
-    setOllamaOnline(true); // optimistic
+    classifyChatIntent(text, settings.ollamaHost, settings.conductorOllamaModel).then(intent => {
+      if (intent === 'plan') {
+        // Plan generation mode
+        generatePlanFromNL({
+          goal:              text,
+          availableSessions: groupSessions.map(s => ({ title: s.title })),
+          ollamaHost:        settings.ollamaHost,
+          model:             settings.conductorOllamaModel,
+        }).then(rawTasks => {
+          const idMap = new Map<string, string>();
+          rawTasks.forEach(t => idMap.set(t.title, crypto.randomUUID()));
 
-    const systemPrompt = buildSystemPrompt(
-      workspace?.name ?? workspaceId,
-      activeSpace?.name ?? null,
-      groupSessions.map(s => s.title),
-    );
+          const tasks: OrchestratorTask[] = rawTasks.map((t: RawPlanTask) => {
+            const session = groupSessions.find(s =>
+              s.title.toLowerCase() === t.assignedSessionTitle.toLowerCase()
+            ) ?? groupSessions[0];
+            return {
+              id:                   idMap.get(t.title)!,
+              title:                t.title,
+              description:          t.description,
+              assignedSessionId:    session?.id    ?? '',
+              assignedSessionTitle: session?.title ?? t.assignedSessionTitle,
+              dependsOn:            t.dependsOn
+                .map(depTitle => idMap.get(depTitle) ?? '')
+                .filter(Boolean),
+              status: 'pending' as const,
+            };
+          });
 
-    const cancel = streamChatWithOllama({
-      ollamaHost:   settings.ollamaHost,
-      model:        settings.conductorOllamaModel,
-      systemPrompt,
-      messages:     newHistory,
-      onToken: (token) => {
-        streamingContentRef.current += token;
-        setMessages(prev =>
-          prev.map(m => m.id === assistantId ? { ...m, content: m.content + token } : m),
-        );
-      },
-      onDone: () => {
-        const finalContent = streamingContentRef.current;
-        setStreaming(false);
-        setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, streaming: false } : m));
-        setApiHistory(h => [...h, { role: 'assistant', content: finalContent }]);
-        cancelRef.current = null;
-        scrollToBottom();
-
-        // Handle inject pattern
-        const inj = parseInject(finalContent, groupSessions);
-        if (inj) {
-          writePtyChunked(inj.sessionId, inj.message + '\r').catch(() => {});
+          setPendingPlan({ goal: text, tasks });
+        }).catch((err: Error) => {
           setMessages(prev => [...prev, {
-            id: crypto.randomUUID(),
-            role: 'system',
-            content: `✦ Sent to ${inj.sessionTitle}: ${inj.message}`,
-            injectedSessionTitle: inj.sessionTitle,
-            sessionColor: inj.sessionColor,
+            id: crypto.randomUUID(), role: 'system',
+            content: `⚠ Plan generation failed: ${err.message}`,
           }]);
-        }
-      },
-      onError: (err) => {
-        setStreaming(false);
-        setOllamaOnline(false);
-        setMessages(prev =>
-          prev.map(m => m.id === assistantId ? { ...m, content: `Error: ${err}`, streaming: false } : m),
-        );
-        cancelRef.current = null;
-      },
-    });
+        }).finally(() => setGeneratingPlan(false));
+      } else {
+        // Chat mode
+        setGeneratingPlan(false);
+        streamingContentRef.current = '';
 
-    cancelRef.current = cancel;
+        const assistantId                  = crypto.randomUUID();
+        const assistantMsg: DisplayMessage = { id: assistantId, role: 'assistant', content: '', streaming: true };
+
+        setMessages(prev => [...prev, assistantMsg]);
+        const newHistory: ChatMessage[] = [...apiHistory, { role: 'user', content: text }];
+        setApiHistory(newHistory);
+        setStreaming(true);
+        setOllamaOnline(true); // optimistic
+
+        const systemPrompt = buildSystemPrompt(
+          workspace?.name ?? workspaceId,
+          activeSpace?.name ?? null,
+          groupSessions.map(s => s.title),
+        );
+
+        const cancel = streamChatWithOllama({
+          ollamaHost:   settings.ollamaHost,
+          model:        settings.conductorOllamaModel,
+          systemPrompt,
+          messages:     newHistory,
+          onToken: (token) => {
+            streamingContentRef.current += token;
+            setMessages(prev =>
+              prev.map(m => m.id === assistantId ? { ...m, content: m.content + token } : m),
+            );
+          },
+          onDone: () => {
+            const finalContent = streamingContentRef.current;
+            setStreaming(false);
+            setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, streaming: false } : m));
+            setApiHistory(h => [...h, { role: 'assistant', content: finalContent }]);
+            cancelRef.current = null;
+            scrollToBottom();
+
+            // Handle inject pattern
+            const inj = parseInject(finalContent, groupSessions);
+            if (inj) {
+              writePtyChunked(inj.sessionId, inj.message + '\r').catch(() => {});
+              setMessages(prev => [...prev, {
+                id: crypto.randomUUID(),
+                role: 'system',
+                content: `✦ Sent to ${inj.sessionTitle}: ${inj.message}`,
+                injectedSessionTitle: inj.sessionTitle,
+                sessionColor: inj.sessionColor,
+              }]);
+            }
+          },
+          onError: (err) => {
+            setStreaming(false);
+            setOllamaOnline(false);
+            setMessages(prev =>
+              prev.map(m => m.id === assistantId ? { ...m, content: `Error: ${err}`, streaming: false } : m),
+            );
+            cancelRef.current = null;
+          },
+        });
+
+        cancelRef.current = cancel;
+      }
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, streaming, settings, workspace, activeSpace, groupSessions, apiHistory, workspaceId]);
+  }, [input, streaming, generatingPlan, inputMode, settings, workspace, activeSpace, groupSessions, apiHistory, workspaceId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -531,6 +760,21 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  // Workspace info overlay — shows WorkspacePanel when user clicks ℹ
+  if (showWorkspaceInfo && workspace) {
+    return (
+      <div className={s.root}>
+        <div className={s.infoPanelHeader}>
+          <span className={s.infoPanelTitle}>Workspace Info</span>
+          <button className={s.infoPanelClose} onClick={() => setShowWorkspaceInfo(false)} title="Back to chat">
+            <XIcon size={12} />
+          </button>
+        </div>
+        <WorkspacePanel workspace={workspace} />
+      </div>
+    );
+  }
+
   return (
     <div className={s.root}>
 
@@ -558,28 +802,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
         </div>
 
         <div className={s.headerRight}>
-          {/* Live feed toggle */}
-          {!modelMissing && (
-            <button
-              className={cx(s.headerIconBtn, liveFeedOn && s.headerIconBtnActive)}
-              onClick={toggleLiveFeed}
-              title={liveFeedOn ? 'Disable live terminal summaries' : 'Enable live terminal summaries'}
-            >
-              <Activity size={12} />
-            </button>
-          )}
-          {/* Autonomous mode toggle */}
-          {!modelMissing && (
-            <button
-              className={cx(s.headerIconBtn, autoModeOn && s.headerIconBtnAutoMode)}
-              onClick={toggleAutoMode}
-              title={autoModeOn
-                ? 'Autonomous mode ON — Ollama is proactively routing context'
-                : 'Enable autonomous mode — Ollama watches and routes context between agents'}
-            >
-              <Zap size={12} />
-            </button>
-          )}
           {/* Export */}
           {messages.length > 0 && (
             <button className={s.headerIconBtn} onClick={handleExport} title="Export transcript (.md)">
@@ -609,6 +831,16 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
           >
             <RefreshCw size={11} className={cx(checking && s.spin)} />
           </button>
+          {/* Workspace info */}
+          {workspace && (
+            <button
+              className={s.headerIconBtn}
+              onClick={() => setShowWorkspaceInfo(true)}
+              title="Workspace info"
+            >
+              <Info size={12} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -647,21 +879,29 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             <p className={s.emptyTitle}>
               {activeSpace ? `Orchestrating "${activeSpace.name}"` : 'Workspace AI'}
             </p>
-            <p className={s.emptyHint}>
-              Ask anything about your terminals, tasks, or workflow.
-            </p>
-            <div className={s.suggestions}>
-              {getSuggestions(groupSessions.map(s => s.title)).map(suggestion => (
-                <button
-                  key={suggestion}
-                  className={s.suggestionBtn}
-                  onClick={() => handleSend(suggestion)}
-                  disabled={modelMissing || ollamaOnline === false}
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
+            {inputMode === 'pipeline' ? (
+              <p className={s.emptyHint}>
+                Add tasks below, assign agents, then hit Run Pipeline.
+              </p>
+            ) : (
+              <>
+                <p className={s.emptyHint}>
+                  Ask anything about your terminals, tasks, or workflow.
+                </p>
+                <div className={s.suggestions}>
+                  {getSuggestions(groupSessions.map(s => s.title)).map(suggestion => (
+                    <button
+                      key={suggestion}
+                      className={s.suggestionBtn}
+                      onClick={() => handleSend(suggestion)}
+                      disabled={modelMissing || ollamaOnline === false}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           messages.map(msg => (
@@ -672,6 +912,57 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             />
           ))
         )}
+        {/* Plan generating indicator */}
+        {generatingPlan && (
+          <div className={s.planThinking}>
+            <span className={s.planThinkingDot} />
+            <span className={s.planThinkingDot} style={{ animationDelay: '0.2s' }} />
+            <span className={s.planThinkingDot} style={{ animationDelay: '0.4s' }} />
+            <span className={s.planThinkingLabel}>Generating plan…</span>
+          </div>
+        )}
+
+        {/* Pending plan preview — confirm before running */}
+        {pendingPlan && !generatingPlan && (
+          <div className={s.planPreview}>
+            <div className={s.planPreviewHeader}>
+              <SlidersHorizontal size={12} />
+              <span>Proposed Pipeline</span>
+            </div>
+            <div className={s.planTaskList}>
+              {pendingPlan.tasks.map((task, i) => {
+                const depNames = task.dependsOn
+                  .map(id => pendingPlan.tasks.find(t => t.id === id)?.title ?? '?')
+                  .filter(Boolean);
+                return (
+                  <div key={task.id} className={s.planTask}>
+                    <span className={s.planTaskNum}>{i + 1}</span>
+                    <div className={s.planTaskBody}>
+                      <div className={s.planTaskTitle}>{task.title}</div>
+                      <div className={s.planTaskMeta}>
+                        <span className={s.planTaskAgent}>{task.assignedSessionTitle}</span>
+                        {depNames.length > 0 && (
+                          <span className={s.planTaskDeps}>after: {depNames.join(', ')}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className={s.planPreviewActions}>
+              <button
+                className={s.planRunBtn}
+                onClick={handleRunPlan}
+                title="Start running this plan"
+              >
+                ▶ Run Plan
+              </button>
+              <button className={s.planDiscardBtn} onClick={handleDiscardPlan}>✕ Discard</button>
+            </div>
+          </div>
+        )}
+
         <div ref={bottomRef} />
       </div>
 
@@ -681,39 +972,181 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
         </button>
       )}
 
-      {/* Input */}
-      <div className={s.inputArea}>
-        <textarea
-          ref={textareaRef}
-          className={s.textarea}
-          value={input}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          placeholder={
-            modelMissing
-              ? 'Configure an Ollama model in Settings first…'
-              : streaming
-              ? 'Ollama is responding…'
-              : ollamaOnline === false
-              ? 'Ollama offline — start it to chat'
-              : 'Ask anything — ↵ to send, Shift+↵ for newline'
-          }
-          disabled={modelMissing || ollamaOnline === false}
-          rows={1}
-        />
-        {streaming ? (
-          <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleStop} title="Stop">■</button>
-        ) : (
+      {/* Input mode bar — separates feed from command area */}
+      <div className={s.inputModeBar}>
+        <div className={s.inputModePill}>
           <button
-            className={s.sendBtn}
-            onClick={() => handleSend()}
-            disabled={!input.trim() || modelMissing || ollamaOnline === false}
-            title="Send (Enter)"
+            className={cx(s.inputModeBtn, inputMode === 'chat' && s.inputModeBtnActive)}
+            onClick={() => setInputMode('chat')}
+            title="Chat with AI or generate plans in natural language"
           >
-            <Send size={13} />
+            <MessageSquare size={10} />
+            Chat
           </button>
+          <button
+            className={cx(s.inputModeBtn, inputMode === 'pipeline' && s.inputModeBtnActive)}
+            onClick={() => setInputMode('pipeline')}
+            title="Manually build and run a task pipeline"
+          >
+            <Network size={10} />
+            Pipeline
+          </button>
+        </div>
+
+        {/* Features — only relevant in chat mode */}
+        {!modelMissing && inputMode === 'chat' && (
+          <div ref={featuresRef} style={{ position: 'relative' }}>
+            <button
+              className={cx(s.inputModeIconBtn, featuresOpen && s.inputModeIconBtnActive)}
+              onClick={() => setFeaturesOpen(p => !p)}
+              title="Chat features"
+            >
+              <SlidersHorizontal size={11} />
+            </button>
+
+            {featuresOpen && (
+              <div className={cx(s.featuresPopover, s.featuresPopoverUp)}>
+                {/* Background features */}
+                <div className={s.featureSection}>
+                  <span className={s.featureSectionLabel}>Background</span>
+                  <button
+                    className={cx(s.featureOption, liveFeedOn && s.featureOptionActiveGreen)}
+                    onClick={toggleLiveFeed}
+                  >
+                    <span className={s.featureOptionCheck}>{liveFeedOn && <Check size={9} />}</span>
+                    <span className={s.featureOptionContent}>
+                      <span className={s.featureOptionTitle}>Live feed</span>
+                      <span className={s.featureOptionDesc}>Stream agent summaries into chat</span>
+                    </span>
+                  </button>
+                  <button
+                    className={cx(s.featureOption, autoModeOn && s.featureOptionActiveYellow)}
+                    onClick={toggleAutoMode}
+                  >
+                    <span className={s.featureOptionCheck}>{autoModeOn && <Check size={9} />}</span>
+                    <span className={s.featureOptionContent}>
+                      <span className={s.featureOptionTitle}>Auto-route</span>
+                      <span className={s.featureOptionDesc}>Relay context between agents automatically</span>
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
+
+      {/* Chat input area */}
+      {inputMode === 'chat' && (
+        <div className={s.inputArea}>
+          <textarea
+            ref={textareaRef}
+            className={s.textarea}
+            value={input}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              modelMissing
+                ? 'Configure an Ollama model in Settings first…'
+                : generatingPlan
+                ? 'Generating plan…'
+                : streaming
+                ? 'Ollama is responding…'
+                : ollamaOnline === false
+                ? 'Ollama offline — start it to chat'
+                : 'Ask anything or describe a goal — ↵ send, Shift+↵ newline'
+            }
+            disabled={modelMissing || ollamaOnline === false || generatingPlan}
+            rows={1}
+          />
+          {streaming ? (
+            <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleStop} title="Stop">■</button>
+          ) : (
+            <button
+              className={s.sendBtn}
+              onClick={() => handleSend()}
+              disabled={!input.trim() || modelMissing || ollamaOnline === false || generatingPlan}
+              title="Send (Enter)"
+            >
+              <Send size={13} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Pipeline builder area */}
+      {inputMode === 'pipeline' && (
+        <div className={s.pipelineArea}>
+          {/* Task list */}
+          {buildTasks.length > 0 && (
+            <div className={s.pipelineTaskList}>
+              {buildTasks.map((task, i) => (
+                <div key={task.id} className={s.pipelineTaskItem}>
+                  <span className={s.pipelineTaskNum}>{i + 1}</span>
+                  <span className={s.pipelineTaskTitle}>{task.title}</span>
+                  <span className={s.pipelineTaskAgent}>{task.assignedSessionTitle}</span>
+                  <button
+                    className={s.pipelineTaskRemove}
+                    onClick={() => handleRemoveBuildTask(task.id)}
+                    title="Remove task"
+                  >
+                    <XIcon size={10} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {buildTasks.length === 0 && (
+            <p className={s.pipelineEmpty}>No tasks yet — add tasks below then click Run</p>
+          )}
+
+          {/* Add task */}
+          <div className={s.pipelineAddRow}>
+            <input
+              className={s.pipelineTitleInput}
+              placeholder="Task description…"
+              value={buildTitle}
+              onChange={e => setBuildTitle(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAddBuildTask()}
+            />
+            <div className={s.pipelineAgentWrap}>
+              <Select
+                compact
+                value={buildSessionId}
+                onChange={setBuildSessionId}
+                options={[
+                  { value: '', name: 'Agent…' },
+                  ...groupSessions.map(sess => ({ value: sess.id, name: sess.title })),
+                ]}
+              />
+            </div>
+            <button
+              className={s.pipelineAddBtn}
+              onClick={handleAddBuildTask}
+              disabled={!buildTitle.trim() || !buildSessionId}
+              title="Add task (Enter)"
+            >
+              +
+            </button>
+          </div>
+
+          {/* Run / Clear */}
+          <div className={s.pipelineActions}>
+            <button
+              className={s.pipelineRunBtn}
+              onClick={handleRunBuildPlan}
+              disabled={buildTasks.length === 0}
+              title={`Run ${buildTasks.length} task${buildTasks.length !== 1 ? 's' : ''}`}
+            >
+              ▶ Run Pipeline
+            </button>
+            {buildTasks.length > 0 && (
+              <button className={s.pipelineClearBtn} onClick={handleClearBuild}>Clear</button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -725,6 +1158,26 @@ const MessageRow: React.FC<{
   onSaveToVault: () => void;
 }> = ({ msg, onSaveToVault }) => {
   const [hovered, setHovered] = useState(false);
+
+  if (msg.role === 'conductor') {
+    const icons: Record<string, string> = {
+      dispatch: '→', sentinel: '✓', relay: '⚡',
+      error: '✗', timeout: '⏱', info: 'ℹ', 'user-override': '⚙',
+    };
+    const colors: Record<string, string> = {
+      dispatch: '#7b68ee', sentinel: '#3fb950', relay: '#a371f7',
+      error: '#f85149', timeout: '#e3b341', info: '#6e7681', 'user-override': '#e3b341',
+    };
+    const type  = msg.conductorType ?? 'info';
+    return (
+      <div className={s.conductorRow}>
+        <span className={s.conductorIcon} style={{ color: colors[type] ?? '#6e7681' }}>
+          {icons[type] ?? '·'}
+        </span>
+        <span className={s.conductorText}>{msg.content}</span>
+      </div>
+    );
+  }
 
   if (msg.role === 'agent-summary') {
     return (
@@ -774,8 +1227,183 @@ const MessageRow: React.FC<{
 
 const s = {
   root: css`
-    display: flex; flex-direction: column; height: 100%;
+    display: flex; flex-direction: column;
+    flex: 1; min-height: 0; height: 100%;
     background: #010409; overflow: hidden; position: relative;
+  `,
+
+  /* ── Workspace info overlay ── */
+  infoPanelHeader: css`
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    background: #0d1117;
+    flex-shrink: 0;
+  `,
+  infoPanelTitle: css`
+    font-size: 12px; font-weight: 700; color: #f0f6fc;
+  `,
+  infoPanelClose: css`
+    display: flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 6px;
+    background: transparent; border: none;
+    color: #7d8590; cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    &:hover { background: rgba(255,255,255,0.07); color: #f0f6fc; }
+  `,
+
+  /* ── Input mode bar ── */
+  inputModeBar: css`
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 10px 5px 12px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    background: #0d1117;
+    flex-shrink: 0;
+  `,
+  inputModePill: css`
+    display: flex; gap: 2px;
+    background: #010409;
+    border-radius: 99px;
+    padding: 3px;
+    border: 1px solid rgba(255,255,255,0.07);
+  `,
+  inputModeBtn: css`
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 12px;
+    border-radius: 99px;
+    font-size: 11px; font-weight: 600;
+    color: #7d8590;
+    background: transparent;
+    border: none; cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+    white-space: nowrap;
+    &:hover { color: #adbac7; }
+  `,
+  inputModeBtnActive: css`
+    background: var(--color-brand) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 6px rgba(var(--color-brand-rgb), 0.3);
+  `,
+  inputModeIconBtn: css`
+    display: flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px;
+    border-radius: 7px;
+    color: #7d8590;
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    &:hover { color: #adbac7; border-color: rgba(255,255,255,0.1); }
+  `,
+  inputModeIconBtnActive: css`
+    color: var(--color-brand) !important;
+    background: rgba(var(--color-brand-rgb), 0.12) !important;
+    border-color: rgba(var(--color-brand-rgb), 0.3) !important;
+  `,
+  /* Makes featuresPopover open upward when triggered from bottom bar */
+  featuresPopoverUp: css`
+    top: auto !important;
+    bottom: calc(100% + 6px) !important;
+  `,
+
+  /* ── Pipeline builder area ── */
+  pipelineArea: css`
+    flex-shrink: 0;
+    border-top: 1px solid rgba(255,255,255,0.07);
+    padding: 8px 10px;
+    display: flex; flex-direction: column; gap: 6px;
+    background: #0d1117;
+  `,
+  pipelineTaskList: css`
+    display: flex; flex-direction: column; gap: 3px;
+    max-height: 100px; overflow-y: auto;
+  `,
+  pipelineTaskItem: css`
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.07);
+  `,
+  pipelineTaskNum: css`
+    font-size: 10px; color: #7d8590; font-weight: 700;
+    flex-shrink: 0; width: 14px; text-align: right;
+  `,
+  pipelineTaskTitle: css`
+    flex: 1; font-size: 11px; color: #f0f6fc;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  `,
+  pipelineTaskAgent: css`
+    font-size: 10px; color: var(--color-brand); font-weight: 600;
+    flex-shrink: 0; max-width: 80px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  `,
+  pipelineTaskRemove: css`
+    display: flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 3px;
+    background: transparent; border: none;
+    color: #7d8590; cursor: pointer; flex-shrink: 0;
+    transition: color 0.12s, background 0.12s;
+    &:hover { color: #f85149; background: rgba(248,81,73,0.12); }
+  `,
+  pipelineEmpty: css`
+    font-size: 11px; color: #7d8590;
+    text-align: center; padding: 4px 0; font-style: italic;
+  `,
+  pipelineAddRow: css`
+    display: flex; align-items: center; gap: 5px;
+  `,
+  pipelineAgentWrap: css`
+    width: 130px; flex-shrink: 0;
+  `,
+  pipelineTitleInput: css`
+    flex: 1; min-width: 0;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 11px; color: #f0f6fc;
+    outline: none; font-family: var(--font-family);
+    transition: border-color 0.15s;
+    &:focus { border-color: var(--color-brand); }
+    &::placeholder { color: #7d8590; }
+  `,
+  pipelineAddBtn: css`
+    width: 28px; height: 28px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #adbac7; font-size: 16px; font-weight: 400;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    &:hover { background: var(--color-brand); border-color: var(--color-brand); color: #fff; }
+    &:disabled { opacity: 0.35; cursor: default; }
+  `,
+  pipelineActions: css`
+    display: flex; align-items: center; gap: 7px;
+  `,
+  pipelineRunBtn: css`
+    flex: 1;
+    background: var(--gradient-brand);
+    color: #fff; border: none; border-radius: 7px;
+    padding: 6px 10px;
+    font-size: 11px; font-weight: 700;
+    cursor: pointer;
+    transition: filter 0.15s;
+    &:hover { filter: brightness(1.08); }
+    &:disabled { opacity: 0.4; cursor: default; filter: none; }
+  `,
+  pipelineClearBtn: css`
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 7px;
+    padding: 6px 10px;
+    font-size: 11px; font-weight: 600;
+    color: #7d8590; cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    &:hover { border-color: rgba(255,255,255,0.2); color: #adbac7; }
   `,
   header: css`
     display: flex; align-items: center; justify-content: space-between;
@@ -942,4 +1570,125 @@ const s = {
     &:disabled { opacity: 0.35; cursor: not-allowed; }
   `,
   stopBtn: css`background: #ef4444 !important; color: #fff !important; &:hover { background: #f87171 !important; }`,
+
+  // ── Conductor event row ──────────────────────────────────────────────────
+  conductorRow: css`
+    display: flex; align-items: baseline; gap: 7px;
+    padding: 3px 10px; border-radius: 4px;
+    background: rgba(123,104,238,0.04);
+    border-left: 2px solid rgba(123,104,238,0.2);
+  `,
+  conductorIcon: css`font-size: 11px; font-weight: 700; flex-shrink: 0; min-width: 12px; text-align: center;`,
+  conductorText: css`font-size: 11px; color: #8b949e; line-height: 1.4;`,
+
+  // ── Plan mode ────────────────────────────────────────────────────────────
+  headerIconBtnPlanMode: css`
+    color: #58a6ff !important;
+    background: rgba(88,166,255,0.1) !important;
+  `,
+  planThinking: css`
+    display: flex; align-items: center; gap: 5px;
+    padding: 8px 12px; border-radius: 6px;
+    background: rgba(88,166,255,0.06); border: 1px solid rgba(88,166,255,0.15);
+  `,
+  planThinkingDot: css`
+    width: 5px; height: 5px; border-radius: 50%; background: #58a6ff;
+    animation: planPulse 1.2s ease-in-out infinite;
+    @keyframes planPulse { 0%,100%{opacity:0.2;transform:scale(0.8)} 50%{opacity:1;transform:scale(1)} }
+  `,
+  planThinkingLabel: css`font-size: 11px; color: #58a6ff; margin-left: 4px;`,
+  planPreview: css`
+    border: 1px solid rgba(88,166,255,0.2); border-radius: 8px; overflow: hidden;
+    background: rgba(88,166,255,0.04);
+  `,
+  planPreviewHeader: css`
+    display: flex; align-items: center; gap: 7px;
+    padding: 9px 12px; background: rgba(88,166,255,0.07);
+    border-bottom: 1px solid rgba(88,166,255,0.15);
+    font-size: 11px; font-weight: 600; color: #58a6ff;
+  `,
+  planPreviewGoal: css`
+    font-weight: 400; color: #8b949e; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
+  `,
+  planTaskList: css`display: flex; flex-direction: column; gap: 1px; padding: 6px 0;`,
+  planTask: css`
+    display: flex; align-items: flex-start; gap: 10px; padding: 7px 12px;
+    &:hover { background: rgba(255,255,255,0.02); }
+  `,
+  planTaskNum: css`
+    font-size: 10px; font-weight: 700; color: #6e7681;
+    min-width: 16px; text-align: right; padding-top: 1px; flex-shrink: 0;
+  `,
+  planTaskBody: css`display: flex; flex-direction: column; gap: 2px; min-width: 0;`,
+  planTaskTitle: css`font-size: 12px; color: #e2e8f0; font-weight: 500;`,
+  planTaskMeta: css`display: flex; align-items: center; gap: 8px; flex-wrap: wrap;`,
+  planTaskAgent: css`
+    font-size: 10px; color: #7b68ee; font-weight: 600;
+    background: rgba(123,104,238,0.1); padding: 1px 6px; border-radius: 99px;
+  `,
+  planTaskDeps: css`font-size: 10px; color: #6e7681;`,
+  planPreviewActions: css`
+    display: flex; gap: 8px; padding: 10px 12px;
+    border-top: 1px solid rgba(88,166,255,0.12); background: rgba(0,0,0,0.15);
+  `,
+  planRunBtn: css`
+    flex: 1; padding: 7px 12px; border-radius: 6px; border: none;
+    background: #58a6ff; color: #0d1117; font-size: 12px; font-weight: 700;
+    cursor: pointer; transition: all 150ms ease;
+    &:hover:not(:disabled) { filter: brightness(1.1); }
+    &:disabled { opacity: 0.4; cursor: not-allowed; }
+  `,
+  planDiscardBtn: css`
+    padding: 7px 14px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: transparent; color: #6e7681; font-size: 12px;
+    cursor: pointer; transition: all 150ms ease;
+    &:hover { border-color: #f85149; color: #f85149; }
+  `,
+
+  // ── Mode badge (header) ──────────────────────────────────────────────────
+  modeBadge: css`
+    font-size: 10px; font-weight: 600; padding: 2px 8px;
+    border-radius: 99px; background: rgba(88,166,255,0.12);
+    color: #58a6ff; border: 1px solid rgba(88,166,255,0.25);
+    white-space: nowrap;
+  `,
+
+  // ── Features popover ─────────────────────────────────────────────────────
+  featuresPopover: css`
+    position: absolute; top: calc(100% + 6px); right: 0;
+    width: 240px; background: #161b22;
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    overflow: hidden; z-index: 50;
+  `,
+  featureSection: css`
+    padding: 10px 0 6px;
+    & + & { border-top: 1px solid rgba(255,255,255,0.06); }
+  `,
+  featureSectionLabel: css`
+    display: block; font-size: 10px; font-weight: 600;
+    color: #6e7681; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 0 14px 6px;
+  `,
+  featureOption: css`
+    display: flex; align-items: flex-start; gap: 10px;
+    width: 100%; padding: 7px 14px; border: none;
+    background: transparent; cursor: pointer; text-align: left;
+    transition: background 120ms ease;
+    &:hover { background: rgba(255,255,255,0.04); }
+  `,
+  featureOptionActive: css`background: rgba(123,104,238,0.08) !important;`,
+  featureOptionActivePlan: css`background: rgba(88,166,255,0.08) !important;`,
+  featureOptionActiveGreen: css`background: rgba(63,185,80,0.08) !important;`,
+  featureOptionActiveYellow: css`background: rgba(227,179,65,0.08) !important;`,
+  featureOptionCheck: css`
+    width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; margin-top: 1px;
+    border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.04);
+    display: flex; align-items: center; justify-content: center; color: #c9d1d9;
+  `,
+  featureOptionContent: css`display: flex; flex-direction: column; gap: 1px; min-width: 0;`,
+  featureOptionTitle: css`font-size: 12px; font-weight: 500; color: #e2e8f0;`,
+  featureOptionDesc: css`font-size: 10px; color: #6e7681; line-height: 1.4;`,
 };

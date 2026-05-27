@@ -2,14 +2,15 @@ import React, { useState } from 'react';
 import { useDashboard } from '../context/DashboardContext';
 import { TaskLog } from '../types';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { 
-  History, 
-  Search, 
-  Trash2, 
-  Plus, 
-  AlertTriangle, 
-  CheckCircle, 
-  Clock, 
+import { Select } from '../components/ui/Select';
+import {
+  History,
+  Search,
+  Trash2,
+  Plus,
+  AlertTriangle,
+  CheckCircle,
+  Clock,
   X
 } from 'lucide-react';
 import { css, cx } from '@emotion/css';
@@ -121,17 +122,15 @@ export const TaskLogView: React.FC = () => {
         
         {/* Workspace Selector */}
         <div className={styles.filterWrapper}>
-          <label className={styles.filterLabel}>Filter Workspace</label>
-          <select
+          <Select
+            label='Filter Workspace'
             value={filterWorkspace}
-            onChange={(e) => setFilterWorkspace(e.target.value)}
-            className={styles.selectInput}
-          >
-            <option value="all">All Workspaces</option>
-            {workspaces.map(w => (
-              <option key={w.id} value={w.id}>{w.name}</option>
-            ))}
-          </select>
+            onChange={setFilterWorkspace}
+            options={[
+              { value: 'all', name: 'All Workspaces' },
+              ...workspaces.map(w => ({ value: w.id, name: w.name })),
+            ]}
+          />
         </div>
 
         {/* Keyword Search */}
@@ -278,31 +277,28 @@ export const TaskLogView: React.FC = () => {
             <h3 className={styles.modalTitle}>Add Log Entry</h3>
             <form onSubmit={handleManualAdd} className={styles.modalForm}>
               <div>
-                <label className={styles.modalLabel}>Select Workspace</label>
-                <select
+                <Select
+                  label='Select Workspace'
                   value={newLogWorkspace}
-                  onChange={(e) => setNewLogWorkspace(e.target.value)}
-                  className={styles.modalSelect}
-                  required
-                >
-                  <option value="" disabled>-- Select Workspace --</option>
-                  {workspaces.map(w => (
-                    <option key={w.id} value={w.id}>{w.name}</option>
-                  ))}
-                </select>
+                  onChange={setNewLogWorkspace}
+                  options={[
+                    { value: '', name: '— Select Workspace —' },
+                    ...workspaces.map(w => ({ value: w.id, name: w.name })),
+                  ]}
+                />
               </div>
 
               <div>
-                <label className={styles.modalLabel}>Status</label>
-                <select
+                <Select
+                  label='Status'
                   value={newLogStatus}
-                  onChange={(e) => setNewLogStatus(e.target.value as TaskLog['status'])}
-                  className={styles.modalSelect}
-                >
-                  <option value="in-progress">In Progress</option>
-                  <option value="done">Completed</option>
-                  <option value="blocked">Blocked</option>
-                </select>
+                  onChange={v => setNewLogStatus(v as TaskLog['status'])}
+                  options={[
+                    { value: 'in-progress', name: 'In Progress' },
+                    { value: 'done',        name: 'Completed'   },
+                    { value: 'blocked',     name: 'Blocked'     },
+                  ]}
+                />
               </div>
 
               <div>
@@ -426,21 +422,6 @@ const styles = {
     display: block;
   `,
 
-  selectInput: css`
-    width: 100%;
-    background-color: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 8px;
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    outline: none;
-    transition: border-color 0.15s ease;
-
-    &:focus {
-      border-color: var(--color-brand);
-    }
-  `,
 
   searchCol: css`
     @media (min-width: 768px) {
@@ -828,21 +809,6 @@ const styles = {
     margin-bottom: 4px;
   `,
 
-  modalSelect: css`
-    width: 100%;
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 8px;
-    font-size: var(--font-size-sm);
-    color: var(--text-primary);
-    outline: none;
-    transition: border-color 0.15s ease;
-
-    &:focus {
-      border-color: var(--color-brand);
-    }
-  `,
 
   modalTextarea: css`
     width: 100%;
