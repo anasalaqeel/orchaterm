@@ -447,23 +447,21 @@ export const SettingsView: React.FC = () => {
               <div style={{ flex: 1 }}>
                 <label className={styles.formLabel}>Ollama Relay Model</label>
                 <div className={styles.modelPickerRow}>
-                  <select
-                    className={styles.integrationSelect}
-                    value={conductorOllamaModel}
-                    onChange={e => setConductorOllamaModel(e.target.value)}
-                    disabled={modelsLoading}
-                  >
-                    {ollamaModels.length === 0 ? (
-                      <option value=''>— click Refresh to load models —</option>
-                    ) : (
-                      <>
-                        <option value=''>— Select a model —</option>
-                        {ollamaModels.map(m => (
-                          <option key={m} value={m}>{m}</option>
-                        ))}
-                      </>
-                    )}
-                  </select>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Select
+                      value={conductorOllamaModel}
+                      onChange={setConductorOllamaModel}
+                      disabled={modelsLoading}
+                      options={
+                        ollamaModels.length === 0
+                          ? [{ value: '', name: '— Refresh to load models —' }]
+                          : [
+                              { value: '', name: '— Select a model —' },
+                              ...ollamaModels.map(m => ({ value: m, name: m })),
+                            ]
+                      }
+                    />
+                  </div>
                   <button
                     type='button'
                     className={styles.refreshBtn}
@@ -729,16 +727,16 @@ export const SettingsView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className={styles.formLabel}>Status</label>
-                  <select
+                  <Select
+                    label='Status'
                     value={projStatus}
-                    onChange={(e) => setProjStatus(e.target.value as Workspace['status'])}
-                    className={styles.dialogSelect}
-                  >
-                    <option value="active">Active</option>
-                    <option value="paused">Paused</option>
-                    <option value="idle">Idle</option>
-                  </select>
+                    onChange={v => setProjStatus(v as Workspace['status'])}
+                    options={[
+                      { value: 'active', name: 'Active' },
+                      { value: 'paused', name: 'Paused' },
+                      { value: 'idle',   name: 'Idle'   },
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -1295,22 +1293,6 @@ const styles = {
     border-radius: var(--border-radius-sm);
     cursor: pointer;
   `,
-  dialogSelect: css`
-    width: 100%;
-    background-color: var(--bg-input);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
-    padding: 8px;
-    font-size: var(--font-size-sm);
-    color: var(--text-primary);
-    outline: none;
-    transition: all 0.15s ease-in-out;
-    
-    &:focus {
-      border-color: var(--color-brand);
-      box-shadow: 0 0 0 1px var(--color-brand);
-    }
-  `,
   modalButtons: css`
     display: flex;
     justify-content: flex-end;
@@ -1359,21 +1341,6 @@ const styles = {
     display: flex;
     gap: 6px;
     align-items: center;
-  `,
-  integrationSelect: css`
-    flex: 1;
-    background-color: var(--bg-input);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
-    padding: 8px;
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    outline: none;
-    cursor: pointer;
-    transition: border-color 0.15s;
-
-    &:focus { border-color: var(--color-brand); }
-    &:disabled { opacity: 0.5; cursor: not-allowed; }
   `,
   refreshBtn: css`
     background-color: var(--bg-tertiary);

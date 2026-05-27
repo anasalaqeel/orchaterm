@@ -33,6 +33,7 @@ import {
   buildPassThroughBrief,
   checkOllamaOnline,
   CompletedTaskContext,
+  autoAnswerInteractivePrompt,
 } from './ollamaRelay';
 import { SENTINEL_START, SENTINEL_END, NEEDS_START, NEEDS_END } from './sentinelParser';
 
@@ -366,12 +367,46 @@ ${task.description}${buildAgentProtocol(task.id)}`;
     this.log('dispatch', `Task "${task.title}" dispatched`, task.id, task.assignedSessionId);
     this.emitState();
 
-    // Start watching for the sentinel. Must be awaited so the listener is
-    // registered before any PTY data can arrive — without await, a fast agent
-    // could emit the sentinel before the listener is active.
-    await bufferWatcher.watchForSentinel(task.assignedSessionId, (output) => {
-      this.onSentinelReceived(task.id, output);
-    });
+    await bufferWatcher.watchForSentinel(
+      task.assignedSessionId,
+      (output) => {
+        this.onSentinelReceived(task.id, output);
+      },
+      async (promptText) => {
+        // Truncate prompt text if it's too long
+        const shortPrompt = promptText.length > 50 ? promptText.slice(0, 47) + '...' : promptText;
+        
+        // Ask Ollama for the auto-answer
+        const answer = await autoAnswerInteractivePrompt(
+          promptText,
+          this.config.ollamaHost,
+          this.config.ollamaModel
+        );
+
+        if (answer !== 'UNKNOWN') {
+          try {
+            await writePtyChunked(task.assignedSessionId, answer + '\r');
+            this.log(
+              'info',
+              `🤖 Auto-answered prompt ("${shortPrompt}") with: ${answer}`,
+              task.id,
+              task.assignedSessionId
+            );
+            return; // Successfully auto-answered
+          } catch (err) {
+            this.log('error', `Failed to inject auto-answer: ${err}`, task.id, task.assignedSessionId);
+          }
+        }
+
+        // Fallback: Notify user to manually override
+        this.log(
+          'user-override',
+          `⚠️ ${task.assignedSessionTitle} is waiting for user input ("${shortPrompt}"). Type INJECT → ${task.assignedSessionTitle}: [your answer] to continue.`,
+          task.id,
+          task.assignedSessionId
+        );
+      }
+    );
 
     // Start timeout timer
     const timeoutMs = this.config.taskTimeoutMinutes * 60 * 1000;

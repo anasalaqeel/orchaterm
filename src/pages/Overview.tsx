@@ -4,13 +4,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useDashboard } from '../context/DashboardContext';
 import { TerminalContainer } from '../components/terminal/TerminalContainer';
-import { WorkspacePanel } from '../components/ui/WorkspacePanel';
-import { WorkspaceConductor } from '../components/conductor/WorkspaceConductor';
 import { GroupChat } from '../components/ui/GroupChat';
 import {
   Plus, ChevronRight, Edit2, ArrowLeft,
-  Network, MessageSquare, Info, Terminal,
-  FolderOpen,
+  Terminal, FolderOpen,
 } from 'lucide-react';
 
 /* ── Animation variants ─────────────────────────────────────────────────────── */
@@ -54,7 +51,6 @@ export const DashboardView: React.FC = () => {
   const [newProjColor,  setNewProjColor]  = useState('#7c3aed');
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editTaskValue, setEditTaskValue] = useState('');
-  const [rightPanel,    setRightPanel]    = useState<'workspace' | 'conductor' | 'chat'>('workspace');
 
   // Open the New Workspace modal whenever the sidebar + button sets the flag.
   useEffect(() => {
@@ -162,53 +158,7 @@ export const DashboardView: React.FC = () => {
           </div>
 
           <div className={s.consoleSplitRight}>
-            {/* Right panel tab bar */}
-            <div className={s.rightTabBar}>
-              {(['workspace', 'conductor', 'chat'] as const).map(tab => {
-                const icons = { workspace: Info, conductor: Network, chat: MessageSquare };
-                const labels = { workspace: 'Info', conductor: 'Conductor', chat: 'Chat' };
-                const Icon = icons[tab];
-                const isActive = rightPanel === tab;
-                const hasRunning = tab === 'conductor' &&
-                  localStorage.getItem(`orchaterm:conductor:running:${activeProject.id}`) === 'true';
-
-                return (
-                  <button
-                    key={tab}
-                    className={cx(s.rightTab, isActive && s.rightTabActive)}
-                    onClick={() => setRightPanel(tab)}
-                  >
-                    <Icon size={12} />
-                    {labels[tab]}
-                    {hasRunning && <span className={s.runDot} />}
-                    {isActive && (
-                      <motion.span
-                        layoutId="right-tab-indicator"
-                        className={s.rightTabIndicator}
-                        transition={{ type: 'spring', stiffness: 400, damping: 36 }}
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className={s.rightPanelContent}>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={rightPanel}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.18 }}
-                  style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}
-                >
-                  {rightPanel === 'workspace'  && <WorkspacePanel workspace={activeProject} />}
-                  {rightPanel === 'conductor'  && <WorkspaceConductor key={panelKey} workspaceId={activeProject.id} />}
-                  {rightPanel === 'chat'       && <GroupChat key={panelKey} workspaceId={activeProject.id} />}
-                </motion.div>
-              </AnimatePresence>
-            </div>
+            <GroupChat key={panelKey} workspaceId={activeProject.id} />
           </div>
         </div>
       </motion.div>
@@ -570,46 +520,6 @@ const s = {
     display: flex; flex-direction: column; overflow: hidden;
     border-left: 1px solid var(--border-color);
     background: var(--bg-primary);
-  `,
-  rightTabBar: css`
-    display: flex; align-items: center;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    padding: 0 6px;
-    flex-shrink: 0;
-  `,
-  rightTab: css`
-    display: flex; align-items: center; gap: 5px;
-    padding: 9px 12px;
-    font-size: 11px; font-weight: 600;
-    color: var(--text-tertiary);
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    transition: color 0.15s;
-    position: relative;
-    white-space: nowrap;
-    &:hover { color: var(--text-secondary); }
-  `,
-  rightTabActive: css`
-    color: var(--text-primary) !important;
-  `,
-  rightTabIndicator: css`
-    position: absolute;
-    bottom: -1px; left: 0; right: 0;
-    height: 2px;
-    background: var(--color-brand);
-    border-radius: 2px 2px 0 0;
-  `,
-  runDot: css`
-    width: 5px; height: 5px; border-radius: 50%;
-    background: var(--color-brand);
-    animation: rdp 1.6s ease-in-out infinite;
-    @keyframes rdp { 0%,100%{opacity:1} 50%{opacity:0.3} }
-  `,
-  rightPanelContent: css`
-    flex: 1; min-height: 0; overflow: hidden;
-    display: flex; flex-direction: column;
   `,
 
   /* ── Grid view ── */
