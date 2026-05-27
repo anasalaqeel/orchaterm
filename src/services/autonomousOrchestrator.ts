@@ -139,17 +139,6 @@ export class AutonomousOrchestrator {
     );
     if (!target) return;
 
-    // Safety check: never inject into a session currently managed by Conductor
-    const targetMode = bufferWatcher.getMode(target.id);
-    if (targetMode === 'sentinel') {
-      this.emit({
-        type:   'relay-skipped',
-        reason: 'interrupt-policy',
-        target: target.title,
-      });
-      return;
-    }
-
     // Respect interrupt policy
     const targetBuffer = bufferWatcher.getBuffer(target.id);
     if (!canInjectNow(targetBuffer, target.interruptPolicy)) {

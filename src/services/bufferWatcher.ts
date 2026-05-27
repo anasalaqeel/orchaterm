@@ -17,7 +17,7 @@
 
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { OrchestratorTaskOutput, SessionBuffer, BufferWatchMode } from '../types';
-import { parseSentinel, parsePlanBlock, validatePlanJSON, parseNeedsBlock } from './sentinelParser';
+import { parseSentinel, parsePlanBlock, validatePlanJSON, parseNeedsBlock, stripAnsiCodes } from './sentinelParser';
 
 // ── Internal entry ─────────────────────────────────────────────────────────────
 
@@ -28,6 +28,8 @@ interface WatchEntry {
   onPlan?: (rawJson: string) => void;
   onPlanError?: (err: string) => void;
   onNeedsRequest?: (request: import('../types').AgentNeedsRequest) => void;
+  onInteractivePrompt?: (promptText: string) => void;
+  idleTimer?: ReturnType<typeof setTimeout>;
   /**
    * Epoch ms after which plan/sentinel detection should actually fire.
    * While Date.now() < ignoreUntil, incoming data is wiped and not checked.
@@ -111,6 +113,30 @@ class BufferWatcher {
       case 'plan':     this.checkPlan(entry); break;
       case 'summary':  this.checkSummary(entry); break;
       case 'idle': break;
+    }
+
+    if (entry.idleTimer) clearTimeout(entry.idleTimer);
+    entry.idleTimer = setTimeout(() => {
+      this.checkInteractivePrompt(entry);
+    }, 2000);
+  }
+
+  // ── Internal: interactive prompt check ──────────────────────────────────────
+
+  private checkInteractivePrompt(entry: WatchEntry): void {
+    if (entry.buffer.mode !== 'sentinel') return;
+    if (!entry.onInteractivePrompt) return;
+
+    const tail = stripAnsiCodes(entry.buffer.buffer.slice(-300));
+    const INTERACTIVE_PROMPT_REGEX = /(\[y\/n\]|\?\s*(\n.*)?$|Select an option|Do you want to proceed\?|Type a number)/i;
+    
+    if (INTERACTIVE_PROMPT_REGEX.test(tail)) {
+      // Avoid re-firing for the exact same prompt output
+      const cleanTail = tail.trim();
+      if ((entry as any)._lastPromptTail === cleanTail) return;
+      (entry as any)._lastPromptTail = cleanTail;
+
+      entry.onInteractivePrompt(cleanTail);
     }
   }
 
@@ -214,12 +240,14 @@ class BufferWatcher {
    */
   async watchForSentinel(
     sessionId: string,
-    onSentinel: (output: OrchestratorTaskOutput) => void
+    onSentinel: (output: OrchestratorTaskOutput) => void,
+    onInteractivePrompt?: (text: string) => void
   ): Promise<void> {
     const entry = await this.ensureListening(sessionId);
     entry.buffer.buffer = '';
     entry.buffer.mode = 'sentinel';
     entry.onSentinel = onSentinel;
+    entry.onInteractivePrompt = onInteractivePrompt;
     entry.onPlan = undefined;
     entry.onPlanError = undefined;
   }

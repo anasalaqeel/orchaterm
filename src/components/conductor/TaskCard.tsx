@@ -5,6 +5,7 @@ import {
   Clock, CheckCircle2, XCircle, Loader2, Circle,
   ChevronDown, ChevronUp, Trash2, GripVertical, Terminal,
 } from 'lucide-react';
+import { Select } from '../ui/Select';
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
 
@@ -135,24 +136,21 @@ export const TaskCard: React.FC<TaskCardProps> = ({
           {/* Session picker (editable) */}
           {editable && (
             <div className={styles.fieldRow}>
-              <label className={styles.fieldLabel}>Assign to terminal</label>
-              <select
-                className={styles.select}
+              <Select
+                label='Assign to terminal'
                 value={task.assignedSessionId ?? ''}
-                onChange={e => {
-                  const sid = e.target.value || '';
+                onChange={sid => {
                   const sess = sessions.find(s => s.id === sid);
                   onChange?.({
-                    assignedSessionId: sid,
+                    assignedSessionId: sid || undefined,
                     assignedSessionTitle: sess?.title ?? '',
                   });
                 }}
-              >
-                <option value=''>— None —</option>
-                {sessions.map(s => (
-                  <option key={s.id} value={s.id}>{s.title}</option>
-                ))}
-              </select>
+                options={[
+                  { value: '', name: '— None —' },
+                  ...sessions.map(s => ({ value: s.id, name: s.title })),
+                ]}
+              />
             </div>
           )}
 
@@ -342,15 +340,6 @@ const styles = {
   fieldLabel: css`
     font-size: 10px; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary);
-  `,
-  select: css`
-    background-color: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
-    padding: 5px 8px; font-size: var(--font-size-xs);
-    color: var(--text-primary); outline: none; cursor: pointer;
-    transition: border-color 0.15s;
-    &:focus { border-color: var(--color-brand); }
   `,
   depsGrid: css`display:flex; flex-direction:column; gap:5px;`,
   depCheckLabel: css`

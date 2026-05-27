@@ -110,6 +110,12 @@ export function parseSentinel(buffer: string): OrchestratorTaskOutput | null {
     ? []
     : filesRaw.split(',').map(f => f.trim()).filter(Boolean);
 
+  // Reject if the block contains the literal placeholder text from our prompt.
+  // This prevents the orchestrator from matching the prompt echo as a completion.
+  if (summary.includes('<2-3 sentences')) {
+    return null;
+  }
+
   return {
     raw,
     taskId,

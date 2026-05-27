@@ -8,6 +8,7 @@ import { bufferWatcher } from '../../services/bufferWatcher';
 import { validatePlanJSON, PLAN_START, PLAN_END } from '../../services/sentinelParser';
 import { writePtyChunked } from '../../utils/ptyUtils';
 import { TaskCard } from './TaskCard';
+import { Select } from '../ui/Select';
 import {
   Plus, PlayCircle, Save, Wand2, Target,
   Loader2, CheckCircle2, XCircle, Copy, Check, X,
@@ -320,17 +321,17 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
 
         {/* Session selector + action buttons */}
         <div className={styles.genRow}>
-          <select
-            className={styles.select}
-            value={genSession}
-            onChange={e => { setGenSession(e.target.value); setGenStatus('idle'); setGenError(''); }}
-            disabled={genStatus === 'waiting'}
-          >
-            <option value=''>— Choose session —</option>
-            {sessions.map(s => (
-              <option key={s.id} value={s.id}>{s.title}</option>
-            ))}
-          </select>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Select
+              value={genSession}
+              onChange={v => { setGenSession(v); setGenStatus('idle'); setGenError(''); }}
+              disabled={genStatus === 'waiting'}
+              options={[
+                { value: '', name: '— Choose session —' },
+                ...sessions.map(s => ({ value: s.id, name: s.title })),
+              ]}
+            />
+          </div>
 
           {/* Copy prompt button */}
           <button
@@ -516,22 +517,6 @@ const styles = {
     padding: 12px 14px 0;
     align-items: center;
     flex-wrap: wrap;
-  `,
-  select: css`
-    flex: 1;
-    min-width: 160px;
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
-    padding: 6px 8px;
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    outline: none;
-    cursor: pointer;
-    transition: border-color 0.15s;
-
-    &:focus { border-color: var(--color-brand); }
-    &:disabled { opacity: 0.5; cursor: not-allowed; }
   `,
   genBtn: css`
     display: inline-flex;

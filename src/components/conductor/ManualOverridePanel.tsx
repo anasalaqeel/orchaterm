@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { css } from '@emotion/css';
 import { OrchestratorTask, TerminalSession } from '../../types';
-import { Send, CheckCheck, XCircle, RotateCcw, ChevronDown } from 'lucide-react';
+import { Send, CheckCheck, XCircle, RotateCcw } from 'lucide-react';
 import { orchestratorEngine } from '../../services/orchestratorEngine';
+import { Select } from '../ui/Select';
 
 interface ManualOverridePanelProps {
   tasks: OrchestratorTask[];
@@ -63,22 +64,15 @@ export const ManualOverridePanel: React.FC<ManualOverridePanelProps> = ({
       <div className={styles.section}>
         <div className={styles.sectionLabel}>Inject Message into Session</div>
 
-        <div className={styles.selectRow}>
-          <div className={styles.selectWrap}>
-            <select
-              className={styles.select}
-              value={selectedSessionId}
-              onChange={e => setSelectedSessionId(e.target.value)}
-              disabled={!isRunning}
-            >
-              <option value=''>— Choose session —</option>
-              {sessions.map(s => (
-                <option key={s.id} value={s.id}>{s.title}</option>
-              ))}
-            </select>
-            <ChevronDown className={styles.chevron} />
-          </div>
-        </div>
+        <Select
+          value={selectedSessionId}
+          onChange={setSelectedSessionId}
+          disabled={!isRunning}
+          options={[
+            { value: '', name: '— Choose session —' },
+            ...sessions.map(s => ({ value: s.id, name: s.title })),
+          ]}
+        />
 
         <textarea
           className={styles.textarea}
@@ -106,24 +100,15 @@ export const ManualOverridePanel: React.FC<ManualOverridePanelProps> = ({
       <div className={styles.section}>
         <div className={styles.sectionLabel}>Task Override</div>
 
-        <div className={styles.selectRow}>
-          <div className={styles.selectWrap}>
-            <select
-              className={styles.select}
-              value={selectedTaskId}
-              onChange={e => setSelectedTaskId(e.target.value)}
-              disabled={!isRunning}
-            >
-              <option value=''>— Choose task —</option>
-              {activeTasks.map(t => (
-                <option key={t.id} value={t.id}>
-                  [{t.status.toUpperCase()}] {t.title}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className={styles.chevron} />
-          </div>
-        </div>
+        <Select
+          value={selectedTaskId}
+          onChange={setSelectedTaskId}
+          disabled={!isRunning}
+          options={[
+            { value: '', name: '— Choose task —' },
+            ...activeTasks.map(t => ({ value: t.id, name: `[${t.status.toUpperCase()}] ${t.title}` })),
+          ]}
+        />
 
         <div className={styles.actionRow}>
           <button
@@ -190,46 +175,6 @@ const styles = {
     border: none;
     border-top: 1px solid var(--border-color);
     margin: 0;
-  `,
-  selectRow: css`
-    display: flex;
-    gap: 8px;
-  `,
-  selectWrap: css`
-    position: relative;
-    flex: 1;
-  `,
-  select: css`
-    width: 100%;
-    appearance: none;
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
-    padding: 6px 30px 6px 10px;
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    outline: none;
-    cursor: pointer;
-    transition: border-color 0.15s;
-
-    &:focus {
-      border-color: var(--color-brand);
-    }
-
-    &:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-  `,
-  chevron: css`
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 12px;
-    height: 12px;
-    color: var(--text-tertiary);
-    pointer-events: none;
   `,
   textarea: css`
     width: 100%;

@@ -99,11 +99,13 @@ export async function checkOllamaOnline(ollamaHost: string): Promise<boolean> {
 /**
  * Internal: calls the Ollama /api/chat endpoint with the given messages.
  * Throws on network error or non-OK response.
+ * Pass `systemPromptOverride` to use a different system prompt than SYSTEM_PROMPT.
  */
 async function callOllama(
   ollamaHost: string,
   model: string,
-  userPrompt: string
+  userPrompt: string,
+  systemPromptOverride?: string,
 ): Promise<string> {
   const response = await fetch(`${ollamaHost}/api/chat`, {
     method: 'POST',
@@ -111,7 +113,7 @@ async function callOllama(
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: systemPromptOverride ?? SYSTEM_PROMPT },
         { role: 'user',   content: userPrompt },
       ],
       stream: false,
@@ -372,6 +374,152 @@ If the peer output contains no relevant information, say so in one sentence.
 Do NOT add suggestions beyond what was asked.`;
 
   return callOllama(ollamaHost, model, userPrompt);
+}
+
+// ── Chat intent classification ────────────────────────────────────────────────
+
+/**
+ * Classifies whether a user's chat message is a conversational query/instruction
+ * or a request to generate a multi-agent task plan.
+ */
+export async function classifyChatIntent(
+  message: string,
+  ollamaHost: string,
+  model: string,
+): Promise<'chat' | 'plan'> {
+  const prompt = `You are an intent classifier for a developer orchestration tool.
+The user is talking to an orchestrator that can either:
+1. "chat": Answer questions, route a simple instruction to a terminal, or summarize.
+2. "plan": Break down a goal into a multi-step pipeline and assign agents to tasks.
+
+Classify the following user message. If the message describes building a feature, creating a pipeline, or assigning multiple agents to a goal, classify it as "plan". Otherwise, classify it as "chat".
+
+Return ONLY the word "chat" or "plan". No other text.
+
+Message: "${message}"`;
+
+  try {
+    const res = await callOllama(ollamaHost, model, prompt, "You are a strict classifier. Output exactly one word.");
+    const text = res.toLowerCase().trim();
+    if (text.includes('plan')) return 'plan';
+    return 'chat';
+  } catch {
+    return 'chat'; // fallback to standard chat on error
+  }
+}
+
+// ── Auto-Responder ────────────────────────────────────────────────────────────
+
+/**
+ * Evaluates an interactive terminal prompt to determine the correct keystroke to inject.
+ * Returns the literal string to inject (e.g. "y", "1"), or "UNKNOWN" if unsafe/ambiguous.
+ */
+export async function autoAnswerInteractivePrompt(
+  promptText: string,
+  ollamaHost: string,
+  model: string,
+): Promise<string> {
+  const prompt = `A terminal agent is stuck on the following interactive prompt and needs user input to proceed.
+Prompt:
+"""
+${promptText}
+"""
+
+Determine what the user should type to accept or safely proceed.
+Examples:
+- If asked "Do you want to proceed? [y/N]", answer "y"
+- If asked "Select an option: 1. Yes 2. No", answer "1"
+- If asked "Press Enter to continue", answer "\\n"
+- If the prompt is ambiguous, dangerous (e.g. deleting files), or asks for complex text input, answer "UNKNOWN"
+
+Return ONLY the exact keystrokes/text to send. No explanation. No quotes.`;
+
+  try {
+    const res = await callOllama(ollamaHost, model, prompt, "You are an automated terminal responder. Output only the keystroke or 'UNKNOWN'.");
+    return res.trim();
+  } catch {
+    return 'UNKNOWN';
+  }
+}
+
+// ── Natural-language plan generation ──────────────────────────────────────────
+
+const PLAN_GENERATION_SYSTEM_PROMPT = `You are a task planner for a multi-agent terminal orchestration system.
+Given a goal and a list of available terminal agents, break the goal into a minimal set of concrete tasks.
+
+Return ONLY a valid JSON array. No markdown fences. No explanation. No prose before or after.
+
+JSON format:
+[
+  {
+    "title": "Short task name",
+    "description": "Precise, self-contained instructions for the agent. Be specific and direct.",
+    "assignedSessionTitle": "<MUST match one of the available agent names exactly>",
+    "dependsOn": ["<title of a task that must complete before this one starts>"]
+  }
+]
+
+Rules:
+- Tasks that can run in parallel must NOT depend on each other.
+- Each task description must stand alone — the agent receives nothing else.
+- Only add a dependency when the task genuinely needs that task's output.
+- Assign tasks thoughtfully based on agent names/roles.
+- dependsOn titles must exactly match the "title" field of another task in the array.`;
+
+export interface RawPlanTask {
+  title: string;
+  description: string;
+  assignedSessionTitle: string;
+  /** Titles of tasks this task must wait for. Empty = no deps. */
+  dependsOn: string[];
+}
+
+export interface PlanGenerationInput {
+  goal: string;
+  availableSessions: Array<{ title: string }>;
+  ollamaHost: string;
+  model: string;
+}
+
+/**
+ * Asks Ollama to break a natural-language goal into a task plan.
+ * Returns raw task objects whose dependsOn values are task titles (not IDs).
+ * Callers are responsible for converting titles → IDs after generation.
+ *
+ * Throws if Ollama is unreachable or returns malformed JSON.
+ */
+export async function generatePlanFromNL(input: PlanGenerationInput): Promise<RawPlanTask[]> {
+  const { goal, availableSessions, ollamaHost, model } = input;
+
+  if (availableSessions.length === 0) {
+    throw new Error('No agents available — add terminal sessions to this space first.');
+  }
+
+  const userPrompt = `Goal: ${goal}
+
+Available agents:
+${availableSessions.map(s => `• ${s.title}`).join('\n')}
+
+Generate the task plan as a JSON array:`;
+
+  const response = await callOllama(ollamaHost, model, userPrompt, PLAN_GENERATION_SYSTEM_PROMPT);
+
+  // Extract JSON array — Ollama may wrap in markdown fences despite instructions
+  const jsonMatch = response.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) throw new Error('Plan generation returned no JSON array. Try rephrasing your goal.');
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    throw new Error(`Plan generation returned invalid JSON: ${e}`);
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error('Plan generation returned an empty or invalid task list.');
+  }
+
+  return parsed as RawPlanTask[];
 }
 
 // ── Autonomous routing evaluation ──────────────────────────────────────────────

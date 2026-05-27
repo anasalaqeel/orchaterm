@@ -28,6 +28,7 @@ import { PipelineBoard, PipelineSummary } from './PipelineBoard';
 import { ConductorLog } from './ConductorLog';
 import { ManualOverridePanel } from './ManualOverridePanel';
 import { TaskCard } from './TaskCard';
+import { Select } from '../ui/Select';
 import {
   Network, Play, Pause, Square, ClipboardList, GitBranch,
   History, Plus, Trash2, BookOpen, Copy, Check,
@@ -289,24 +290,24 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
 
       {/* ── Plan selector row ── */}
       <div className={s.planSelectorRow}>
-        <Network className={s.planSelectorIcon} />
-        <select
-          className={s.planSelect}
-          value={activePlanId ?? ''}
-          onChange={e => {
-            setActivePlanId(e.target.value || null);
-            setTab('build');
-          }}
-        >
-          {workspacePlans.length === 0 && (
-            <option value=''>No plans — click + to create</option>
-          )}
-          {workspacePlans.map(p => (
-            <option key={p.id} value={p.id}>
-              {p.goal || 'Untitled plan'} · {p.status}
-            </option>
-          ))}
-        </select>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Select
+            value={activePlanId ?? ''}
+            onChange={v => {
+              setActivePlanId(v || null);
+              setTab('build');
+            }}
+            options={
+              workspacePlans.length === 0
+                ? [{ value: '', name: 'No plans — click + to create' }]
+                : workspacePlans.map(p => ({
+                    value: p.id,
+                    name: `${p.goal || 'Untitled plan'} · ${p.status}`,
+                    icon: Network,
+                  }))
+            }
+          />
+        </div>
 
         {activePlan && (
           <button
@@ -716,26 +717,6 @@ const s = {
     border-bottom: 1px solid var(--border-color);
     background: var(--bg-secondary);
     flex-shrink: 0;
-  `,
-  planSelectorIcon: css`
-    width: 13px;
-    height: 13px;
-    color: var(--color-brand);
-    flex-shrink: 0;
-  `,
-  planSelect: css`
-    flex: 1;
-    min-width: 0;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
-    padding: 4px 8px;
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    outline: none;
-    cursor: pointer;
-    transition: border-color 0.15s;
-    &:focus { border-color: var(--color-brand); }
   `,
   iconBtn: css`
     background: transparent;
