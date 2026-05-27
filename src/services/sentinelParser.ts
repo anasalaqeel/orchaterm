@@ -88,41 +88,32 @@ export function extractField(block: string, fieldName: string): string {
  * Returns an OrchestratorTaskOutput if a complete block is found. The `raw`
  * field contains everything before the sentinel start marker, stripped of ANSI.
  */
-export function parseSentinel(buffer: string): OrchestratorTaskOutput | null {
+export function parseSentinel(rawBuffer: string): OrchestratorTaskOutput | null {
+  // Strip ANSI codes before searching — Claude Code wraps output in escape sequences
+  // that can land within marker text, breaking a raw indexOf search.
+  const buffer = stripAnsiCodes(rawBuffer);
+
   const startIdx = buffer.indexOf(SENTINEL_START);
   if (startIdx === -1) return null;
 
   const endIdx = buffer.indexOf(SENTINEL_END, startIdx);
-  if (endIdx === -1) return null; // block not yet complete — keep buffering
+  if (endIdx === -1) return null;
 
-  // Everything between the markers (exclusive)
   const block = buffer.slice(startIdx + SENTINEL_START.length, endIdx).trim();
+  const raw   = buffer.slice(0, startIdx).trim();
 
-  // Raw working output is everything before the sentinel start
-  const raw = stripAnsiCodes(buffer.slice(0, startIdx)).trim();
-
-  const taskId        = extractField(block, 'task_id');
-  const summary       = extractField(block, 'summary');
-  const filesRaw      = extractField(block, 'files_modified');
-  const needs         = extractField(block, 'needs');
+  const taskId       = extractField(block, 'task_id');
+  const summary      = extractField(block, 'summary');
+  const filesRaw     = extractField(block, 'files_modified');
+  const needs        = extractField(block, 'needs');
 
   const filesModified = filesRaw.toLowerCase() === 'none' || filesRaw === ''
     ? []
     : filesRaw.split(',').map(f => f.trim()).filter(Boolean);
 
-  // Reject if the block contains the literal placeholder text from our prompt.
-  // This prevents the orchestrator from matching the prompt echo as a completion.
-  if (summary.includes('<2-3 sentences')) {
-    return null;
-  }
+  if (summary.includes('<2-3 sentences')) return null;
 
-  return {
-    raw,
-    taskId,
-    summary,
-    filesModified,
-    needs,
-  };
+  return { raw, taskId, summary, filesModified, needs };
 }
 
 // ── Plan JSON parsing ───────────────────────────────────────────────────────────
