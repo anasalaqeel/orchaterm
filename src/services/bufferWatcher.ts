@@ -128,7 +128,8 @@ class BufferWatcher {
     if (!entry.onInteractivePrompt) return;
 
     const tail = stripAnsiCodes(entry.buffer.buffer.slice(-300));
-    const INTERACTIVE_PROMPT_REGEX = /(\[y\/n\]|\?\s*(\n.*)?$|Select an option|Do you want to proceed\?|Type a number)/i;
+    const INTERACTIVE_PROMPT_REGEX =
+      /(\[y\/n\]|\(y\/n\)|\[Y\/n\]|\(Y\/n\)|\[n\/Y\]|\(n\/Y\)|Do you want to|Press Enter to|Continue\?|Select an option|Type a number|Overwrite\?|already exists)/i;
     
     if (INTERACTIVE_PROMPT_REGEX.test(tail)) {
       // Avoid re-firing for the exact same prompt output
