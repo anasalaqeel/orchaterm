@@ -367,13 +367,14 @@ ${task.description}${buildAgentProtocol(task.id)}`;
           const answer = await this.config.autoAnswerProvider.complete(
             [{ role: 'user', content: userContent }], system,
           );
-          const trimmed = answer.trim();
+          const trimmed = answer.trim().toUpperCase() === 'ENTER' ? '' : answer.trim();
 
-          if (trimmed && trimmed !== 'UNKNOWN') {
+          if (trimmed !== 'UNKNOWN' && answer.trim() !== '') {
+            // Send the answer + carriage return (empty trimmed = just Enter)
             await writePtyChunked(task.assignedSessionId, trimmed + '\r');
             this.log(
               'info',
-              `🤖 Auto-answered prompt ("${shortPrompt}") with: ${trimmed}`,
+              `🤖 Auto-answered prompt ("${shortPrompt}") with: ${trimmed || '↵'}`,
               task.id,
               task.assignedSessionId
             );
