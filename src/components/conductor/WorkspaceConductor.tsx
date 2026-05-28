@@ -113,7 +113,7 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
   const {
     plans, addPlan, updatePlan, deletePlan,
     terminalSessions, settings, showToast,
-    spaces, activeSpaceId,
+    spaces, activeSpaceId, llmProviders,
   } = useDashboard();
 
   const [tab,           setTab]           = useState<Tab>('build');
@@ -221,14 +221,15 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
     setLiveTasks([]);
 
     orchestratorEngine.updateConfig({
-      ollamaHost:         settings.ollamaHost,
-      ollamaModel:        settings.conductorOllamaModel,
+      relayProvider:      llmProviders.relay,
+      planGenProvider:    llmProviders.planGen,
+      autoAnswerProvider: llmProviders.autoAnswer,
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
       sessionTitles:      new Map(workspaceSessions.map(s => [s.id, s.title])),
     });
     orchestratorEngine.stop();
     orchestratorEngine.start(plan);
-  }, [updatePlan, settings, workspaceSessions]);
+  }, [updatePlan, settings, workspaceSessions, llmProviders]);
 
   const handlePause  = () => orchestratorEngine.pause();
   const handleResume = () => orchestratorEngine.resume();

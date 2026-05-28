@@ -3,8 +3,7 @@ import { NeedsBroker } from '../services/needsBroker';
 
 // Mock ollamaRelay
 vi.mock('../services/ollamaRelay', () => ({
-  resolveNeedsRequest: vi.fn().mockResolvedValue('The answer from Ollama'),
-  checkOllamaOnline: vi.fn().mockResolvedValue(true),
+  buildNeedsPrompt: vi.fn().mockReturnValue({ system: '', userContent: 'needs?' }),
 }));
 
 // Mock bufferWatcher
@@ -15,12 +14,20 @@ vi.mock('../services/bufferWatcher', () => ({
   },
 }));
 
+const mockProvider = {
+  complete: vi.fn().mockResolvedValue('The answer from provider'),
+  stream: vi.fn(),
+  listModels: vi.fn().mockResolvedValue([]),
+  checkOnline: vi.fn().mockResolvedValue(true),
+};
+
 describe('NeedsBroker', () => {
   let broker: NeedsBroker;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     broker = new NeedsBroker();
-    broker.updateConfig({ ollamaHost: 'http://localhost:11434', ollamaModel: 'llama3.2' });
+    broker.updateConfig({ provider: mockProvider });
   });
 
   it('registers a space with sessions', () => {
@@ -32,9 +39,7 @@ describe('NeedsBroker', () => {
     expect(true).toBe(true);
   });
 
-  it('calls resolveNeedsRequest with sibling context when needs detected', async () => {
-    const { resolveNeedsRequest } = await import('../services/ollamaRelay');
-
+  it('calls provider.complete with sibling context when needs detected', async () => {
     broker.registerSpace('space-1', [
       { id: 'sess-a', title: 'Claude', color: null, interruptPolicy: 'always' },
       { id: 'sess-b', title: 'Antigravity', color: null, interruptPolicy: 'always' },
@@ -51,16 +56,8 @@ describe('NeedsBroker', () => {
       onError,
     );
 
-    expect(resolveNeedsRequest).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ask: 'What is the API contract?',
-        requestingAgent: 'Claude',
-        peerContext: expect.arrayContaining([
-          expect.objectContaining({ title: 'Antigravity' }),
-        ]),
-      }),
-    );
-    expect(onAnswer).toHaveBeenCalledWith('The answer from Ollama');
+    expect(mockProvider.complete).toHaveBeenCalled();
+    expect(onAnswer).toHaveBeenCalledWith('The answer from provider');
     expect(onError).not.toHaveBeenCalled();
   });
 
