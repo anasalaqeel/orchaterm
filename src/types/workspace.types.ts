@@ -1,4 +1,5 @@
 // ── Workspace & domain types ──────────────────────────────────────────────────
+import type { UseCaseProviders } from '../services/llm/types';
 
 export interface Workspace {
   id: string;
@@ -52,12 +53,19 @@ export interface SavedPrompt {
 }
 
 export interface AppSettings {
-  shellPath: string;     // e.g. "/bin/zsh", "/bin/bash" (macOS/Linux) or "powershell.exe", "cmd.exe" (Windows). Empty = platform default.
-  ollamaHost: string;    // e.g. "http://localhost:11434"
-  openaiApiKey: string;
-  anthropicApiKey: string;
-  conductorOllamaModel: string;       // model used for relay orchestration
-  conductorTaskTimeoutMinutes: number; // max minutes a task can run before auto-fail
+  shellPath: string;
+  conductorTaskTimeoutMinutes: number;
+  /** Per-use-case LLM provider configuration. */
+  llmProviders: UseCaseProviders;
+  // ── Legacy fields kept for one-time migration on first load ──────────────
+  /** @deprecated Use llmProviders.relay.baseUrl instead. */
+  ollamaHost?: string;
+  /** @deprecated No longer used directly. */
+  openaiApiKey?: string;
+  /** @deprecated No longer used directly. */
+  anthropicApiKey?: string;
+  /** @deprecated Use llmProviders.relay.model instead. */
+  conductorOllamaModel?: string;
 }
 
 // Global App Data State structure stored as flat JSON on disk
