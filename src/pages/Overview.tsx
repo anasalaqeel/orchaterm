@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { css, cx } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
@@ -6,7 +6,7 @@ import { useDashboard } from '../context/DashboardContext';
 import { TerminalContainer } from '../components/terminal/TerminalContainer';
 import { GroupChat } from '../components/ui/GroupChat';
 import {
-  Plus, ChevronRight, Edit2, ArrowLeft,
+  Plus, ChevronRight, ChevronLeft, Edit2, ArrowLeft,
   Terminal, FolderOpen,
 } from 'lucide-react';
 
@@ -51,6 +51,84 @@ export const DashboardView: React.FC = () => {
   const [newProjColor,  setNewProjColor]  = useState('#7c3aed');
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editTaskValue, setEditTaskValue] = useState('');
+
+  // ── Chat panel resize / collapse ──────────────────────────────────────────
+  const [chatWidth, setChatWidth] = useState<number>(() => {
+    const stored = localStorage.getItem('orchaterm:chatWidth');
+    if (!stored) return 360;
+    const n = parseInt(stored, 10);
+    return isNaN(n) ? 360 : n;
+  });
+  const [chatCollapsed, setChatCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('orchaterm:chatCollapsed') === 'true';
+  });
+
+  const isResizingRef   = useRef(false);
+  const startXRef       = useRef(0);
+  const startWidthRef   = useRef(0);
+  const chatWidthRef    = useRef(chatWidth);
+  /** Cleanup fn stored so we can remove listeners if the component unmounts mid-drag. */
+  const dragCleanupRef  = useRef<(() => void) | null>(null);
+
+  // Keep the ref in sync with the latest chatWidth without mutating at render-top-level.
+  useLayoutEffect(() => {
+    chatWidthRef.current = chatWidth;
+  });
+
+  // Remove any lingering drag listeners when the component unmounts.
+  useEffect(() => {
+    return () => {
+      dragCleanupRef.current?.();
+      document.body.style.cursor     = '';
+      document.body.style.userSelect = '';
+    };
+  }, []);
+
+  const toggleChatCollapsed = useCallback(() => {
+    setChatCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('orchaterm:chatCollapsed', String(next));
+      return next;
+    });
+  }, []);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    if (chatCollapsed) return;
+
+    isResizingRef.current  = true;
+    startXRef.current      = e.clientX;
+    startWidthRef.current  = chatWidthRef.current;
+
+    document.body.style.cursor     = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      const delta    = startXRef.current - ev.clientX;          // drag left = wider chat
+      const newWidth = Math.max(260, Math.min(700, startWidthRef.current + delta));
+      setChatWidth(newWidth);
+      chatWidthRef.current = newWidth;
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      dragCleanupRef.current = null;
+    };
+
+    const onMouseUp = () => {
+      isResizingRef.current           = false;
+      document.body.style.cursor      = '';
+      document.body.style.userSelect  = '';
+      localStorage.setItem('orchaterm:chatWidth', String(chatWidthRef.current));
+      cleanup();
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    dragCleanupRef.current = cleanup;
+  }, [chatCollapsed]);
 
   // Open the New Workspace modal whenever the sidebar + button sets the flag.
   useEffect(() => {
@@ -146,8 +224,9 @@ export const DashboardView: React.FC = () => {
           </motion.button>
         </div>
 
-        {/* Split */}
+        {/* Split — position:relative so the floating collapse button can anchor here */}
         <div className={s.consoleSplit}>
+          {/* Terminal pane */}
           <div className={s.consoleSplitLeft}>
             <TerminalContainer
               key={panelKey}
@@ -157,9 +236,39 @@ export const DashboardView: React.FC = () => {
             />
           </div>
 
-          <div className={s.consoleSplitRight}>
-            <GroupChat key={panelKey} workspaceId={activeProject.id} />
-          </div>
+          {/* Invisible drag overlay — absolutely positioned over the border,
+              adds zero layout space so the panel headers stay flush */}
+          {!chatCollapsed && (
+            <div
+              className={s.dragZone}
+              style={{ right: chatWidth - 4 }}
+              onMouseDown={handleResizeStart}
+            />
+          )}
+
+          {/* Chat panel */}
+          {!chatCollapsed && (
+            <div
+              className={s.consoleSplitRight}
+              style={{ width: chatWidth, minWidth: chatWidth }}
+            >
+              <GroupChat key={panelKey} workspaceId={activeProject.id} />
+            </div>
+          )}
+
+          {/*
+            Floating collapse/expand pill — absolutely positioned at the
+            boundary between terminal and chat. consoleSplit has no
+            overflow:hidden so this is never clipped.
+          */}
+          <button
+            className={s.collapseBtn}
+            style={{ right: chatCollapsed ? 0 : chatWidth }}
+            onClick={toggleChatCollapsed}
+            title={chatCollapsed ? 'Expand chat' : 'Collapse chat'}
+          >
+            {chatCollapsed ? <ChevronLeft size={11} /> : <ChevronRight size={11} />}
+          </button>
         </div>
       </motion.div>
     );
@@ -508,18 +617,53 @@ const s = {
     &:hover { border-color: var(--border-color-hover); color: var(--text-primary); background: var(--bg-hover); }
   `,
   consoleSplit: css`
-    flex: 1; display: flex; min-height: 0; overflow: hidden;
+    flex: 1; display: flex; min-height: 0;
+    position: relative; /* anchor for the floating collapse button */
   `,
   consoleSplitLeft: css`
-    width: 62%; height: 100%;
+    flex: 1; height: 100%; min-width: 0;
     display: flex; flex-direction: column; overflow: hidden;
     background: var(--bg-canvas);
   `,
   consoleSplitRight: css`
-    width: 38%; height: 100%;
+    flex-shrink: 0; height: 100%;
     display: flex; flex-direction: column; overflow: hidden;
     border-left: 1px solid var(--border-color);
     background: var(--bg-primary);
+  `,
+
+  /* Drag overlay — absolute, straddles the border, contributes zero flex space */
+  dragZone: css`
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 8px;
+    cursor: col-resize;
+    z-index: 5;
+    background: transparent;
+    transition: background 0.12s;
+    &:hover { background: rgba(var(--color-brand-rgb), 0.15); }
+  `,
+
+  /* Floating pill — straddles the terminal/chat border, always visible */
+  collapseBtn: css`
+    position: absolute;
+    top: 50%; transform: translateY(-50%);
+    z-index: 10;
+    width: 14px; height: 48px;
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
+    &:hover {
+      color: var(--color-brand);
+      background: rgba(var(--color-brand-rgb), 0.08);
+      border-color: rgba(var(--color-brand-rgb), 0.4);
+      box-shadow: var(--shadow-brand);
+    }
   `,
 
   /* ── Grid view ── */
