@@ -14,13 +14,22 @@ export function isTauri(): boolean {
 
 // ── Defaults ───────────────────────────────────────────────────────────────────
 
+const DEFAULT_OLLAMA_CONFIG = {
+  provider: 'ollama' as const,
+  model: 'llama3.2',
+  baseUrl: 'http://localhost:11434',
+};
+
 const DEFAULT_SETTINGS: AppSettings = {
-  shellPath: '',   // resolved at runtime by get_available_shells → shells[0]
-  ollamaHost: 'http://localhost:11434',
-  openaiApiKey: '',
-  anthropicApiKey: '',
-  conductorOllamaModel: '',
+  shellPath: '',
   conductorTaskTimeoutMinutes: 30,
+  llmProviders: {
+    relay:      { ...DEFAULT_OLLAMA_CONFIG },
+    planGen:    { ...DEFAULT_OLLAMA_CONFIG },
+    autoAnswer: { ...DEFAULT_OLLAMA_CONFIG },
+    chat:       { ...DEFAULT_OLLAMA_CONFIG },
+    routing:    { ...DEFAULT_OLLAMA_CONFIG },
+  },
 };
 
 const DEFAULT_DATA: AppData = {

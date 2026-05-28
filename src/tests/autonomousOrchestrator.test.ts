@@ -2,8 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AutonomousOrchestrator } from '../services/autonomousOrchestrator';
 
 vi.mock('../services/ollamaRelay', () => ({
-  evaluateAndRoute: vi.fn().mockResolvedValue({ type: 'no_relay' }),
-  checkOllamaOnline: vi.fn().mockResolvedValue(true),
+  buildRoutingPrompt: vi.fn().mockReturnValue({ system: '', userContent: 'route?' }),
 }));
 
 vi.mock('../services/bufferWatcher', () => ({
@@ -19,13 +18,20 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
+const mockRoutingProvider = {
+  complete: vi.fn().mockResolvedValue('NO_RELAY'),
+  stream: vi.fn(),
+  listModels: vi.fn().mockResolvedValue([]),
+  checkOnline: vi.fn().mockResolvedValue(true),
+};
+
 describe('AutonomousOrchestrator', () => {
   let orchestrator: AutonomousOrchestrator;
 
   beforeEach(() => {
     vi.clearAllMocks();
     orchestrator = new AutonomousOrchestrator();
-    orchestrator.updateConfig({ ollamaHost: 'http://localhost:11434', ollamaModel: 'llama3.2' });
+    orchestrator.updateConfig({ routingProvider: mockRoutingProvider });
   });
 
   it('starts a space and registers summary watchers', async () => {
@@ -57,9 +63,7 @@ describe('AutonomousOrchestrator', () => {
     expect(true).toBe(true); // structural test — no error thrown
   });
 
-  it('calls evaluateAndRoute when a summary chunk arrives', async () => {
-    const { evaluateAndRoute } = await import('../services/ollamaRelay');
-
+  it('calls routingProvider.complete when a summary chunk arrives', async () => {
     const capturedCallbacks: Array<(chunk: string) => void> = [];
     const { bufferWatcher } = await import('../services/bufferWatcher');
     vi.mocked(bufferWatcher.watchForSummary).mockImplementation(
@@ -77,18 +81,14 @@ describe('AutonomousOrchestrator', () => {
       ],
     });
 
-    // Simulate a summary chunk arriving for sess-a (first registered)
     if (capturedCallbacks[0]) await capturedCallbacks[0]('Claude finished writing auth middleware');
 
-    expect(evaluateAndRoute).toHaveBeenCalledWith(
-      expect.objectContaining({ fromTitle: 'Claude' })
-    );
+    expect(mockRoutingProvider.complete).toHaveBeenCalled();
   });
 
-  it('does not inject when evaluateAndRoute returns no_relay', async () => {
+  it('does not inject when provider returns NO_RELAY', async () => {
     const { invoke } = await import('@tauri-apps/api/core');
-    const { evaluateAndRoute } = await import('../services/ollamaRelay');
-    vi.mocked(evaluateAndRoute).mockResolvedValue({ type: 'no_relay' });
+    mockRoutingProvider.complete.mockResolvedValue('NO_RELAY');
 
     const capturedCallbacks: Array<(chunk: string) => void> = [];
     const { bufferWatcher } = await import('../services/bufferWatcher');
