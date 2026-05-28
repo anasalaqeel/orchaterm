@@ -530,6 +530,27 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     setIsDraggingTab(true);
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", id);
+
+    // Styled ghost — tilted clone that follows the cursor
+    const el = e.currentTarget as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    const ghost = el.cloneNode(true) as HTMLElement;
+    Object.assign(ghost.style, {
+      position: "fixed",
+      top: "-9999px",
+      left: "-9999px",
+      width: `${rect.width}px`,
+      height: `${rect.height}px`,
+      margin: "0",
+      transform: "rotate(-2deg) scale(1.08)",
+      boxShadow: "0 10px 30px rgba(0,0,0,0.55), 0 0 0 1.5px rgba(123,104,238,0.6)",
+      borderRadius: "8px",
+      opacity: "1",
+      pointerEvents: "none",
+    });
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+    setTimeout(() => document.body.removeChild(ghost), 0);
   };
 
   const handleDragOver = (e: React.DragEvent, id: string) => {
@@ -1201,7 +1222,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
               />
             ))}
 
-            {/* Drop zones — invisible hit areas shown when dragging a tab */}
+            {/* Drop zones — visible arrow indicators at pane edges during drag */}
             {isDraggingTab &&
               layout.panes.filter((pane) => pane.sessionId !== draggingSessionIdRef.current).map((pane) => {
                 const W = pane.width;
@@ -1209,56 +1230,25 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 const eW = W * DROP_EDGE_FRACTION;
                 const eH = H * DROP_EDGE_FRACTION;
 
-                const zones: {
-                  edge: DropEdge;
-                  top: number;
-                  left: number;
-                  width: number;
-                  height: number;
-                }[] = [
-                  { edge: "left", top: pane.top, left: pane.left, width: eW, height: H },
-                  { edge: "right", top: pane.top, left: pane.left + W - eW, width: eW, height: H },
-                  {
-                    edge: "top",
-                    top: pane.top,
-                    left: pane.left + eW,
-                    width: W - 2 * eW,
-                    height: eH,
-                  },
-                  {
-                    edge: "bottom",
-                    top: pane.top + H - eH,
-                    left: pane.left + eW,
-                    width: W - 2 * eW,
-                    height: eH,
-                  },
+                const zones: { edge: DropEdge; top: number; left: number; width: number; height: number; }[] = [
+                  { edge: "left",   top: pane.top,           left: pane.left,          width: eW,          height: H   },
+                  { edge: "right",  top: pane.top,           left: pane.left + W - eW, width: eW,          height: H   },
+                  { edge: "top",    top: pane.top,           left: pane.left + eW,     width: W - 2 * eW,  height: eH  },
+                  { edge: "bottom", top: pane.top + H - eH,  left: pane.left + eW,     width: W - 2 * eW,  height: eH  },
                 ];
 
                 return zones.map((z) => (
                   <div
                     key={`zone-${pane.leafId}-${z.edge}`}
-                    style={{
-                      position: "absolute",
-                      top: z.top,
-                      left: z.left,
-                      width: z.width,
-                      height: z.height,
-                      zIndex: 50,
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setHoveredDrop({ leafId: pane.leafId, edge: z.edge });
-                    }}
+                    style={{ position: "absolute", top: z.top, left: z.left, width: z.width, height: z.height, zIndex: 50 }}
+                    onDragOver={(e) => { e.preventDefault(); setHoveredDrop({ leafId: pane.leafId, edge: z.edge }); }}
                     onDragLeave={() => setHoveredDrop(null)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      handlePaneDrop(pane.leafId, z.edge);
-                    }}
+                    onDrop={(e) => { e.preventDefault(); handlePaneDrop(pane.leafId, z.edge); }}
                   />
                 ));
               })}
 
-            {/* Drop indicator — shows where new pane will appear */}
+            {/* Drop indicator — animated preview of where new pane will appear */}
             {hoveredDrop &&
               (() => {
                 const pane = layout.panes.find((p) => p.leafId === hoveredDrop.leafId);
@@ -1267,23 +1257,16 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 const hw = pane.width / 2;
                 const hh = pane.height / 2;
                 const ind: Record<DropEdge, React.CSSProperties> = {
-                  left: { top: pane.top, left: pane.left, width: hw, height: pane.height },
-                  right: { top: pane.top, left: pane.left + hw, width: hw, height: pane.height },
-                  top: { top: pane.top, left: pane.left, width: pane.width, height: hh },
-                  bottom: { top: pane.top + hh, left: pane.left, width: pane.width, height: hh },
+                  left:   { top: pane.top,        left: pane.left,      width: hw,         height: pane.height },
+                  right:  { top: pane.top,        left: pane.left + hw, width: hw,         height: pane.height },
+                  top:    { top: pane.top,        left: pane.left,      width: pane.width, height: hh          },
+                  bottom: { top: pane.top + hh,   left: pane.left,      width: pane.width, height: hh          },
                 };
                 return (
                   <div
-                    style={{
-                      position: "absolute",
-                      ...ind[edge],
-                      background: "rgba(123, 104, 238, 0.18)",
-                      border: "2px solid var(--color-brand)",
-                      boxSizing: "border-box",
-                      borderRadius: 3,
-                      pointerEvents: "none",
-                      zIndex: 40,
-                    }}
+                    key={`${hoveredDrop.leafId}-${edge}`}
+                    className={styles.dropIndicator}
+                    style={{ position: "absolute", ...ind[edge], pointerEvents: "none", zIndex: 40 }}
                   />
                 );
               })()}
@@ -1425,11 +1408,29 @@ const styles = {
     opacity: 0.5;
   `,
   tabDragging: css`
-    opacity: 0.4;
+    opacity: 0.3;
     cursor: grabbing;
   `,
   tabDragOver: css`
     box-shadow: -3px 0 0 0 var(--color-brand);
+    animation: tabNudge 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    @keyframes tabNudge {
+      0%   { transform: translateX(0); }
+      40%  { transform: translateX(-5px); }
+      100% { transform: translateX(0); }
+    }
+  `,
+  dropIndicator: css`
+    background: rgba(123, 104, 238, 0.16);
+    border: 2px solid var(--color-brand);
+    box-sizing: border-box;
+    border-radius: 4px;
+    animation: dropSnap 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: inset 0 0 20px rgba(123, 104, 238, 0.1), 0 0 12px rgba(123, 104, 238, 0.3);
+    @keyframes dropSnap {
+      from { opacity: 0; transform: scale(0.94); }
+      to   { opacity: 1; transform: scale(1); }
+    }
   `,
   colorDotWrapper: css`
     flex-shrink: 0;
