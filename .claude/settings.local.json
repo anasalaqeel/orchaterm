@@ -9,7 +9,8 @@
       "Bash(bun run *)",
       "Bash(del *)",
       "Bash(bun -e \"const l = require\\('./node_modules/lucide-react'\\); const icons = Object.keys\\(l\\).filter\\(k => !k.startsWith\\('Lucide'\\) && !k.endsWith\\('Icon'\\) && \\(k.includes\\('Panel'\\) || k.includes\\('Panels'\\)\\)\\); console.log\\(icons.join\\('\\\\n'\\)\\)\")",
-      "Bash(bunx tsc *)"
+      "Bash(bunx tsc *)",
+      "PowerShell(Get-Process *)"
     ]
   }
 }
