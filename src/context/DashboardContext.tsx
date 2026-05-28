@@ -83,6 +83,46 @@ export interface DashboardContextType {
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
 
+const DEFAULT_OLLAMA_CONFIG = {
+  provider: 'ollama' as const,
+  model: 'llama3.2',
+  baseUrl: 'http://localhost:11434',
+};
+
+/** Migrate settings from legacy ollamaHost/conductorOllamaModel to llmProviders. */
+function migrateSettings(raw: Partial<AppSettings>): AppSettings {
+  if (raw.llmProviders) {
+    return {
+      shellPath: raw.shellPath ?? '',
+      conductorTaskTimeoutMinutes: raw.conductorTaskTimeoutMinutes ?? 30,
+      llmProviders: {
+        relay:      raw.llmProviders.relay      ?? { ...DEFAULT_OLLAMA_CONFIG },
+        planGen:    raw.llmProviders.planGen    ?? { ...DEFAULT_OLLAMA_CONFIG },
+        autoAnswer: raw.llmProviders.autoAnswer ?? { ...DEFAULT_OLLAMA_CONFIG },
+        chat:       raw.llmProviders.chat       ?? { ...DEFAULT_OLLAMA_CONFIG },
+        routing:    raw.llmProviders.routing    ?? { ...DEFAULT_OLLAMA_CONFIG },
+      },
+    };
+  }
+
+  const legacyConfig = {
+    provider: 'ollama' as const,
+    model: raw.conductorOllamaModel || 'llama3.2',
+    baseUrl: raw.ollamaHost || 'http://localhost:11434',
+  };
+  return {
+    shellPath: raw.shellPath ?? '',
+    conductorTaskTimeoutMinutes: raw.conductorTaskTimeoutMinutes ?? 30,
+    llmProviders: {
+      relay:      { ...legacyConfig },
+      planGen:    { ...legacyConfig },
+      autoAnswer: { ...legacyConfig },
+      chat:       { ...legacyConfig },
+      routing:    { ...legacyConfig },
+    },
+  };
+}
+
 export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [workspaces, setWorkspaces]     = useState<Workspace[]>([]);
   const [spaces, setSpaces]             = useState<Space[]>([]);
@@ -96,12 +136,15 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isLoaded, setIsLoaded]         = useState<boolean>(false);
   const [newWorkspaceModalOpen, setNewWorkspaceModalOpen] = useState(false);
   const [settings, setSettings]         = useState<AppSettings>({
-    shellPath: '',   // resolved at runtime by get_available_shells → shells[0]
-    ollamaHost: 'http://localhost:11434',
-    openaiApiKey: '',
-    anthropicApiKey: '',
-    conductorOllamaModel: '',
+    shellPath: '',
     conductorTaskTimeoutMinutes: 30,
+    llmProviders: {
+      relay:      { ...DEFAULT_OLLAMA_CONFIG },
+      planGen:    { ...DEFAULT_OLLAMA_CONFIG },
+      autoAnswer: { ...DEFAULT_OLLAMA_CONFIG },
+      chat:       { ...DEFAULT_OLLAMA_CONFIG },
+      routing:    { ...DEFAULT_OLLAMA_CONFIG },
+    },
   });
   const [plans, setPlans]                       = useState<OrchestratorPlan[]>([]);
   const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
@@ -123,7 +166,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setSpaces(sps);
         setTaskLogs(data.taskLogs || []);
         setSavedPrompts(data.savedPrompts || []);
-        if (data.settings) setSettings(prev => ({ ...prev, ...data.settings }));
+        if (data.settings) setSettings(migrateSettings(data.settings));
         setPlans(savedPlans);
 
         // Restore active workspace — validate it still exists
@@ -387,7 +430,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       spaces,
       taskLogs,
       savedPrompts,
-      settings: { ...settings, openaiApiKey: '', anthropicApiKey: '' },
+      settings,
     };
     return JSON.stringify(data, null, 2);
   };
