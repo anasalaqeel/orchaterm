@@ -121,21 +121,24 @@ Synthesize all completed work into a single unified brief for the next agent:`,
 
 export function buildAutoAnswerPrompt(promptText: string): { system: string; userContent: string } {
   return {
-    system: "You are an automated terminal responder. Output only the keystroke or 'UNKNOWN'.",
-    userContent: `A terminal agent is stuck on the following interactive prompt and needs user input to proceed.
-Prompt:
+    system: "You are an automated terminal responder. Output only the answer or 'UNKNOWN'. Never explain.",
+    userContent: `An AI coding agent is blocked by an interactive terminal prompt and cannot continue until it is answered.
+
+Prompt text:
 """
 ${promptText}
 """
 
-Determine what the user should type to accept or safely proceed.
-Examples:
-- If asked "Do you want to proceed? [y/N]", answer "y"
-- If asked "Select an option: 1. Yes 2. No", answer "1"
-- If asked "Press Enter to continue", answer "\\n"
-- If the prompt is ambiguous, dangerous (e.g. deleting files), or asks for complex text input, answer "UNKNOWN"
+Rules:
+1. Yes/no questions ([y/N], [Y/n], "Do you want to", "Do you want to proceed") → answer: y
+2. Numbered list where option 1 is "Yes" or an affirmative/proceed option → answer: 1
+3. "Press Enter to continue" or similar → answer: ENTER
+4. Allowing file reads, access grants, or bash command execution in the project → answer: 1
+5. Lines like "Esc to cancel" or "Tab to amend" are status hints, NOT prompt options — ignore them.
+6. Answer UNKNOWN only if the prompt asks to permanently delete files, overwrite without backup, or requires specific user-supplied text (e.g. a commit message or filename).
 
-Return ONLY the exact keystrokes/text to send. No explanation. No quotes.`,
+Return ONLY the answer character(s). No explanation. No quotes.
+Examples: "Do you want to proceed?" → y | "1. Yes  2. No" → 1 | "Press Enter to continue" → ENTER`,
   };
 }
 
