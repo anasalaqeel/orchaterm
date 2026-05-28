@@ -62,6 +62,8 @@ export const DashboardView: React.FC = () => {
   const [chatCollapsed, setChatCollapsed] = useState<boolean>(() => {
     return localStorage.getItem('orchaterm:chatCollapsed') === 'true';
   });
+  /** True only while the user is actively dragging the resize handle. */
+  const [isResizing, setIsResizing] = useState(false);
 
   const isResizingRef   = useRef(false);
   const startXRef       = useRef(0);
@@ -122,12 +124,14 @@ export const DashboardView: React.FC = () => {
       document.body.style.cursor      = '';
       document.body.style.userSelect  = '';
       localStorage.setItem('orchaterm:chatWidth', String(chatWidthRef.current));
+      setIsResizing(false);
       cleanup();
     };
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     dragCleanupRef.current = cleanup;
+    setIsResizing(true);
   }, [chatCollapsed]);
 
   // Open the New Workspace modal whenever the sidebar + button sets the flag.
@@ -171,15 +175,22 @@ export const DashboardView: React.FC = () => {
     setShowAddProj(false);
   };
 
-  /* ── Console view ── */
-  if (viewMode === 'console' && activeProject) {
-    const activeSpace = activeSpaceId
-      ? spaces.find(sp => sp.id === activeSpaceId && sp.workspaceId === activeProject.id)
-      : null;
-    const panelKey = `${activeProject.id}::${activeSpaceId ?? 'workspace'}`;
+  /* ── Derived ── */
+  const activeSpace = (viewMode === 'console' && activeProject && activeSpaceId)
+    ? spaces.find(sp => sp.id === activeSpaceId && sp.workspaceId === activeProject.id)
+    : null;
+  const panelKey = activeProject
+    ? `${activeProject.id}::${activeSpaceId ?? 'workspace'}`
+    : 'empty';
 
-    return (
+  /* ── Render ── */
+  return (
+    <AnimatePresence mode="wait">
+
+    {/* ══ Console view ══════════════════════════════════════════════════════════ */}
+    {viewMode === 'console' && activeProject ? (
       <motion.div
+        key="console"
         className={s.consoleRoot}
         variants={pageVariants}
         initial="initial"
@@ -236,25 +247,41 @@ export const DashboardView: React.FC = () => {
             />
           </div>
 
-          {/* Invisible drag overlay — absolutely positioned over the border,
-              adds zero layout space so the panel headers stay flush */}
-          {!chatCollapsed && (
-            <div
-              className={s.dragZone}
-              style={{ right: chatWidth - 4 }}
-              onMouseDown={handleResizeStart}
-            />
-          )}
+          {/*
+            Drag overlay — always present but invisible + inert when collapsed.
+            position:absolute so it contributes zero flex space.
+          */}
+          <div
+            className={s.dragZone}
+            style={{
+              right: chatWidth - 4,
+              opacity: chatCollapsed ? 0 : 1,
+              pointerEvents: chatCollapsed ? 'none' : 'auto',
+            }}
+            onMouseDown={handleResizeStart}
+          />
 
-          {/* Chat panel */}
-          {!chatCollapsed && (
-            <div
-              className={s.consoleSplitRight}
-              style={{ width: chatWidth, minWidth: chatWidth }}
-            >
+          {/*
+            Chat panel — always rendered so GroupChat never loses state on
+            collapse. Width transitions via CSS so resize stays instant
+            (no framer-motion easing conflict on rapid mousemove events).
+          */}
+          <div
+            className={s.consoleSplitRight}
+            style={{
+              width:      chatCollapsed ? 0 : chatWidth,
+              minWidth:   0,
+              opacity:    chatCollapsed ? 0 : 1,
+              transition: isResizing
+                ? 'none'
+                : 'width 0.22s cubic-bezier(0.4,0,0.2,1), opacity 0.18s ease',
+            }}
+          >
+            {/* Inner wrapper keeps content at chatWidth so it doesn't squish during animation */}
+            <div style={{ width: chatWidth, minWidth: chatWidth, height: '100%', display: 'flex', flexDirection: 'column' }}>
               <GroupChat key={panelKey} workspaceId={activeProject.id} />
             </div>
-          )}
+          </div>
 
           {/*
             Floating collapse/expand pill — absolutely positioned at the
@@ -263,7 +290,10 @@ export const DashboardView: React.FC = () => {
           */}
           <button
             className={s.collapseBtn}
-            style={{ right: chatCollapsed ? 0 : chatWidth }}
+            style={{
+              right: chatCollapsed ? 0 : chatWidth,
+              transition: 'right 0.22s cubic-bezier(0.4,0,0.2,1)',
+            }}
             onClick={toggleChatCollapsed}
             title={chatCollapsed ? 'Expand chat' : 'Collapse chat'}
           >
@@ -271,12 +301,12 @@ export const DashboardView: React.FC = () => {
           </button>
         </div>
       </motion.div>
-    );
-  }
 
-  /* ── Grid view ── */
-  return (
+    ) : (
+
+    /* ══ Grid view ════════════════════════════════════════════════════════════ */
     <motion.div
+      key="grid"
       className={s.gridRoot}
       variants={pageVariants}
       initial="initial"
@@ -544,6 +574,9 @@ export const DashboardView: React.FC = () => {
         )}
       </AnimatePresence>
     </motion.div>
+
+    )}
+    </AnimatePresence>
   );
 };
 
