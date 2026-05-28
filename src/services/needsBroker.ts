@@ -12,17 +12,11 @@
  */
 
 import { AgentNeedsRequest, InterruptPolicy, RoutingEvent } from '../types';
-import { resolveNeedsRequest, checkOllamaOnline } from './ollamaRelay';
+import { buildNeedsPrompt } from './ollamaRelay';
+import { LLMProvider, createProvider } from './llm';
 import { bufferWatcher } from './bufferWatcher';
 import { canInjectNow } from '../utils/interruptPolicy';
 import { writePtyChunked } from '../utils/ptyUtils';
-
-// ── Config ─────────────────────────────────────────────────────────────────────
-
-interface BrokerConfig {
-  ollamaHost: string;
-  ollamaModel: string;
-}
 
 // ── Session descriptor ─────────────────────────────────────────────────────────
 
@@ -36,10 +30,7 @@ export interface BrokerSession {
 // ── NeedsBroker ────────────────────────────────────────────────────────────────
 
 export class NeedsBroker {
-  private config: BrokerConfig = {
-    ollamaHost: 'http://localhost:11434',
-    ollamaModel: 'llama3.2',
-  };
+  private provider: LLMProvider = createProvider({ provider: 'ollama', model: 'llama3.2' });
 
   /** spaceId → sessions in that space */
   private spaces = new Map<string, BrokerSession[]>();
@@ -47,8 +38,8 @@ export class NeedsBroker {
   /** Subscribers that receive routing events (wired to GroupChat). */
   private eventListeners: Array<(event: RoutingEvent) => void> = [];
 
-  updateConfig(config: Partial<BrokerConfig>): void {
-    this.config = { ...this.config, ...config };
+  updateConfig(config: { provider: LLMProvider }): void {
+    this.provider = config.provider;
   }
 
   registerSpace(spaceId: string, sessions: BrokerSession[]): void {
@@ -98,17 +89,13 @@ export class NeedsBroker {
 
     let answer: string;
     try {
-      const online = await checkOllamaOnline(this.config.ollamaHost);
-      if (!online) throw new Error('Ollama is offline');
-
-      answer = await resolveNeedsRequest({
-        ask:             request.ask,
-        context:         request.context,
-        requestingAgent: requestingSession.title,
+      const { system, userContent } = buildNeedsPrompt(
+        request.ask,
+        request.context,
+        requestingSession.title,
         peerContext,
-        ollamaHost:      this.config.ollamaHost,
-        model:           this.config.ollamaModel,
-      });
+      );
+      answer = await this.provider.complete([{ role: 'user', content: userContent }], system);
     } catch (err: any) {
       const msg = err?.message ?? String(err);
       onError(msg);
