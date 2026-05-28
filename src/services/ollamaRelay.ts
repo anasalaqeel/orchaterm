@@ -1,20 +1,17 @@
 /**
  * ollamaRelay.ts
  *
- * Handles all communication with the local Ollama instance for the orchestrator.
- * Ollama's only role here is mechanical: strip noise, reformat, and craft a clear
- * brief for the next agent. It never plans, codes, or makes decisions.
+ * Pure prompt-building functions for the orchestrator. No HTTP calls.
+ * All LLM calls go through LLMProvider implementations in src/services/llm/.
  *
- * Exported functions:
- *   fetchOllamaModels   — returns the list of models the user has pulled
- *   checkOllamaOnline   — quick liveness check
- *   relayViaOllama      — single-parent task handoff
- *   mergeAndRelayViaOllama — fan-in: multiple parents → one unified brief
+ * Each buildXxxPrompt function returns { system, userContent } ready to pass to
+ * provider.complete([{ role: 'user', content: userContent }], system).
  */
 
 import { OrchestratorTaskOutput } from '../types';
+export type { ChatMessage } from './llm/types';  // re-export for backward compat
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface CompletedTaskContext {
   taskTitle: string;
@@ -24,30 +21,16 @@ export interface CompletedTaskContext {
   output: OrchestratorTaskOutput;
 }
 
-export interface RelayInput {
-  goal: string;
-  completedTask: CompletedTaskContext;
-  nextTaskDescription: string;
-  nextAgentName: string;
-  nextAgentBestUsedFor: string;
-  ollamaHost: string;
-  model: string;
+export interface RawPlanTask {
+  title: string;
+  description: string;
+  assignedSessionTitle: string;
+  dependsOn: string[];
 }
 
-export interface MergeRelayInput {
-  goal: string;
-  completedTasks: CompletedTaskContext[];
-  nextTaskDescription: string;
-  nextAgentName: string;
-  nextAgentBestUsedFor: string;
-  ollamaHost: string;
-  model: string;
-}
+// ── System prompts ────────────────────────────────────────────────────────────
 
-// ── System prompt ──────────────────────────────────────────────────────────────
-// Shared across all relay calls. Keeps Ollama in its mechanical lane.
-
-const SYSTEM_PROMPT = `You are a message relay for a multi-agent coding workflow.
+export const RELAY_SYSTEM_PROMPT = `You are a message relay for a multi-agent coding workflow.
 Your only job is to reformat completed task output into a clear brief for the next agent.
 
 Rules you must follow:
@@ -58,393 +41,7 @@ Rules you must follow:
 5. Write in direct, imperative style addressed to the next agent.
 6. Preserve specific identifiers: function names, file paths, API contracts, variable names.`;
 
-// ── Ollama API helpers ─────────────────────────────────────────────────────────
-
-/**
- * Fetches the list of model names available in the user's local Ollama instance.
- * Returns an empty array if Ollama is offline or the request fails.
- */
-export async function fetchOllamaModels(ollamaHost: string): Promise<string[]> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-    const res = await fetch(`${ollamaHost}/api/tags`, { signal: controller.signal });
-    clearTimeout(timeoutId);
-
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.models ?? []).map((m: { name: string }) => m.name);
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Returns true if Ollama is reachable at the given host, false otherwise.
- * Uses a 2-second timeout to avoid hanging.
- */
-export async function checkOllamaOnline(ollamaHost: string): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-    const res = await fetch(`${ollamaHost}/api/tags`, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Internal: calls the Ollama /api/chat endpoint with the given messages.
- * Throws on network error or non-OK response.
- * Pass `systemPromptOverride` to use a different system prompt than SYSTEM_PROMPT.
- */
-async function callOllama(
-  ollamaHost: string,
-  model: string,
-  userPrompt: string,
-  systemPromptOverride?: string,
-): Promise<string> {
-  const response = await fetch(`${ollamaHost}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPromptOverride ?? SYSTEM_PROMPT },
-        { role: 'user',   content: userPrompt },
-      ],
-      stream: false,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const text = data.message?.content ?? data.response ?? '';
-  if (!text) throw new Error('Ollama returned an empty response');
-  return text.trim();
-}
-
-// ── Single-parent relay ────────────────────────────────────────────────────────
-
-/**
- * Relays the output of one completed task into a clear brief for the next task.
- * Used when the next task has exactly one dependency.
- *
- * Throws if Ollama is unreachable — callers should catch and use pass-through.
- */
-export async function relayViaOllama(input: RelayInput): Promise<string> {
-  const { goal, completedTask, nextTaskDescription, nextAgentName, nextAgentBestUsedFor, ollamaHost, model } = input;
-
-  const userPrompt = `Overall goal: ${goal}
-
-COMPLETED WORK:
-Task: ${completedTask.taskTitle}
-Done by: ${completedTask.agentName} (${completedTask.agentBestUsedFor})
-Summary: ${completedTask.output.summary}
-Files modified: ${completedTask.output.filesModified.length > 0 ? completedTask.output.filesModified.join(', ') : 'none'}
-What is needed next: ${completedTask.output.needs}
-
-NEXT TASK:
-Task: ${nextTaskDescription}
-Next agent: ${nextAgentName} (${nextAgentBestUsedFor})
-
-Write a clear, direct brief for the next agent that gives them everything they need:`;
-
-  return callOllama(ollamaHost, model, userPrompt);
-}
-
-// ── Multi-parent merge relay ───────────────────────────────────────────────────
-
-/**
- * Merges the outputs of multiple completed tasks (fan-in) into a single unified
- * brief for the next task. Used when the next task depends on 2+ parent tasks.
- *
- * Throws if Ollama is unreachable — callers should catch and use pass-through.
- */
-export async function mergeAndRelayViaOllama(input: MergeRelayInput): Promise<string> {
-  const { goal, completedTasks, nextTaskDescription, nextAgentName, nextAgentBestUsedFor, ollamaHost, model } = input;
-
-  const completedBlocks = completedTasks.map((t, i) => `
---- Completed Work ${i + 1} ---
-Task: ${t.taskTitle}
-Done by: ${t.agentName} (${t.agentBestUsedFor})
-Summary: ${t.output.summary}
-Files modified: ${t.output.filesModified.length > 0 ? t.output.filesModified.join(', ') : 'none'}
-What is needed next: ${t.output.needs}`).join('\n');
-
-  const userPrompt = `Overall goal: ${goal}
-
-COMPLETED WORK FROM MULTIPLE AGENTS:
-${completedBlocks}
-
-NEXT TASK:
-Task: ${nextTaskDescription}
-Next agent: ${nextAgentName} (${nextAgentBestUsedFor})
-
-Synthesize all the completed work into a single unified brief for the next agent:`;
-
-  return callOllama(ollamaHost, model, userPrompt);
-}
-
-// ── Terminal output summarisation ──────────────────────────────────────────────
-
-/**
- * Asks Ollama to summarise a raw terminal output chunk in 1–2 sentences.
- * Used by GroupChat's live feed to condense agent output into the chat feed.
- *
- * Throws if Ollama is unreachable or returns empty content — callers should
- * catch and silently skip the summary rather than surfacing an error.
- */
-export async function summariseChunk(
-  chunk: string,
-  tabTitle: string,
-  ollamaHost: string,
-  model: string,
-): Promise<string> {
-  const systemPrompt = `You are a terminal output summariser. Summarise the following terminal output from agent "${tabTitle}" in 1–2 concise sentences. Be direct and factual — no filler, no suggestions. Output only the summary text, nothing else.`;
-
-  // Truncate very long chunks to avoid token waste — keep the tail (most recent output)
-  const truncated = chunk.length > 2000 ? chunk.slice(-2000) : chunk;
-
-  const response = await fetch(`${ollamaHost}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: truncated },
-      ],
-      stream: false,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Ollama summarise error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const text = data.message?.content ?? data.response ?? '';
-  if (!text.trim()) throw new Error('Empty summarise response');
-  return text.trim();
-}
-
-// ── Streaming group chat ───────────────────────────────────────────────────────
-
-export interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-/**
- * Streams a conversational response from Ollama.
- * Calls onToken for each content chunk, onDone when the stream ends.
- * Returns a cancel function that aborts the request.
- */
-export function streamChatWithOllama(params: {
-  ollamaHost: string;
-  model: string;
-  systemPrompt: string;
-  messages: ChatMessage[];
-  onToken: (token: string) => void;
-  onDone: () => void;
-  onError: (err: string) => void;
-}): () => void {
-  const { ollamaHost, model, systemPrompt, messages, onToken, onDone, onError } = params;
-  const controller = new AbortController();
-
-  (async () => {
-    try {
-      const res = await fetch(`${ollamaHost}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model,
-          messages: [{ role: 'system', content: systemPrompt }, ...messages],
-          stream: true,
-        }),
-      });
-
-      if (!res.ok) {
-        onError(`Ollama error ${res.status}: ${res.statusText}`);
-        return;
-      }
-
-      const reader = res.body?.getReader();
-      if (!reader) { onError('No response body'); return; }
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const text = decoder.decode(value, { stream: true });
-        for (const line of text.split('\n')) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          try {
-            const obj = JSON.parse(trimmed);
-            if (obj.message?.content) onToken(obj.message.content);
-            if (obj.done) { onDone(); return; }
-          } catch { /* skip malformed lines */ }
-        }
-      }
-      onDone();
-    } catch (err: any) {
-      if (err?.name !== 'AbortError') onError(err?.message ?? 'Connection failed');
-    }
-  })();
-
-  return () => controller.abort();
-}
-
-// ── Pass-through fallback ──────────────────────────────────────────────────────
-
-/**
- * Constructs a relay brief without Ollama by directly using the structured
- * sentinel fields. Used when Ollama is offline.
- *
- * The capable agents write `summary` and `needs` fields that are already
- * concise and structured — this fallback uses them as-is.
- */
-export function buildPassThroughBrief(
-  completedTasks: CompletedTaskContext[],
-  nextTaskDescription: string
-): string {
-  const contextLines = completedTasks.map(t =>
-    `[Context from: ${t.taskTitle}]\nSummary: ${t.output.summary}\nWhat you need: ${t.output.needs}`
-  ).join('\n\n');
-
-  return `${contextLines}
-
-Your task: ${nextTaskDescription}`;
-}
-
-// ── Needs request resolution ───────────────────────────────────────────────────
-
-export interface NeedsResolutionInput {
-  /** The question the requesting agent asked. */
-  ask: string;
-  /** The context the requesting agent provided. */
-  context: string;
-  /** Display title of the requesting agent's terminal. */
-  requestingAgent: string;
-  /**
-   * Peer agent context: title + recent buffer content for each sibling session.
-   * Pre-truncated by the caller to avoid token bloat.
-   */
-  peerContext: Array<{ title: string; recentOutput: string }>;
-  ollamaHost: string;
-  model: string;
-}
-
-/**
- * Synthesises an answer to a mid-task help request from a peer agent's output.
- * Used by NeedsBroker. Throws if Ollama is unreachable.
- *
- * Response is ≤ 150 words, direct, and references specific identifiers from
- * the peer's output.
- */
-export async function resolveNeedsRequest(input: NeedsResolutionInput): Promise<string> {
-  const { ask, context, requestingAgent, peerContext, ollamaHost, model } = input;
-
-  const peerBlocks = peerContext.length > 0
-    ? peerContext.map(p =>
-        `=== ${p.title} ===\n${p.recentOutput || '(no recent output)'}`
-      ).join('\n\n')
-    : '(no peer agents have recent output)';
-
-  const userPrompt = `Agent "${requestingAgent}" is asking for help mid-task.
-
-QUESTION: ${ask}
-THEIR CONTEXT: ${context || '(none provided)'}
-
-WHAT OTHER AGENTS HAVE BEEN DOING:
-${peerBlocks}
-
-Write a direct, actionable answer (≤ 150 words) synthesised from the other agents' work.
-Include specific identifiers (function names, file paths, variable names) where relevant.
-If the peer output contains no relevant information, say so in one sentence.
-Do NOT add suggestions beyond what was asked.`;
-
-  return callOllama(ollamaHost, model, userPrompt);
-}
-
-// ── Chat intent classification ────────────────────────────────────────────────
-
-/**
- * Classifies whether a user's chat message is a conversational query/instruction
- * or a request to generate a multi-agent task plan.
- */
-export async function classifyChatIntent(
-  message: string,
-  ollamaHost: string,
-  model: string,
-): Promise<'chat' | 'plan'> {
-  const prompt = `You are an intent classifier for a developer orchestration tool.
-The user is talking to an orchestrator that can either:
-1. "chat": Answer questions, route a simple instruction to a terminal, or summarize.
-2. "plan": Break down a goal into a multi-step pipeline and assign agents to tasks.
-
-Classify the following user message. If the message describes building a feature, creating a pipeline, or assigning multiple agents to a goal, classify it as "plan". Otherwise, classify it as "chat".
-
-Return ONLY the word "chat" or "plan". No other text.
-
-Message: "${message}"`;
-
-  try {
-    const res = await callOllama(ollamaHost, model, prompt, "You are a strict classifier. Output exactly one word.");
-    const text = res.toLowerCase().trim();
-    if (text.includes('plan')) return 'plan';
-    return 'chat';
-  } catch {
-    return 'chat'; // fallback to standard chat on error
-  }
-}
-
-// ── Auto-Responder ────────────────────────────────────────────────────────────
-
-/**
- * Evaluates an interactive terminal prompt to determine the correct keystroke to inject.
- * Returns the literal string to inject (e.g. "y", "1"), or "UNKNOWN" if unsafe/ambiguous.
- */
-export async function autoAnswerInteractivePrompt(
-  promptText: string,
-  ollamaHost: string,
-  model: string,
-): Promise<string> {
-  const prompt = `A terminal agent is stuck on the following interactive prompt and needs user input to proceed.
-Prompt:
-"""
-${promptText}
-"""
-
-Determine what the user should type to accept or safely proceed.
-Examples:
-- If asked "Do you want to proceed? [y/N]", answer "y"
-- If asked "Select an option: 1. Yes 2. No", answer "1"
-- If asked "Press Enter to continue", answer "\\n"
-- If the prompt is ambiguous, dangerous (e.g. deleting files), or asks for complex text input, answer "UNKNOWN"
-
-Return ONLY the exact keystrokes/text to send. No explanation. No quotes.`;
-
-  try {
-    const res = await callOllama(ollamaHost, model, prompt, "You are an automated terminal responder. Output only the keystroke or 'UNKNOWN'.");
-    return res.trim();
-  } catch {
-    return 'UNKNOWN';
-  }
-}
-
-// ── Natural-language plan generation ──────────────────────────────────────────
-
-const PLAN_GENERATION_SYSTEM_PROMPT = `You are a task planner for a multi-agent terminal orchestration system.
+export const PLAN_GEN_SYSTEM_PROMPT = `You are a task planner for a multi-agent terminal orchestration system.
 Given a goal and a list of available terminal agents, break the goal into a minimal set of concrete tasks.
 
 Return ONLY a valid JSON array. No markdown fences. No explanation. No prose before or after.
@@ -466,100 +63,94 @@ Rules:
 - Assign tasks thoughtfully based on agent names/roles.
 - dependsOn titles must exactly match the "title" field of another task in the array.`;
 
-export interface RawPlanTask {
-  title: string;
-  description: string;
-  assignedSessionTitle: string;
-  /** Titles of tasks this task must wait for. Empty = no deps. */
-  dependsOn: string[];
+// ── Prompt builders ───────────────────────────────────────────────────────────
+
+export function buildRelayPrompt(
+  goal: string,
+  completedTask: CompletedTaskContext,
+  nextTaskDescription: string,
+  nextAgentName: string,
+): { system: string; userContent: string } {
+  return {
+    system: RELAY_SYSTEM_PROMPT,
+    userContent: `Overall goal: ${goal}
+
+COMPLETED WORK:
+Task: ${completedTask.taskTitle}
+Done by: ${completedTask.agentName}
+Summary: ${completedTask.output.summary}
+Files modified: ${completedTask.output.filesModified.join(', ') || 'none'}
+What is needed next: ${completedTask.output.needs}
+
+NEXT TASK:
+Task: ${nextTaskDescription}
+Next agent: ${nextAgentName}
+
+Write a clear, direct brief for the next agent that gives them everything they need:`,
+  };
 }
 
-export interface PlanGenerationInput {
-  goal: string;
-  availableSessions: Array<{ title: string }>;
-  ollamaHost: string;
-  model: string;
+export function buildMergeRelayPrompt(
+  goal: string,
+  completedTasks: CompletedTaskContext[],
+  nextTaskDescription: string,
+  nextAgentName: string,
+): { system: string; userContent: string } {
+  const blocks = completedTasks.map((t, i) => `
+--- Completed Work ${i + 1} ---
+Task: ${t.taskTitle}
+Done by: ${t.agentName}
+Summary: ${t.output.summary}
+Files modified: ${t.output.filesModified.join(', ') || 'none'}
+What is needed next: ${t.output.needs}`).join('\n');
+
+  return {
+    system: RELAY_SYSTEM_PROMPT,
+    userContent: `Overall goal: ${goal}
+
+COMPLETED WORK FROM MULTIPLE AGENTS:
+${blocks}
+
+NEXT TASK:
+Task: ${nextTaskDescription}
+Next agent: ${nextAgentName}
+
+Synthesize all completed work into a single unified brief for the next agent:`,
+  };
 }
 
-/**
- * Asks Ollama to break a natural-language goal into a task plan.
- * Returns raw task objects whose dependsOn values are task titles (not IDs).
- * Callers are responsible for converting titles → IDs after generation.
- *
- * Throws if Ollama is unreachable or returns malformed JSON.
- */
-export async function generatePlanFromNL(input: PlanGenerationInput): Promise<RawPlanTask[]> {
-  const { goal, availableSessions, ollamaHost, model } = input;
+export function buildAutoAnswerPrompt(promptText: string): { system: string; userContent: string } {
+  return {
+    system: "You are an automated terminal responder. Output only the keystroke or 'UNKNOWN'.",
+    userContent: `A terminal agent is stuck on the following interactive prompt and needs user input to proceed.
+Prompt:
+"""
+${promptText}
+"""
 
-  if (availableSessions.length === 0) {
-    throw new Error('No agents available — add terminal sessions to this space first.');
-  }
+Determine what the user should type to accept or safely proceed.
+Examples:
+- If asked "Do you want to proceed? [y/N]", answer "y"
+- If asked "Select an option: 1. Yes 2. No", answer "1"
+- If asked "Press Enter to continue", answer "\\n"
+- If the prompt is ambiguous, dangerous (e.g. deleting files), or asks for complex text input, answer "UNKNOWN"
 
-  const userPrompt = `Goal: ${goal}
-
-Available agents:
-${availableSessions.map(s => `• ${s.title}`).join('\n')}
-
-Generate the task plan as a JSON array:`;
-
-  const response = await callOllama(ollamaHost, model, userPrompt, PLAN_GENERATION_SYSTEM_PROMPT);
-
-  // Extract JSON array — Ollama may wrap in markdown fences despite instructions
-  const jsonMatch = response.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('Plan generation returned no JSON array. Try rephrasing your goal.');
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonMatch[0]);
-  } catch (e) {
-    throw new Error(`Plan generation returned invalid JSON: ${e}`);
-  }
-
-  if (!Array.isArray(parsed) || parsed.length === 0) {
-    throw new Error('Plan generation returned an empty or invalid task list.');
-  }
-
-  return parsed as RawPlanTask[];
+Return ONLY the exact keystrokes/text to send. No explanation. No quotes.`,
+  };
 }
 
-// ── Autonomous routing evaluation ──────────────────────────────────────────────
-
-export interface RoutingCandidate {
-  title: string;
-  recentOutput: string;
-}
-
-export interface RoutingDecision {
-  type: 'no_relay' | 'inject';
-  targetTitle?: string;
-  message?: string;
-}
-
-/**
- * Asks Ollama whether a terminal's recent output should be proactively relayed
- * to any sibling agent. Used by AutonomousOrchestrator.
- *
- * Throws if Ollama is unreachable — callers should catch and skip silently.
- *
- * Returns { type: 'no_relay' } if nothing useful should be sent.
- * Returns { type: 'inject', targetTitle, message } if a relay is warranted.
- */
-export async function evaluateAndRoute(params: {
-  fromTitle: string;
-  recentChunk: string;
-  siblings: RoutingCandidate[];
-  ollamaHost: string;
-  model: string;
-}): Promise<RoutingDecision> {
-  const { fromTitle, recentChunk, siblings, ollamaHost, model } = params;
-
-  if (siblings.length === 0) return { type: 'no_relay' };
-
+export function buildRoutingPrompt(
+  fromTitle: string,
+  recentChunk: string,
+  siblings: Array<{ title: string; recentOutput: string }>,
+): { system: string; userContent: string } {
   const siblingsDesc = siblings
     .map(s => `• ${s.title}:\n${s.recentOutput.slice(-300) || '(no recent output)'}`)
     .join('\n\n');
 
-  const userPrompt = `You are monitoring a team of AI coding agents.
+  return {
+    system: 'You are a routing agent for a multi-agent coding team. Be decisive. Output exactly one line.',
+    userContent: `You are monitoring a team of AI coding agents.
 
 Agent "${fromTitle}" just produced this output:
 ${recentChunk.slice(-600)}
@@ -576,21 +167,103 @@ Rules:
 4. Do NOT relay if the agents are working on completely independent tasks.
 
 If nothing should be relayed, output exactly: NO_RELAY
-If relaying, output exactly one line: INJECT → <exact-terminal-title>: <message>`;
+If relaying, output exactly one line: INJECT → <exact-terminal-title>: <message>`,
+  };
+}
 
-  const response = await callOllama(ollamaHost, model, userPrompt);
-  const trimmed  = response.trim();
+export function buildSummarisePrompt(chunk: string, tabTitle: string): { system: string; userContent: string } {
+  return {
+    system: `You are a terminal output summariser. Summarise the following terminal output from agent "${tabTitle}" in 1–2 concise sentences. Be direct and factual — no filler, no suggestions. Output only the summary text, nothing else.`,
+    userContent: chunk.length > 2000 ? chunk.slice(-2000) : chunk,
+  };
+}
 
-  if (trimmed === 'NO_RELAY' || !trimmed.includes('INJECT')) {
-    return { type: 'no_relay' };
-  }
+export function buildPlanGenPrompt(
+  goal: string,
+  availableSessions: Array<{ title: string }>,
+): { system: string; userContent: string } {
+  return {
+    system: PLAN_GEN_SYSTEM_PROMPT,
+    userContent: `Goal: ${goal}
 
-  const match = trimmed.match(/INJECT\s*→\s*([^:\n]+):\s*(.+)/i);
-  if (!match) return { type: 'no_relay' };
+Available agents:
+${availableSessions.map(s => `• ${s.title}`).join('\n')}
+
+Generate the task plan as a JSON array:`,
+  };
+}
+
+export function buildNeedsPrompt(
+  ask: string,
+  context: string,
+  requestingAgent: string,
+  peerContext: Array<{ title: string; recentOutput: string }>,
+): { system: string; userContent: string } {
+  const peerBlocks = peerContext.length > 0
+    ? peerContext.map(p => `=== ${p.title} ===\n${p.recentOutput || '(no recent output)'}`)
+        .join('\n\n')
+    : '(no peer agents have recent output)';
 
   return {
-    type:        'inject',
-    targetTitle: match[1].trim(),
-    message:     match[2].trim(),
+    system: 'You are a helpful synthesiser. Output only a direct answer under 150 words.',
+    userContent: `Agent "${requestingAgent}" is asking for help mid-task.
+
+QUESTION: ${ask}
+THEIR CONTEXT: ${context || '(none provided)'}
+
+WHAT OTHER AGENTS HAVE BEEN DOING:
+${peerBlocks}
+
+Write a direct, actionable answer (≤ 150 words) synthesised from the other agents' work.
+Include specific identifiers (function names, file paths, variable names) where relevant.
+If the peer output contains no relevant information, say so in one sentence.
+Do NOT add suggestions beyond what was asked.`,
   };
+}
+
+export function buildIntentClassifyPrompt(message: string): { system: string; userContent: string } {
+  return {
+    system: "You are a strict classifier. Output exactly one word: 'chat' or 'plan'.",
+    userContent: `You are an intent classifier for a developer orchestration tool.
+The user is talking to an orchestrator that can either:
+1. "chat": Answer questions, route a simple instruction to a terminal, or summarize.
+2. "plan": Break down a goal into a multi-step pipeline and assign agents to tasks.
+
+Classify the following user message. If the message describes building a feature, creating a pipeline, or assigning multiple agents to a goal, classify it as "plan". Otherwise, classify it as "chat".
+
+Return ONLY the word "chat" or "plan". No other text.
+
+Message: "${message}"`,
+  };
+}
+
+// ── Pass-through fallback (no LLM needed) ────────────────────────────────────
+
+export function buildPassThroughBrief(
+  completedTasks: CompletedTaskContext[],
+  nextTaskDescription: string,
+): string {
+  const contextLines = completedTasks.map(t =>
+    `[Context from: ${t.taskTitle}]\nSummary: ${t.output.summary}\nWhat you need: ${t.output.needs}`
+  ).join('\n\n');
+  return `${contextLines}\n\nYour task: ${nextTaskDescription}`;
+}
+
+// ── Plan JSON parsing (used after calling planGen provider) ──────────────────
+
+export function parsePlanGenResponse(response: string): RawPlanTask[] {
+  const jsonMatch = response.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) throw new Error('Plan generation returned no JSON array. Try rephrasing your goal.');
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    throw new Error(`Plan generation returned invalid JSON: ${e}`);
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error('Plan generation returned an empty or invalid task list.');
+  }
+  return parsed as RawPlanTask[];
 }
