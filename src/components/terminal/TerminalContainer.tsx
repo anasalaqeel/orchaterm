@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
-import { TerminalTab, TerminalTabHandle } from './TerminalTab';
-import { useDashboard } from '../../context/DashboardContext';
-import { invoke } from '@tauri-apps/api/core';
-import { Plus, X, Terminal, Edit2, Check, Palette, ChevronDown } from 'lucide-react';
-import { css, cx } from '@emotion/css';
-import type { TerminalSession, InterruptPolicy } from '../../types';
-import { loadTerminalTabs, saveTerminalTabs } from '../../services/storage';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { TerminalTab, TerminalTabHandle } from "./TerminalTab";
+import { useDashboard } from "../../context/DashboardContext";
+import { invoke } from "@tauri-apps/api/core";
+import { Plus, X, Terminal, Edit2, Check, Palette, ChevronDown } from "lucide-react";
+import { css, cx } from "@emotion/css";
+import type { TerminalSession, InterruptPolicy } from "../../types";
+import { loadTerminalTabs, saveTerminalTabs } from "../../services/storage";
+import { useSplitTree, findNodeById } from "../../hooks/useSplitTree";
+import { computeSplitLayout, type DividerRect } from "../../utils/splitLayout";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -19,66 +21,55 @@ interface ShellInfo {
 interface TerminalContainerProps {
   workspaceId: string;
   workspacePath: string;
-  /** Stable key for this scope (workspaceId::spaceId or workspaceId::workspace).
-   *  Used to save/restore tab metadata per scope. */
   scopeKey: string;
+}
+
+type DropEdge = "left" | "right" | "top" | "bottom";
+
+interface HoveredDrop {
+  leafId: string;
+  edge: DropEdge;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const TAB_COLOR_PRESETS = [
-  '#7B68EE', // brand purple (default)
-  '#10b981', // emerald
-  '#3b82f6', // blue
-  '#8b5cf6', // violet
-  '#ec4899', // pink
-  '#ef4444', // red
-  '#06b6d4', // cyan
-  '#84cc16', // lime
+  "#7B68EE",
+  "#10b981",
+  "#3b82f6",
+  "#8b5cf6",
+  "#ec4899",
+  "#ef4444",
+  "#06b6d4",
+  "#84cc16",
 ];
+
+const DROP_EDGE_FRACTION = 0.28; // fraction of pane width/height that counts as an edge zone
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function shellBasename(path: string): string {
-  const part = path.replace(/\\/g, '/').split('/').pop() ?? path;
-  return part.replace(/\.(exe|cmd|bat|sh)$/i, '');
+  const part = path.replace(/\\/g, "/").split("/").pop() ?? path;
+  return part.replace(/\.(exe|cmd|bat|sh)$/i, "");
 }
 
-/**
- * Find the best matching shell for a given shellPath setting.
- *
- * Priority (highest wins):
- *   3 — exact path match          e.g. settings="C:\...\bash.exe" vs shell.path="C:\...\bash.exe"
- *   2 — path-basename match       e.g. settings="bash"            vs shellBasename("C:\...\bash.exe")="bash"
- *   1 — name substring match      e.g. settings="bash"            vs shell.name="Git Bash"
- *
- * Scoring beats the old `.find()` approach, which would match "WSL bash" before
- * "Git Bash" when shellPath="bash" because "WSL bash" appears first in the list.
- */
 function findPreferredShell(shells: ShellInfo[], shellPath: string): ShellInfo | null {
-  const saved = (shellPath ?? '').trim();
+  const saved = (shellPath ?? "").trim();
   if (!saved || shells.length === 0) return null;
   const savedBase = shellBasename(saved).toLowerCase();
-
   let best: ShellInfo | null = null;
   let bestScore = 0;
-
   for (const s of shells) {
     let score = 0;
-    if (s.path === saved) {
-      score = 3;
-    } else if (savedBase && shellBasename(s.path).toLowerCase() === savedBase) {
-      score = 2;
-    } else if (savedBase && s.name.toLowerCase().includes(savedBase)) {
-      score = 1;
-    }
+    if (s.path === saved) score = 3;
+    else if (savedBase && shellBasename(s.path).toLowerCase() === savedBase) score = 2;
+    else if (savedBase && s.name.toLowerCase().includes(savedBase)) score = 1;
     if (score > bestScore) {
       bestScore = score;
       best = s;
-      if (score === 3) break; // can't do better than exact match
+      if (score === 3) break;
     }
   }
-
   return best;
 }
 
@@ -89,31 +80,31 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   workspacePath,
   scopeKey,
 }) => {
-  const { settings, addTerminalSession, removeTerminalSession, updateTerminalSession } = useDashboard();
+  const { settings, addTerminalSession, removeTerminalSession, updateTerminalSession } =
+    useDashboard();
 
   // ── Shell detection ──────────────────────────────────────────────────────
   const [availableShells, setAvailableShells] = useState<ShellInfo[]>([]);
   const [selectedShell, setSelectedShell] = useState<ShellInfo | null>(null);
   const [shellPickerOpen, setShellPickerOpen] = useState(false);
-  const [shellDropdownPos, setShellDropdownPos] = useState<{ top: number; left: number } | null>(null);
+  const [shellDropdownPos, setShellDropdownPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
   const shellPickerRef = useRef<HTMLDivElement>(null);
   const selectedShellRef = useRef<ShellInfo | null>(null);
   selectedShellRef.current = selectedShell;
 
   useEffect(() => {
-    invoke<ShellInfo[]>('get_available_shells')
+    invoke<ShellInfo[]>("get_available_shells")
       .then((shells) => {
         if (shells.length === 0) return;
         setAvailableShells(shells);
         setSelectedShell(findPreferredShell(shells, settings.shellPath) ?? shells[0]);
       })
       .catch(() => {
-        // get_available_shells failed (dev mode / non-Tauri). Use whatever
-        // the user saved, or leave the path empty so spawn_pty picks the
-        // platform default on the Rust side.
         const fallback: ShellInfo = {
-          name: shellBasename(settings.shellPath) || 'Shell',
-          path: settings.shellPath || '',
+          name: shellBasename(settings.shellPath) || "Shell",
+          path: settings.shellPath || "",
           args: [],
         };
         setAvailableShells([fallback]);
@@ -122,8 +113,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Re-select the preferred shell whenever the user changes the default in Settings
-  // while this terminal container is already mounted.
   useEffect(() => {
     if (availableShells.length === 0) return;
     const preferred = findPreferredShell(availableShells, settings.shellPath);
@@ -137,34 +126,110 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         setShellPickerOpen(false);
       }
     };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
   }, [shellPickerOpen]);
 
   // ── Session state ────────────────────────────────────────────────────────
-  // isInitializing stays true until the first default tab is created.
-  // This prevents the empty-state card from flashing during remount.
   const [isInitializing, setIsInitializing] = useState(true);
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const activeSessionIdRef = useRef<string | null>(null);
-  activeSessionIdRef.current = activeSessionId;
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState('');
+  const [editingTitle, setEditingTitle] = useState("");
   const tabCounter = useRef(0);
   const registeredIds = useRef<Set<string>>(new Set());
 
-  // ── Color picker state ───────────────────────────────────────────────────
+  // ── Split tree ───────────────────────────────────────────────────────────
+  const {
+    tree,
+    activePaneId,
+    setActivePaneId,
+    moveSession,
+    closePane,
+    setRatios,
+    setLeafSession,
+    removePanesBySession,
+    resetTree,
+    visibleSessionIds,
+  } = useSplitTree("");
+
+  const activePaneIdRef = useRef(activePaneId);
+  activePaneIdRef.current = activePaneId;
+  const treeRef = useRef(tree);
+  treeRef.current = tree;
+  const visibleSessionIdsRef = useRef(visibleSessionIds);
+  visibleSessionIdsRef.current = visibleSessionIds;
+
+  // ── Container size ───────────────────────────────────────────────────────
+  const viewportsRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const el = viewportsRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      setContainerSize({ width, height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // ── Split layout (no header height — terminals use full pane) ────────────
+  const layout = useMemo(
+    () => computeSplitLayout(tree, 0, 0, containerSize.width, containerSize.height, 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tree, containerSize.width, containerSize.height],
+  );
+
+  const isSplit = layout.panes.length > 1;
+
+  // Sessions ordered by pane position (for tab group), then background sessions
+  const inViewSessions = useMemo(() => {
+    return layout.panes
+      .map((p) => sessions.find((s) => s.id === p.sessionId))
+      .filter((s): s is TerminalSession => !!s);
+  }, [layout.panes, sessions]);
+
+  const bgSessions = useMemo(
+    () => sessions.filter((s) => !layout.panes.some((p) => p.sessionId === s.id)),
+    [sessions, layout.panes],
+  );
+
+  // Derived: session in active pane → drives tab bar highlight
+  const activeSessionId = useMemo(
+    () => layout.panes.find((p) => p.leafId === activePaneId)?.sessionId ?? null,
+    [layout.panes, activePaneId],
+  );
+
+  // ── Drag-drop split state ────────────────────────────────────────────────
+  const [isDraggingTab, setIsDraggingTab] = useState(false);
+  const [hoveredDrop, setHoveredDrop] = useState<HoveredDrop | null>(null);
+  const draggingSessionIdRef = useRef<string | null>(null);
+
+  // ── Fit newly-visible terminals ──────────────────────────────────────────
+  const prevVisibleRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const current = new Set(visibleSessionIds);
+    requestAnimationFrame(() => {
+      for (const sid of current) {
+        if (!prevVisibleRef.current.has(sid)) {
+          tabRefs.current.get(sid)?.current?.fit();
+        }
+      }
+      prevVisibleRef.current = current;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleSessionIds.join(",")]);
+
+  // ── Color picker ─────────────────────────────────────────────────────────
   const [colorPickerOpenId, setColorPickerOpenId] = useState<string | null>(null);
-  const [colorPickerPos, setColorPickerPos]       = useState<{ top: number; left: number } | null>(null);
+  const [colorPickerPos, setColorPickerPos] = useState<{ top: number; left: number } | null>(null);
   const colorPickerRef = useRef<HTMLDivElement>(null);
 
-  // ── Interrupt policy context menu ────────────────────────────────────────
-  const [policyMenu, setPolicyMenu] = useState<{
-    sessionId: string;
-    x: number;
-    y: number;
-  } | null>(null);
+  // ── Interrupt policy menu ────────────────────────────────────────────────
+  const [policyMenu, setPolicyMenu] = useState<{ sessionId: string; x: number; y: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!colorPickerOpenId) return;
@@ -173,74 +238,79 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         setColorPickerOpenId(null);
       }
     };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
   }, [colorPickerOpenId]);
 
-  // ── Drag-to-reorder state ────────────────────────────────────────────────
-  const [dragId, setDragId]     = useState<string | null>(null);
+  // ── Tab bar drag-to-reorder state ────────────────────────────────────────
+  const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-  // Ref keeps the dragged ID stable across renders so handlers never read a stale closure.
   const dragIdRef = useRef<string | null>(null);
+
+  // Safety net: always clean up drag state when any drag ends on the window.
+  useEffect(() => {
+    const cleanup = () => {
+      dragIdRef.current = null;
+      draggingSessionIdRef.current = null;
+      setDragId(null);
+      setDragOverId(null);
+      setIsDraggingTab(false);
+      setHoveredDrop(null);
+    };
+    window.addEventListener("dragend", cleanup);
+    return () => window.removeEventListener("dragend", cleanup);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Context sync ─────────────────────────────────────────────────────────
   const tabRefs = useRef<Map<string, React.RefObject<TerminalTabHandle | null>>>(new Map());
 
   useEffect(() => {
-    const currentIds = new Set(sessions.map(s => s.id));
-    registeredIds.current.forEach(id => {
+    const currentIds = new Set(sessions.map((s) => s.id));
+    registeredIds.current.forEach((id) => {
       if (!currentIds.has(id)) {
         removeTerminalSession(id);
         registeredIds.current.delete(id);
       }
     });
-    sessions.forEach(s => {
+    sessions.forEach((s) => {
       if (!registeredIds.current.has(s.id)) {
         addTerminalSession({ ...s, workspaceId });
         registeredIds.current.add(s.id);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions.map(s => s.id).join(','), workspaceId]);
+  }, [sessions.map((s) => s.id).join(","), workspaceId]);
 
   useEffect(() => {
     return () => {
-      registeredIds.current.forEach(id => removeTerminalSession(id));
+      registeredIds.current.forEach((id) => removeTerminalSession(id));
       registeredIds.current.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Scope change: restore saved tabs or create default ──────────────────
-  // Runs on mount (and whenever workspaceId changes, though the component is
-  // re-keyed from above so that is equivalent to a remount).
+  // ── Scope change: restore or create ─────────────────────────────────────
   const prevWorkspaceId = useRef(workspaceId);
 
   useEffect(() => {
     if (prevWorkspaceId.current !== workspaceId) {
-      sessions.forEach((s) => {
-        invoke('kill_pty', { sessionId: s.id }).catch(() => {});
-      });
+      sessions.forEach((s) => invoke("kill_pty", { sessionId: s.id }).catch(() => {}));
       tabRefs.current.clear();
     }
     prevWorkspaceId.current = workspaceId;
-
     let cancelled = false;
 
     const restoreOrCreate = async () => {
       const shell = selectedShellRef.current;
-      const shellPath = shell?.path ?? settings.shellPath ?? '';
+      const shellPath = shell?.path ?? settings.shellPath ?? "";
       const shellArgs = shell?.args ?? [];
       const shellName = shell?.name ?? shellBasename(shellPath);
-
-      // Try to restore previously saved tabs for this scope.
       const allTabs = await loadTerminalTabs();
       const saved = allTabs[scopeKey];
-
       if (cancelled) return;
 
       if (saved && saved.length > 0) {
-        // Restore saved layout — fresh IDs, same metadata.
         tabCounter.current = saved.length;
         const restored: TerminalSession[] = saved
           .slice()
@@ -256,18 +326,28 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
               workspaceId,
               color: tab.color,
               order: i,
-              interruptPolicy: 'always' as const,
+              interruptPolicy: "always" as const,
             };
           });
         setSessions(restored);
-        setActiveSessionId(restored[0].id);
+        resetTree(restored[0].id);
       } else {
-        // No saved state — create a single default tab.
         tabCounter.current = 1;
         const defaultId = crypto.randomUUID();
         tabRefs.current.set(defaultId, React.createRef<TerminalTabHandle | null>());
-        setSessions([{ id: defaultId, title: `${shellName} 1`, shell: shellPath, shellArgs, workspaceId, color: null, order: 0, interruptPolicy: 'always' }]);
-        setActiveSessionId(defaultId);
+        setSessions([
+          {
+            id: defaultId,
+            title: `${shellName} 1`,
+            shell: shellPath,
+            shellArgs,
+            workspaceId,
+            color: null,
+            order: 0,
+            interruptPolicy: "always",
+          },
+        ]);
+        resetTree(defaultId);
       }
 
       setEditingSessionId(null);
@@ -279,26 +359,25 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     return () => {
       cancelled = true;
       setSessions((prev) => {
-        prev.forEach((s) => invoke('kill_pty', { sessionId: s.id }).catch(() => {}));
+        prev.forEach((s) => invoke("kill_pty", { sessionId: s.id }).catch(() => {}));
         return prev;
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, scopeKey]);
 
-  // ── Save tab metadata whenever sessions change ────────────────────────────
+  // ── Save tab metadata ────────────────────────────────────────────────────
   const saveTabsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (isInitializing) return; // skip until the first tab batch is ready
+    if (isInitializing) return;
     if (saveTabsTimer.current) clearTimeout(saveTabsTimer.current);
     saveTabsTimer.current = setTimeout(async () => {
       const allTabs = await loadTerminalTabs();
       if (sessions.length === 0) {
-        // All tabs closed — remove scope entry so next open starts fresh.
         delete allTabs[scopeKey];
       } else {
-        allTabs[scopeKey] = sessions.map(s => ({
+        allTabs[scopeKey] = sessions.map((s) => ({
           title: s.title,
           shell: s.shell,
           shellArgs: s.shellArgs,
@@ -308,64 +387,73 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       }
       await saveTerminalTabs(allTabs);
     }, 500);
-    return () => { if (saveTabsTimer.current) clearTimeout(saveTabsTimer.current); };
+    return () => {
+      if (saveTabsTimer.current) clearTimeout(saveTabsTimer.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions, isInitializing, scopeKey]);
 
   // ── Tab actions ──────────────────────────────────────────────────────────
 
-  const createNewTab = useCallback((shell?: ShellInfo) => {
-    const s = shell ?? selectedShellRef.current;
-    const shellPath = s?.path ?? settings.shellPath ?? '';
-    const shellArgs = s?.args ?? [];
-    const shellName = s?.name ?? shellBasename(shellPath);
-
-    tabCounter.current += 1;
-    const newId = crypto.randomUUID();
-    tabRefs.current.set(newId, React.createRef<TerminalTabHandle | null>());
-    const newSession: TerminalSession = {
-      id: newId,
-      title: `${shellName} ${tabCounter.current}`,
-      shell: shellPath,
-      shellArgs,
-      workspaceId,
-      color: null,
-      order: tabCounter.current - 1,
-      interruptPolicy: 'always',
-    };
-    setSessions((prev) => [...prev, newSession]);
-    setActiveSessionId(newId);
-  }, [settings.shellPath, workspaceId]);
+  const createNewTab = useCallback(
+    (shell?: ShellInfo) => {
+      const s = shell ?? selectedShellRef.current;
+      const shellPath = s?.path ?? settings.shellPath ?? "";
+      const shellArgs = s?.args ?? [];
+      const shellName = s?.name ?? shellBasename(shellPath);
+      tabCounter.current += 1;
+      const newId = crypto.randomUUID();
+      tabRefs.current.set(newId, React.createRef<TerminalTabHandle | null>());
+      const newSession: TerminalSession = {
+        id: newId,
+        title: `${shellName} ${tabCounter.current}`,
+        shell: shellPath,
+        shellArgs,
+        workspaceId,
+        color: null,
+        order: tabCounter.current - 1,
+        interruptPolicy: "always",
+      };
+      setSessions((prev) => [...prev, newSession]);
+      setLeafSession(activePaneIdRef.current, newId);
+    },
+    [settings.shellPath, workspaceId, setLeafSession],
+  );
 
   const closeTab = useCallback(
     (sessionId: string, e: React.MouseEvent) => {
       e.stopPropagation();
-      invoke('kill_pty', { sessionId }).catch(() => {});
+      invoke("kill_pty", { sessionId }).catch(() => {});
       tabRefs.current.delete(sessionId);
-      setSessions((prev) => {
-        const next = prev.filter((s) => s.id !== sessionId);
-        if (activeSessionIdRef.current === sessionId) {
-          setActiveSessionId(next.length > 0 ? next[next.length - 1].id : null);
-        }
-        return next;
-      });
+      removePanesBySession(sessionId);
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [removePanesBySession],
   );
 
-  const switchTab = useCallback((sessionId: string) => {
-    setActiveSessionId(sessionId);
-    requestAnimationFrame(() => {
-      const ref = tabRefs.current.get(sessionId);
-      if (ref?.current) {
-        ref.current.fit();
-        ref.current.focus();
-      }
-    });
-  }, []);
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
 
-  // ── Rename logic ─────────────────────────────────────────────────────────
+  const switchTab = useCallback(
+    (sessionId: string) => {
+      // If already visible in a pane, focus that pane instead of replacing
+      const existingPane = layoutRef.current.panes.find((p) => p.sessionId === sessionId);
+      if (existingPane) {
+        setActivePaneId(existingPane.leafId);
+        requestAnimationFrame(() => tabRefs.current.get(sessionId)?.current?.focus());
+        return;
+      }
+      // Not in any pane — show in the active pane
+      setLeafSession(activePaneIdRef.current, sessionId);
+      requestAnimationFrame(() => {
+        const ref = tabRefs.current.get(sessionId);
+        if (ref?.current) { ref.current.fit(); ref.current.focus(); }
+      });
+    },
+    [setLeafSession, setActivePaneId],
+  );
+
+  // ── Rename ───────────────────────────────────────────────────────────────
 
   const startRename = (id: string, currentTitle: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -384,19 +472,19 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   };
 
   const handleRenameKeyDown = (id: string, e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') saveRename(id);
-    else if (e.key === 'Escape') setEditingSessionId(null);
+    if (e.key === "Enter") saveRename(id);
+    else if (e.key === "Escape") setEditingSessionId(null);
   };
 
-  // ── Color picker logic ────────────────────────────────────────────────────
+  // ── Color picker ─────────────────────────────────────────────────────────
 
   const setTabColor = (sessionId: string, color: string | null) => {
-    setSessions((prev) =>
-      prev.map((s) => (s.id === sessionId ? { ...s, color } : s)),
-    );
+    setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, color } : s)));
     updateTerminalSession(sessionId, { color });
     setColorPickerOpenId(null);
   };
+
+  // ── Interrupt policy ─────────────────────────────────────────────────────
 
   const handleTabContextMenu = (e: React.MouseEvent, sessionId: string) => {
     e.preventDefault();
@@ -412,75 +500,82 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     setPolicyMenu(null);
   };
 
-  // ── Drag-to-reorder logic ─────────────────────────────────────────────────
+  // ── Tab bar drag-to-reorder ───────────────────────────────────────────────
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
-    // Write to ref immediately — state update is async and closures could be stale.
     dragIdRef.current = id;
+    draggingSessionIdRef.current = id;
     setDragId(id);
-    e.dataTransfer.effectAllowed = 'move';
-    // Required by some browsers to enable the drop event.
-    e.dataTransfer.setData('text/plain', id);
+    setIsDraggingTab(true);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id);
   };
 
   const handleDragOver = (e: React.DragEvent, id: string) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    e.dataTransfer.dropEffect = "move";
     if (id !== dragIdRef.current) setDragOverId(id);
   };
 
   const handleDrop = (e: React.DragEvent, targetId: string) => {
     e.preventDefault();
-    e.stopPropagation(); // don't let tab-level drops bubble to the strip handler
+    e.stopPropagation();
     const fromId = dragIdRef.current;
     if (!fromId || fromId === targetId) {
       dragIdRef.current = null;
+      draggingSessionIdRef.current = null;
       setDragId(null);
       setDragOverId(null);
+      setHoveredDrop(null);
+      setIsDraggingTab(false);
       return;
     }
-
-    // Capture fromId in local var so the functional updater never touches the ref.
     const capturedFromId = fromId;
     setSessions((prev) => {
       const from = prev.findIndex((s) => s.id === capturedFromId);
-      const to   = prev.findIndex((s) => s.id === targetId);
+      const to = prev.findIndex((s) => s.id === targetId);
       if (from === -1 || to === -1) return prev;
-
       const next = [...prev];
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
-      // Re-assign order fields and sync to context.
       return next.map((s, i) => {
         if (s.order !== i) updateTerminalSession(s.id, { order: i });
         return { ...s, order: i };
       });
     });
-
     dragIdRef.current = null;
+    draggingSessionIdRef.current = null;
     setDragId(null);
     setDragOverId(null);
+    setHoveredDrop(null);
+    setIsDraggingTab(false);
   };
 
   const handleDragEnd = () => {
     dragIdRef.current = null;
+    draggingSessionIdRef.current = null;
     setDragId(null);
     setDragOverId(null);
+    setIsDraggingTab(false);
+    setHoveredDrop(null);
   };
 
-  // Dropping anywhere on the tab strip (empty space / spacer) moves the tab to the end.
   const handleDropOnStrip = (e: React.DragEvent) => {
     e.preventDefault();
     const fromId = dragIdRef.current;
     if (!fromId) {
+      dragIdRef.current = null;
+      draggingSessionIdRef.current = null;
       setDragId(null);
       setDragOverId(null);
+      setHoveredDrop(null);
+      setIsDraggingTab(false);
       return;
     }
     const capturedFromId = fromId;
     setSessions((prev) => {
       const from = prev.findIndex((s) => s.id === capturedFromId);
-      if (from === -1 || from === prev.length - 1) return prev; // already last
+      if (from === -1 || from === prev.length - 1) return prev;
       const next = [...prev];
       const [moved] = next.splice(from, 1);
       next.push(moved);
@@ -490,48 +585,235 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       });
     });
     dragIdRef.current = null;
+    draggingSessionIdRef.current = null;
     setDragId(null);
     setDragOverId(null);
+    setHoveredDrop(null);
+    setIsDraggingTab(false);
   };
+
+  // ── Pane drop (split via drag) ────────────────────────────────────────────
+
+  const handlePaneDrop = useCallback(
+    (leafId: string, edge: DropEdge) => {
+      const sessionId = draggingSessionIdRef.current;
+      if (!sessionId) return;
+      const before = edge === "left" || edge === "top";
+      const direction = edge === "left" || edge === "right" ? "h" : "v";
+      moveSession(sessionId, leafId, direction, before);
+      dragIdRef.current = null;
+      draggingSessionIdRef.current = null;
+      setDragId(null);
+      setDragOverId(null);
+      setHoveredDrop(null);
+      setIsDraggingTab(false);
+      requestAnimationFrame(() => {
+        for (const sid of visibleSessionIdsRef.current) {
+          tabRefs.current.get(sid)?.current?.fit();
+        }
+      });
+    },
+    [moveSession],
+  );
+
+  // ── Divider drag resize ───────────────────────────────────────────────────
+
+  const dividerDragRef = useRef<{
+    divider: DividerRect;
+    startPos: number;
+    startRatios: number[];
+  } | null>(null);
+
+  const handleDividerMouseDown = useCallback(
+    (e: React.MouseEvent, divider: DividerRect) => {
+      e.preventDefault();
+      const containerNode = findNodeById(treeRef.current, divider.containerId);
+      if (!containerNode || containerNode.type !== "split") return;
+
+      dividerDragRef.current = {
+        divider,
+        startPos: divider.direction === "h" ? e.clientX : e.clientY,
+        startRatios: [...containerNode.ratios],
+      };
+
+      const onMove = (ev: MouseEvent) => {
+        const drag = dividerDragRef.current;
+        if (!drag) return;
+        const currentPos = drag.divider.direction === "h" ? ev.clientX : ev.clientY;
+        const delta = currentPos - drag.startPos;
+        const deltaRatio = delta / drag.divider.containerAvailableSize;
+        const { childIndex } = drag.divider;
+        const newRatios = [...drag.startRatios];
+        const min = 0.05;
+        newRatios[childIndex] = Math.max(min, drag.startRatios[childIndex] + deltaRatio);
+        newRatios[childIndex + 1] = Math.max(min, drag.startRatios[childIndex + 1] - deltaRatio);
+        const sum = newRatios.reduce((a, b) => a + b, 0);
+        setRatios(
+          drag.divider.containerId,
+          newRatios.map((r) => r / sum),
+        );
+      };
+
+      const onUp = () => {
+        dividerDragRef.current = null;
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        requestAnimationFrame(() => {
+          for (const sid of visibleSessionIdsRef.current) {
+            tabRefs.current.get(sid)?.current?.fit();
+          }
+        });
+      };
+
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [setRatios],
+  );
 
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className={styles.container}>
-      {/* Tabs Header */}
+      {/* Tab bar */}
       <div
         className={styles.header}
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDropOnStrip}
       >
         <div className={styles.tabsList} onDragOver={(e) => e.preventDefault()}>
-          {sessions.map((session) => {
-            const isActive   = session.id === activeSessionId;
-            const isEditing  = session.id === editingSessionId;
+          {/* In-view group — only shown in split mode */}
+          {isSplit && inViewSessions.length > 0 && (
+            <div className={styles.tabGroup}>
+              {inViewSessions.map((session, groupIdx) => {
+                const isActive = session.id === activeSessionId;
+                const isEditing = session.id === editingSessionId;
+                const isDragging = session.id === dragId;
+                const isDragOver = session.id === dragOverId;
+                const tabColor = session.color ?? "#7B68EE";
+                const isColorPickerOpen = session.id === colorPickerOpenId;
+                return (
+                  <div
+                    key={session.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, session.id)}
+                    onDragOver={(e) => handleDragOver(e, session.id)}
+                    onDrop={(e) => handleDrop(e, session.id)}
+                    onDragEnd={handleDragEnd}
+                    onClick={() => switchTab(session.id)}
+                    onContextMenu={(e) => handleTabContextMenu(e, session.id)}
+                    className={cx(
+                      styles.tab,
+                      styles.groupedTab,
+                      isActive ? styles.groupedActiveTab : styles.groupedInactiveTab,
+                      isDragging && styles.tabDragging,
+                      isDragOver && styles.tabDragOver,
+                    )}
+                    style={isActive ? { borderTopColor: tabColor } : undefined}
+                  >
+                    <span className={cx(styles.paneBadge, isActive ? styles.paneBadgeActive : styles.paneBadgeInactive)}>{groupIdx + 1}</span>
+                    <div
+                      className={styles.colorDotWrapper}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isColorPickerOpen) {
+                          setColorPickerOpenId(null);
+                        } else {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setColorPickerPos({ top: rect.bottom + 8, left: rect.left - 4 });
+                          setColorPickerOpenId(session.id);
+                        }
+                      }}
+                    >
+                      <span
+                        className={cx(styles.colorDot, isActive && styles.colorDotActive)}
+                        style={{ backgroundColor: session.color ?? (isActive ? "var(--color-brand)" : "var(--bg-tertiary)") }}
+                        title="Change tab color"
+                      />
+                    </div>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        onBlur={() => saveRename(session.id)}
+                        onKeyDown={(e) => handleRenameKeyDown(session.id, e)}
+                        className={styles.renameInput}
+                        autoFocus
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <span
+                        onDoubleClick={(e) => startRename(session.id, session.title, e)}
+                        className={styles.tabTitle}
+                        title={`${session.title} — double-click to rename`}
+                      >
+                        {session.title}
+                      </span>
+                    )}
+                    <div className={cx(styles.tabActions, "tab-actions-btn-group")}>
+                      {!isEditing && (
+                        <>
+                          <button onClick={(e) => { e.stopPropagation(); startRename(session.id, session.title, e); }} className={styles.tabActionBtn} title="Rename tab">
+                            <Edit2 className={styles.tinyIcon} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isColorPickerOpen) { setColorPickerOpenId(null); }
+                              else {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setColorPickerPos({ top: rect.bottom + 8, left: rect.left - 4 });
+                                setColorPickerOpenId(session.id);
+                              }
+                            }}
+                            className={styles.tabActionBtn} title="Change tab color"
+                          >
+                            <Palette className={styles.tinyIcon} />
+                          </button>
+                        </>
+                      )}
+                      <button onClick={(e) => closeTab(session.id, e)} className={styles.closeTabBtn} title="Close tab">
+                        <X className={styles.tinyIcon} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Separator between groups */}
+          {isSplit && inViewSessions.length > 0 && bgSessions.length > 0 && (
+            <div className={styles.tabGroupSep} />
+          )}
+
+          {/* Background tabs (or all tabs in single-pane mode) */}
+          {(isSplit ? bgSessions : sessions).map((session) => {
+            const isActive = session.id === activeSessionId;
+            const isEditing = session.id === editingSessionId;
             const isDragging = session.id === dragId;
             const isDragOver = session.id === dragOverId;
-            const tabColor   = session.color ?? '#7B68EE';
+            const tabColor = session.color ?? "#7B68EE";
             const isColorPickerOpen = session.id === colorPickerOpenId;
-
             return (
               <div
                 key={session.id}
                 draggable
                 onDragStart={(e) => handleDragStart(e, session.id)}
-                onDragOver={(e)  => handleDragOver(e, session.id)}
-                onDrop={(e)      => handleDrop(e, session.id)}
+                onDragOver={(e) => handleDragOver(e, session.id)}
+                onDrop={(e) => handleDrop(e, session.id)}
                 onDragEnd={handleDragEnd}
                 onClick={() => switchTab(session.id)}
                 onContextMenu={(e) => handleTabContextMenu(e, session.id)}
                 className={cx(
                   styles.tab,
-                  isActive   ? styles.activeTab    : styles.inactiveTab,
+                  isActive ? styles.activeTab : styles.inactiveTab,
                   isDragging && styles.tabDragging,
                   isDragOver && styles.tabDragOver,
                 )}
                 style={isActive ? { borderTopColor: tabColor } : undefined}
               >
-                {/* Color dot */}
                 <div
                   className={styles.colorDotWrapper}
                   onClick={(e) => {
@@ -547,12 +829,10 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 >
                   <span
                     className={cx(styles.colorDot, isActive && styles.colorDotActive)}
-                    style={{ backgroundColor: session.color ?? (isActive ? 'var(--color-brand)' : 'var(--bg-tertiary)') }}
+                    style={{ backgroundColor: session.color ?? (isActive ? "var(--color-brand)" : "var(--bg-tertiary)") }}
                     title="Change tab color"
                   />
-
                 </div>
-
                 {isEditing ? (
                   <input
                     type="text"
@@ -573,43 +853,29 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                     {session.title}
                   </span>
                 )}
-
-                <div className={cx(styles.tabActions, 'tab-actions-btn-group')}>
+                <div className={cx(styles.tabActions, "tab-actions-btn-group")}>
                   {!isEditing && (
                     <>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          startRename(session.id, session.title, e);
-                        }}
-                        className={styles.tabActionBtn}
-                        title="Rename tab"
-                      >
+                      <button onClick={(e) => { e.stopPropagation(); startRename(session.id, session.title, e); }} className={styles.tabActionBtn} title="Rename tab">
                         <Edit2 className={styles.tinyIcon} />
                       </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (isColorPickerOpen) {
-                            setColorPickerOpenId(null);
-                          } else {
+                          if (isColorPickerOpen) { setColorPickerOpenId(null); }
+                          else {
                             const rect = e.currentTarget.getBoundingClientRect();
                             setColorPickerPos({ top: rect.bottom + 8, left: rect.left - 4 });
                             setColorPickerOpenId(session.id);
                           }
                         }}
-                        className={styles.tabActionBtn}
-                        title="Change tab color"
+                        className={styles.tabActionBtn} title="Change tab color"
                       >
                         <Palette className={styles.tinyIcon} />
                       </button>
                     </>
                   )}
-                  <button
-                    onClick={(e) => closeTab(session.id, e)}
-                    className={styles.closeTabBtn}
-                    title="Close tab"
-                  >
+                  <button onClick={(e) => closeTab(session.id, e)} className={styles.closeTabBtn} title="Close tab">
                     <X className={styles.tinyIcon} />
                   </button>
                 </div>
@@ -618,18 +884,14 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
           })}
         </div>
 
-        {/* New-tab controls — flush after the last tab */}
         <div className={styles.newTabWrapper}>
-          {/* + creates a tab with the last-used shell immediately */}
           <button
             className={styles.newTabBtn}
-            title={`New tab${selectedShell ? ` (${selectedShell.name})` : ''}`}
+            title={`New tab${selectedShell ? ` (${selectedShell.name})` : ""}`}
             onClick={() => createNewTab()}
           >
             <Plus className={styles.smallIcon} />
           </button>
-
-          {/* ▾ opens the shell picker — only shown when there are multiple shells */}
           {availableShells.length > 1 && (
             <button
               className={styles.shellToggleBtn}
@@ -639,10 +901,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   setShellPickerOpen(false);
                 } else {
                   const rect = e.currentTarget.getBoundingClientRect();
-                  setShellDropdownPos({
-                    top:  rect.bottom + 6,
-                    left: rect.right - 240,
-                  });
+                  setShellDropdownPos({ top: rect.bottom + 6, left: rect.right - 240 });
                   setShellPickerOpen(true);
                 }
               }}
@@ -652,183 +911,348 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
           )}
         </div>
 
-        {/* absorbs remaining space so tabs don't stretch */}
         <div className={styles.headerSpacer} />
       </div>
 
-      {/* Color picker portal — rendered at document.body to escape overflow clip */}
-      {colorPickerOpenId && colorPickerPos && (() => {
-        const pickerSession = sessions.find(s => s.id === colorPickerOpenId);
-        if (!pickerSession) return null;
-        return createPortal(
+      {/* Portals */}
+      {colorPickerOpenId &&
+        colorPickerPos &&
+        (() => {
+          const pickerSession = sessions.find((s) => s.id === colorPickerOpenId);
+          if (!pickerSession) return null;
+          return createPortal(
+            <div
+              ref={colorPickerRef}
+              className={styles.colorPickerPopover}
+              style={{ top: colorPickerPos.top, left: colorPickerPos.left }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={styles.colorPickerLabel}>Tab color</div>
+              <div className={styles.colorSwatches}>
+                {TAB_COLOR_PRESETS.map((c) => (
+                  <button
+                    key={c}
+                    className={cx(
+                      styles.colorSwatch,
+                      pickerSession.color === c && styles.colorSwatchActive,
+                    )}
+                    style={{ backgroundColor: c }}
+                    onClick={() => setTabColor(pickerSession.id, c)}
+                    title={c}
+                  />
+                ))}
+                {pickerSession.color && (
+                  <button
+                    className={styles.colorSwatchReset}
+                    onClick={() => setTabColor(pickerSession.id, null)}
+                    title="Reset"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>,
+            document.body,
+          );
+        })()}
+
+      {shellPickerOpen &&
+        shellDropdownPos &&
+        createPortal(
           <div
-            ref={colorPickerRef}
-            className={styles.colorPickerPopover}
-            style={{ top: colorPickerPos.top, left: colorPickerPos.left }}
+            ref={shellPickerRef}
+            className={styles.shellDropdown}
+            style={{ top: shellDropdownPos.top, left: shellDropdownPos.left }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className={styles.colorPickerLabel}>Tab color</div>
-            <div className={styles.colorSwatches}>
-              {TAB_COLOR_PRESETS.map((c) => (
-                <button
-                  key={c}
-                  className={cx(
-                    styles.colorSwatch,
-                    pickerSession.color === c && styles.colorSwatchActive,
-                  )}
-                  style={{ backgroundColor: c }}
-                  onClick={() => setTabColor(pickerSession.id, c)}
-                  title={c}
-                />
-              ))}
-              {pickerSession.color && (
-                <button
-                  className={styles.colorSwatchReset}
-                  onClick={() => setTabColor(pickerSession.id, null)}
-                  title="Reset to default"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          </div>,
-          document.body,
-        );
-      })()}
-
-      {/* Shell picker portal — above everything including the sidebar */}
-      {shellPickerOpen && shellDropdownPos && createPortal(
-        <div
-          ref={shellPickerRef}
-          className={styles.shellDropdown}
-          style={{ top: shellDropdownPos.top, left: shellDropdownPos.left }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className={styles.shellDropdownHeader}>New tab with</div>
-          {availableShells.map((shell) => {
-            const isLastUsed = shell.path === selectedShell?.path && shell.name === selectedShell?.name;
-            return (
-              <button
-                key={shell.path + shell.name}
-                className={cx(
-                  styles.shellDropdownItem,
-                  isLastUsed && styles.shellDropdownItemActive,
-                )}
-                onClick={() => {
-                  setSelectedShell(shell);
-                  setShellPickerOpen(false);
-                  createNewTab(shell);
-                }}
-              >
-                <Terminal className={styles.shellItemIcon} />
-                <span className={styles.shellItemName}>{shell.name}</span>
-                <span className={styles.shellItemPath}>{shell.path}</span>
-                {isLastUsed && <Check className={styles.shellItemCheck} />}
-              </button>
-            );
-          })}
-        </div>,
-        document.body,
-      )}
-
-      {/* Interrupt policy context menu portal */}
-      {policyMenu && createPortal(
-        <>
-          {/* Backdrop — click outside to close */}
-          <div
-            style={{ position: 'fixed', inset: 0, zIndex: 99 }}
-            onClick={() => setPolicyMenu(null)}
-          />
-          <div
-            style={{
-              position: 'fixed',
-              top: policyMenu.y,
-              left: policyMenu.x,
-              zIndex: 100,
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: 6,
-              padding: '4px 0',
-              minWidth: 210,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-              fontSize: 12,
-            }}
-          >
-            <div style={{ padding: '4px 12px 6px', fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Auto-inject policy
-            </div>
-            {(['never', 'prompt-only', 'always'] as const).map(policy => {
-              const sess   = sessions.find(s => s.id === policyMenu.sessionId);
-              const active = sess?.interruptPolicy === policy;
-              const labels: Record<InterruptPolicy, string> = {
-                'never':       '🔒 Never — block all injections',
-                'prompt-only': '⏸ Prompt only — wait for idle',
-                'always':      '⚡ Always — inject immediately',
-              };
+            <div className={styles.shellDropdownHeader}>New tab with</div>
+            {availableShells.map((shell) => {
+              const isLastUsed =
+                shell.path === selectedShell?.path && shell.name === selectedShell?.name;
               return (
                 <button
-                  key={policy}
-                  onClick={() => handlePolicySelect(policy)}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '6px 12px',
-                    background: active ? 'rgba(123,104,238,0.12)' : 'transparent',
-                    border: 'none',
-                    color: active ? 'var(--color-brand)' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    fontSize: 12,
-                    fontWeight: active ? 700 : 400,
+                  key={shell.path + shell.name}
+                  className={cx(
+                    styles.shellDropdownItem,
+                    isLastUsed && styles.shellDropdownItemActive,
+                  )}
+                  onClick={() => {
+                    setSelectedShell(shell);
+                    setShellPickerOpen(false);
+                    createNewTab(shell);
                   }}
                 >
-                  {labels[policy]}
+                  <Terminal className={styles.shellItemIcon} />
+                  <span className={styles.shellItemName}>{shell.name}</span>
+                  <span className={styles.shellItemPath}>{shell.path}</span>
+                  {isLastUsed && <Check className={styles.shellItemCheck} />}
                 </button>
               );
             })}
-          </div>
-        </>,
-        document.body,
-      )}
+          </div>,
+          document.body,
+        )}
 
-      {/* Terminal Viewports */}
-      <div className={styles.viewports}>
+      {policyMenu &&
+        createPortal(
+          <>
+            <div
+              style={{ position: "fixed", inset: 0, zIndex: 99 }}
+              onClick={() => setPolicyMenu(null)}
+            />
+            <div
+              style={{
+                position: "fixed",
+                top: policyMenu.y,
+                left: policyMenu.x,
+                zIndex: 100,
+                background: "var(--bg-secondary)",
+                border: "1px solid var(--border-color)",
+                borderRadius: 6,
+                padding: "4px 0",
+                minWidth: 210,
+                boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                fontSize: 12,
+              }}
+            >
+              <div
+                style={{
+                  padding: "4px 12px 6px",
+                  fontSize: 10,
+                  color: "var(--text-tertiary)",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                Auto-inject policy
+              </div>
+              {(["never", "prompt-only", "always"] as const).map((policy) => {
+                const sess = sessions.find((s) => s.id === policyMenu.sessionId);
+                const active = sess?.interruptPolicy === policy;
+                const labels: Record<InterruptPolicy, string> = {
+                  never: "🔒 Never — block all injections",
+                  "prompt-only": "⏸ Prompt only — wait for idle",
+                  always: "⚡ Always — inject immediately",
+                };
+                return (
+                  <button
+                    key={policy}
+                    onClick={() => handlePolicySelect(policy)}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "6px 12px",
+                      background: active ? "rgba(123,104,238,0.12)" : "transparent",
+                      border: "none",
+                      color: active ? "var(--color-brand)" : "var(--text-secondary)",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: active ? 700 : 400,
+                    }}
+                  >
+                    {labels[policy]}
+                  </button>
+                );
+              })}
+            </div>
+          </>,
+          document.body,
+        )}
+
+      {/* Terminal viewports */}
+      <div className={styles.viewports} ref={viewportsRef}>
         {!isInitializing && sessions.length === 0 ? (
           <div className={styles.emptyState}>
             <Terminal className={styles.emptyIcon} />
             <p className={styles.emptyTitle}>No active terminal sessions</p>
-            <p className={styles.emptyDesc}>Pick a shell and launch a session for this workspace.</p>
+            <p className={styles.emptyDesc}>
+              Pick a shell and launch a session for this workspace.
+            </p>
             <button onClick={() => createNewTab()} className={styles.launchBtn}>
               <Plus className={styles.smallIcon} />
               <span>Launch Terminal Session</span>
             </button>
           </div>
         ) : (
-          sessions.map((session) => {
-            const isActive = session.id === activeSessionId;
-            const tabRef = tabRefs.current.get(session.id) ?? null;
-            return (
+          <>
+            {/* All terminals — absolute positioned so PTYs stay alive */}
+            {sessions.map((session) => {
+              const pane = layout.panes.find((p) => p.sessionId === session.id);
+              const tabRef = tabRefs.current.get(session.id) ?? null;
+              const isActivePane = isSplit && pane?.leafId === activePaneId;
+              return (
+                <div
+                  key={session.id}
+                  className={pane ? styles.paneWrapper : undefined}
+                  style={
+                    pane
+                      ? {
+                          position: "absolute",
+                          top: pane.top,
+                          left: pane.left,
+                          width: pane.width,
+                          height: pane.height,
+                          zIndex: 1,
+                        }
+                      : {
+                          position: "absolute",
+                          visibility: "hidden",
+                          pointerEvents: "none",
+                          inset: 0,
+                        }
+                  }
+                  onClick={() => {
+                    if (pane) {
+                      setActivePaneId(pane.leafId);
+                      tabRefs.current.get(session.id)?.current?.focus();
+                    }
+                  }}
+                >
+                  <TerminalTab
+                    ref={tabRef}
+                    sessionId={session.id}
+                    workspacePath={workspacePath}
+                    shell={session.shell}
+                    shellArgs={session.shellArgs}
+                  />
+                  {isSplit && pane && (
+                    <>
+                      {isActivePane && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            border: "1.5px solid var(--color-brand)",
+                            pointerEvents: "none",
+                            zIndex: 25,
+                            boxSizing: "border-box",
+                          }}
+                        />
+                      )}
+                      <button
+                        data-pane-close=""
+                        className={styles.paneCloseBtn}
+                        style={{ position: "absolute", top: 4, right: 4, zIndex: 26 }}
+                        title="Close pane"
+                        onClick={(e) => { e.stopPropagation(); closePane(pane.leafId); }}
+                      >
+                        <X style={{ width: 9, height: 9 }} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Drag-resize dividers */}
+            {layout.dividers.map((div) => (
               <div
-                key={session.id}
+                key={`${div.containerId}-${div.childIndex}`}
                 className={cx(
-                  styles.viewportWrapper,
-                  !isActive && styles.viewportWrapperHidden,
+                  styles.divider,
+                  div.direction === "h" ? styles.dividerH : styles.dividerV,
                 )}
-                onClick={() => {
-                  const ref = tabRefs.current.get(session.id);
-                  ref?.current?.focus();
+                style={{
+                  position: "absolute",
+                  top: div.top,
+                  left: div.left,
+                  width: div.width,
+                  height: div.height,
+                  zIndex: 30,
                 }}
-              >
-                <TerminalTab
-                  ref={tabRef}
-                  sessionId={session.id}
-                  workspacePath={workspacePath}
-                  shell={session.shell}
-                  shellArgs={session.shellArgs}
-                />
-              </div>
-            );
-          })
+                onMouseDown={(e) => handleDividerMouseDown(e, div)}
+              />
+            ))}
+
+            {/* Drop zones — invisible hit areas shown when dragging a tab */}
+            {isDraggingTab &&
+              layout.panes.filter((pane) => pane.sessionId !== draggingSessionIdRef.current).map((pane) => {
+                const W = pane.width;
+                const H = pane.height;
+                const eW = W * DROP_EDGE_FRACTION;
+                const eH = H * DROP_EDGE_FRACTION;
+
+                const zones: {
+                  edge: DropEdge;
+                  top: number;
+                  left: number;
+                  width: number;
+                  height: number;
+                }[] = [
+                  { edge: "left", top: pane.top, left: pane.left, width: eW, height: H },
+                  { edge: "right", top: pane.top, left: pane.left + W - eW, width: eW, height: H },
+                  {
+                    edge: "top",
+                    top: pane.top,
+                    left: pane.left + eW,
+                    width: W - 2 * eW,
+                    height: eH,
+                  },
+                  {
+                    edge: "bottom",
+                    top: pane.top + H - eH,
+                    left: pane.left + eW,
+                    width: W - 2 * eW,
+                    height: eH,
+                  },
+                ];
+
+                return zones.map((z) => (
+                  <div
+                    key={`zone-${pane.leafId}-${z.edge}`}
+                    style={{
+                      position: "absolute",
+                      top: z.top,
+                      left: z.left,
+                      width: z.width,
+                      height: z.height,
+                      zIndex: 50,
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setHoveredDrop({ leafId: pane.leafId, edge: z.edge });
+                    }}
+                    onDragLeave={() => setHoveredDrop(null)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      handlePaneDrop(pane.leafId, z.edge);
+                    }}
+                  />
+                ));
+              })}
+
+            {/* Drop indicator — shows where new pane will appear */}
+            {hoveredDrop &&
+              (() => {
+                const pane = layout.panes.find((p) => p.leafId === hoveredDrop.leafId);
+                if (!pane) return null;
+                const { edge } = hoveredDrop;
+                const hw = pane.width / 2;
+                const hh = pane.height / 2;
+                const ind: Record<DropEdge, React.CSSProperties> = {
+                  left: { top: pane.top, left: pane.left, width: hw, height: pane.height },
+                  right: { top: pane.top, left: pane.left + hw, width: hw, height: pane.height },
+                  top: { top: pane.top, left: pane.left, width: pane.width, height: hh },
+                  bottom: { top: pane.top + hh, left: pane.left, width: pane.width, height: hh },
+                };
+                return (
+                  <div
+                    style={{
+                      position: "absolute",
+                      ...ind[edge],
+                      background: "rgba(123, 104, 238, 0.18)",
+                      border: "2px solid var(--color-brand)",
+                      boxSizing: "border-box",
+                      borderRadius: 3,
+                      pointerEvents: "none",
+                      zIndex: 40,
+                    }}
+                  />
+                );
+              })()}
+          </>
         )}
       </div>
     </div>
@@ -861,7 +1285,9 @@ const styles = {
     padding-top: 8px;
     gap: 4px;
     min-width: 0;
-    &::-webkit-scrollbar { display: none; }
+    &::-webkit-scrollbar {
+      display: none;
+    }
     scrollbar-width: none;
   `,
   tab: css`
@@ -879,7 +1305,6 @@ const styles = {
     user-select: none;
     flex-shrink: 0;
     position: relative;
-
     &:hover .tab-actions-btn-group {
       opacity: 1;
     }
@@ -896,6 +1321,74 @@ const styles = {
       color: var(--text-secondary);
     }
   `,
+  tabGroup: css`
+    display: flex;
+    align-items: flex-end;
+    gap: 0;
+    position: relative;
+    &::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--color-brand);
+      border-radius: 1px 1px 0 0;
+      opacity: 0.45;
+      pointer-events: none;
+    }
+  `,
+  groupedTab: css`
+    margin: 0 1px 0 0;
+    &:last-child { margin-right: 0; }
+  `,
+  groupedActiveTab: css`
+    background-color: rgba(123, 104, 238, 0.2);
+    color: var(--text-primary);
+    &:hover {
+      background-color: rgba(123, 104, 238, 0.25);
+    }
+  `,
+  groupedInactiveTab: css`
+    background-color: transparent;
+    color: var(--text-tertiary);
+    &:hover {
+      background-color: rgba(123, 104, 238, 0.07);
+      color: var(--text-secondary);
+    }
+  `,
+  paneBadge: css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    font-size: 8px;
+    font-weight: 800;
+    flex-shrink: 0;
+    letter-spacing: -0.5px;
+    transition: all 150ms ease;
+  `,
+  paneBadgeActive: css`
+    background: var(--color-brand);
+    color: #fff;
+  `,
+  paneBadgeInactive: css`
+    background: transparent;
+    color: rgba(123, 104, 238, 0.5);
+    border: 1.5px solid rgba(123, 104, 238, 0.28);
+  `,
+  tabGroupSep: css`
+    width: 1px;
+    height: 18px;
+    background: var(--border-color-hover);
+    align-self: center;
+    margin: 0 6px;
+    flex-shrink: 0;
+    opacity: 0.5;
+  `,
   tabDragging: css`
     opacity: 0.4;
     cursor: grabbing;
@@ -903,8 +1396,6 @@ const styles = {
   tabDragOver: css`
     box-shadow: -3px 0 0 0 var(--color-brand);
   `,
-
-  /* Color dot */
   colorDotWrapper: css`
     flex-shrink: 0;
     display: flex;
@@ -918,17 +1409,17 @@ const styles = {
     border-radius: 50%;
     flex-shrink: 0;
     cursor: pointer;
-    transition: transform 150ms ease, box-shadow 150ms ease;
+    transition:
+      transform 150ms ease,
+      box-shadow 150ms ease;
     &:hover {
       transform: scale(1.4);
-      box-shadow: 0 0 0 2px rgba(255,255,255,0.15);
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
     }
   `,
   colorDotActive: css`
-    box-shadow: 0 0 0 2px rgba(255,255,255,0.1);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
   `,
-
-  /* Color picker popover — rendered as a portal on document.body */
   colorPickerPopover: css`
     position: fixed;
     z-index: 9999;
@@ -939,8 +1430,14 @@ const styles = {
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
     animation: popIn 120ms ease-out;
     @keyframes popIn {
-      from { opacity: 0; transform: scale(0.92) translateY(-4px); }
-      to   { opacity: 1; transform: scale(1)    translateY(0); }
+      from {
+        opacity: 0;
+        transform: scale(0.92) translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
     }
   `,
   colorPickerLabel: css`
@@ -961,7 +1458,9 @@ const styles = {
     border-radius: 50%;
     border: 2px solid transparent;
     cursor: pointer;
-    transition: transform 120ms ease, border-color 120ms ease;
+    transition:
+      transform 120ms ease,
+      border-color 120ms ease;
     flex-shrink: 0;
     padding: 0;
     &:hover {
@@ -992,7 +1491,6 @@ const styles = {
       color: #ef4444;
     }
   `,
-
   renameInput: css`
     background-color: var(--bg-canvas);
     border: 1px solid var(--border-color-hover);
@@ -1049,8 +1547,6 @@ const styles = {
       color: #fb7185;
     }
   `,
-
-  /* New-tab button wrapper — sits flush after tabs */
   newTabWrapper: css`
     position: relative;
     flex-shrink: 0;
@@ -1059,12 +1555,10 @@ const styles = {
     padding-bottom: 2px;
     padding-left: 2px;
   `,
-
   headerSpacer: css`
     flex: 1;
     min-width: 8px;
   `,
-
   shellDropdown: css`
     position: fixed;
     z-index: 9999;
@@ -1076,8 +1570,14 @@ const styles = {
     overflow: hidden;
     animation: fadeDropdown 120ms ease-out;
     @keyframes fadeDropdown {
-      from { opacity: 0; transform: translateY(-4px); }
-      to   { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
   `,
   shellDropdownHeader: css`
@@ -1097,10 +1597,12 @@ const styles = {
     cursor: pointer;
     transition: background 100ms ease;
     text-align: left;
-    &:hover { background-color: var(--bg-hover); }
+    &:hover {
+      background-color: var(--bg-hover);
+    }
   `,
   shellDropdownItemActive: css`
-    background-color: rgba(123, 104, 238, 0.10);
+    background-color: rgba(123, 104, 238, 0.1);
   `,
   shellItemIcon: css`
     width: 13px;
@@ -1132,7 +1634,6 @@ const styles = {
     color: var(--color-brand);
     flex-shrink: 0;
   `,
-
   newTabBtn: css`
     display: flex;
     align-items: center;
@@ -1146,7 +1647,9 @@ const styles = {
     color: var(--text-tertiary);
     cursor: pointer;
     flex-shrink: 0;
-    transition: color 150ms ease, background-color 150ms ease;
+    transition:
+      color 150ms ease,
+      background-color 150ms ease;
     &:hover {
       color: var(--color-brand);
       background-color: var(--bg-hover);
@@ -1165,24 +1668,55 @@ const styles = {
     flex-shrink: 0;
     padding: 0;
     transition: color 150ms ease;
-    &:hover { color: var(--color-brand); }
+    &:hover {
+      color: var(--color-brand);
+    }
   `,
-
   viewports: css`
     flex: 1;
     background-color: var(--bg-canvas);
     min-height: 0;
     position: relative;
   `,
-  viewportWrapper: css`
-    position: absolute;
-    inset: 0;
+  divider: css`
+    background: var(--border-color);
+    transition: background 150ms ease;
+    &:hover {
+      background: var(--color-brand);
+    }
   `,
-  viewportWrapperHidden: css`
-    visibility: hidden;
-    pointer-events: none;
+  dividerH: css`
+    cursor: col-resize;
   `,
-
+  dividerV: css`
+    cursor: row-resize;
+  `,
+  paneWrapper: css`
+    &:hover [data-pane-close] {
+      opacity: 0.6;
+    }
+  `,
+  paneCloseBtn: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.5);
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    opacity: 0;
+    transition:
+      opacity 150ms ease,
+      background 150ms ease;
+    &:hover {
+      background: rgba(244, 63, 94, 0.7);
+      color: #fff;
+      opacity: 1 !important;
+    }
+  `,
   emptyState: css`
     position: absolute;
     inset: 0;
@@ -1194,7 +1728,8 @@ const styles = {
     text-align: center;
   `,
   emptyIcon: css`
-    width: 40px; height: 40px;
+    width: 40px;
+    height: 40px;
     color: var(--text-tertiary);
     margin-bottom: 14px;
     opacity: 0.5;
@@ -1224,9 +1759,14 @@ const styles = {
     border-radius: 10px;
     border: none;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(123, 104, 238, 0.30);
-    transition: box-shadow 0.2s, filter 0.2s;
-    &:hover { box-shadow: 0 6px 20px rgba(123, 104, 238, 0.40); filter: brightness(1.06); }
+    box-shadow: 0 4px 14px rgba(123, 104, 238, 0.3);
+    transition:
+      box-shadow 0.2s,
+      filter 0.2s;
+    &:hover {
+      box-shadow: 0 6px 20px rgba(123, 104, 238, 0.4);
+      filter: brightness(1.06);
+    }
   `,
   tinyIcon: css`
     width: 10px;
