@@ -330,20 +330,20 @@ export const ConductorView: React.FC = () => {
             <div className={styles.runControls}>
               {engineRunning ? (
                 <>
-                  <button className={styles.controlBtn} onClick={handlePause} title='Pause (P)'>
+                  <button className={cx(styles.controlBtn, styles.controlBtnPause)} onClick={handlePause} title='Pause (P)'>
                     <Pause className={styles.controlIcon} /> Pause
                   </button>
-                  <button className={cx(styles.controlBtn, styles.controlBtnDanger)} onClick={handleStop} title='Stop (S)'>
+                  <button className={cx(styles.controlBtn, styles.controlBtnStop)} onClick={handleStop} title='Stop (S)'>
                     <Square className={styles.controlIcon} /> Stop
                   </button>
                 </>
               ) : (
                 <>
-                  <button className={styles.controlBtn} onClick={handleResume} title='Resume (R)'>
+                  <button className={cx(styles.controlBtn, styles.controlBtnResume)} onClick={handleResume} title='Resume (R)'>
                     <Play className={styles.controlIcon} /> Resume
                   </button>
                   <button
-                    className={styles.controlBtn}
+                    className={cx(styles.controlBtn, styles.controlBtnClear)}
                     onClick={() => { setLiveTasks([]); setLogEntries([]); }}
                     title='Clear this run from view'
                   >
@@ -877,26 +877,59 @@ const styles = {
   controlBtn: css`
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 5px 10px;
-    border-radius: var(--border-radius-sm);
+    gap: 6px;
+    padding: 6px 13px;
+    border-radius: 6px;
     font-size: var(--font-size-xs);
     font-weight: 600;
-    border: 1px solid var(--border-color);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+    letter-spacing: 0.02em;
+  `,
+  controlBtnPause: css`
+    background: rgba(245,158,11,0.12);
+    color: #f59e0b;
+    border-color: rgba(245,158,11,0.3);
+    &:hover {
+      background: rgba(245,158,11,0.22);
+      border-color: rgba(245,158,11,0.55);
+      box-shadow: 0 0 0 2px rgba(245,158,11,0.12);
+    }
+  `,
+  controlBtnStop: css`
+    background: rgba(239,68,68,0.14);
+    color: #f87171;
+    border-color: rgba(239,68,68,0.35);
+    &:hover {
+      background: rgba(239,68,68,0.24);
+      border-color: rgba(239,68,68,0.6);
+      box-shadow: 0 0 0 2px rgba(239,68,68,0.14);
+    }
+  `,
+  controlBtnResume: css`
+    background: rgba(16,185,129,0.14);
+    color: #34d399;
+    border-color: rgba(16,185,129,0.35);
+    &:hover {
+      background: rgba(16,185,129,0.24);
+      border-color: rgba(16,185,129,0.6);
+      box-shadow: 0 0 0 2px rgba(16,185,129,0.14);
+    }
+  `,
+  controlBtnClear: css`
     background: transparent;
     color: var(--text-secondary);
-    cursor: pointer;
-    transition: background-color 0.15s, color 0.15s;
-    &:hover { background-color: var(--bg-hover); color: var(--text-primary); }
-  `,
-  controlBtnDanger: css`
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-    &:hover { background-color: rgba(239,68,68,0.08); color: var(--color-danger); }
+    border-color: var(--border-color);
+    &:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
   `,
   controlIcon: css`
     width: 12px;
     height: 12px;
+    flex-shrink: 0;
   `,
   content: css`
     flex: 1;

@@ -457,6 +457,13 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     return () => { unsubLog(); unsubState(); };
   }, []);
 
+  // Auto-dismiss livePlan 8s after it reaches a terminal state
+  useEffect(() => {
+    if (!livePlan || livePlan.status === 'running' || livePlan.status === 'paused') return;
+    const timer = setTimeout(() => setLivePlan(null), 8000);
+    return () => clearTimeout(timer);
+  }, [livePlan]);
+
   // ── Plan: confirm and start ───────────────────────────────────────────────
 
   const handleRunPlan = useCallback(() => {
@@ -1088,6 +1095,15 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
                   border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;
                   &:hover{background:#f8514920;}`}
               >■</button>
+            )}
+            {(livePlan.status === 'done' || livePlan.status === 'failed') && (
+              <button
+                title="Dismiss"
+                onClick={() => setLivePlan(null)}
+                className={css`background:none;border:none;color:var(--text-secondary);
+                  padding:1px 4px;font-size:12px;cursor:pointer;line-height:1;
+                  &:hover{color:var(--text-primary);}`}
+              >×</button>
             )}
           </div>
           {livePlan.tasks.map(task => {

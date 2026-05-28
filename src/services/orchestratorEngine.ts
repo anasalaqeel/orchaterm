@@ -148,11 +148,12 @@ export class OrchestratorEngine {
       clearTimeout(timer);
       this.taskTimers.delete(taskId);
     }
-    // Fully unwatch all running task sessions so their Tauri listeners are
-    // removed. Using unwatch() (not clearBuffer()) ensures the listeners are
-    // torn down and don't accumulate if the engine is stopped and restarted.
+    // Send Ctrl+C to all running task sessions so agents stop, then unwatch.
+    // Using unwatch() (not clearBuffer()) ensures the listeners are torn down
+    // and don't accumulate if the engine is stopped and restarted.
     for (const task of this.plan.tasks) {
       if (task.status === 'running') {
+        writePtyChunked(task.assignedSessionId, '\x03').catch(() => {});
         bufferWatcher.unwatch(task.assignedSessionId);
       }
     }
