@@ -109,7 +109,8 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
   if (raw.llmProviders) {
     return {
       shellPath: raw.shellPath ?? '',
-      conductorTaskTimeoutMinutes: raw.conductorTaskTimeoutMinutes ?? 30,
+      conductorTaskTimeoutMinutes: raw.conductorTaskTimeoutMinutes ?? 0,
+      conductorInteractionMode: raw.conductorInteractionMode ?? 'auto',
       llmProviders: {
         relay:      raw.llmProviders.relay      ?? { ...DEFAULT_OLLAMA_CONFIG },
         planGen:    raw.llmProviders.planGen    ?? { ...DEFAULT_OLLAMA_CONFIG },
@@ -127,7 +128,8 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
   };
   return {
     shellPath: raw.shellPath ?? '',
-    conductorTaskTimeoutMinutes: raw.conductorTaskTimeoutMinutes ?? 30,
+    conductorTaskTimeoutMinutes: raw.conductorTaskTimeoutMinutes ?? 0,
+    conductorInteractionMode: raw.conductorInteractionMode ?? 'auto',
     llmProviders: {
       relay:      { ...legacyConfig },
       planGen:    { ...legacyConfig },
@@ -162,7 +164,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [newWorkspaceModalOpen, setNewWorkspaceModalOpen] = useState(false);
   const [settings, setSettings]         = useState<AppSettings>({
     shellPath: '',
-    conductorTaskTimeoutMinutes: 30,
+    conductorTaskTimeoutMinutes: 0,
+    conductorInteractionMode: 'auto',
     llmProviders: {
       relay:      { ...DEFAULT_OLLAMA_CONFIG },
       planGen:    { ...DEFAULT_OLLAMA_CONFIG },

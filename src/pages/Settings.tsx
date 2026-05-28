@@ -234,6 +234,9 @@ export const SettingsView: React.FC = () => {
   const [conductorTaskTimeoutMinutes, setConductorTaskTimeoutMinutes] = useState(
     settings.conductorTaskTimeoutMinutes
   );
+  const [conductorInteractionMode, setConductorInteractionMode] = useState<'auto' | 'manual'>(
+    settings.conductorInteractionMode ?? 'auto'
+  );
 
   // Terminal settings state
   const [detectedShells, setDetectedShells] = useState<ShellInfo[]>([]);
@@ -247,13 +250,14 @@ export const SettingsView: React.FC = () => {
   useEffect(() => {
     setLlmProviders(settings.llmProviders);
     setConductorTaskTimeoutMinutes(settings.conductorTaskTimeoutMinutes);
+    setConductorInteractionMode(settings.conductorInteractionMode ?? 'auto');
     if (!useCustomPath) {
       setDefaultShell(settings.shellPath || '');
     }
   }, [settings, useCustomPath]);
 
   const handleSaveIntegrations = () => {
-    updateSettings({ llmProviders, conductorTaskTimeoutMinutes });
+    updateSettings({ llmProviders, conductorTaskTimeoutMinutes, conductorInteractionMode });
   };
 
   // Confirm delete dialog
@@ -517,11 +521,37 @@ export const SettingsView: React.FC = () => {
               />
             ))}
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, paddingTop: 8, flexWrap: 'wrap' }}>
               <div>
-                <label className={styles.formLabel}>Task Timeout (minutes)</label>
+                <label className={styles.formLabel}>Agent Interaction</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {(['auto', 'manual'] as const).map(mode => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setConductorInteractionMode(mode)}
+                      className={css`
+                        padding: 4px 14px; border-radius: 4px; font-size: 12px; cursor: pointer;
+                        border: 1px solid ${conductorInteractionMode === mode ? '#7b68ee' : 'var(--border-color)'};
+                        background: ${conductorInteractionMode === mode ? '#7b68ee22' : 'transparent'};
+                        color: ${conductorInteractionMode === mode ? '#7b68ee' : 'var(--text-secondary)'};
+                        &:hover { border-color: #7b68ee; }
+                      `}
+                    >
+                      {mode === 'auto' ? '🤖 Auto' : '👤 Manual'}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 4 }}>
+                  {conductorInteractionMode === 'auto'
+                    ? 'LLM answers agent prompts automatically'
+                    : 'You must INJECT answers to agent prompts'}
+                </div>
+              </div>
+              <div>
+                <label className={styles.formLabel}>Task Timeout (minutes, 0 = off)</label>
                 <input
-                  type="number" min={1} max={480}
+                  type="number" min={0} max={480}
                   className={styles.integrationInput}
                   value={conductorTaskTimeoutMinutes}
                   onChange={e => setConductorTaskTimeoutMinutes(Number(e.target.value))}
