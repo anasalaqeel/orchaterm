@@ -28,20 +28,21 @@ import {
 } from '../types';
 import { bufferWatcher } from './bufferWatcher';
 import {
-  relayViaOllama,
-  mergeAndRelayViaOllama,
+  buildRelayPrompt,
+  buildMergeRelayPrompt,
   buildPassThroughBrief,
-  checkOllamaOnline,
+  buildAutoAnswerPrompt,
   CompletedTaskContext,
-  autoAnswerInteractivePrompt,
 } from './ollamaRelay';
+import { LLMProvider, createProvider } from './llm';
 import { SENTINEL_START, SENTINEL_END, NEEDS_START, NEEDS_END } from './sentinelParser';
 
 // ── Engine configuration ────────────────────────────────────────────────────────
 
 export interface EngineConfig {
-  ollamaHost: string;
-  ollamaModel: string;
+  relayProvider:      LLMProvider;
+  planGenProvider:    LLMProvider;
+  autoAnswerProvider: LLMProvider;
   /** Minutes a task can run before being auto-failed. */
   taskTimeoutMinutes: number;
   /** Maps sessionId → terminal tab title (for display in logs and relay prompts). */
@@ -293,46 +294,33 @@ export class OrchestratorEngine {
       const nextSessionTitle = this.config.sessionTitles.get(task.assignedSessionId) ?? task.assignedSessionTitle;
 
       try {
-        const ollamaOnline = await checkOllamaOnline(this.config.ollamaHost);
-
-        if (!ollamaOnline) throw new Error('Ollama offline');
-
         if (parentTasks.length === 1) {
-          contextBrief = await relayViaOllama({
-            goal:                   this.plan.goal,
-            completedTask:          completedContexts[0],
-            nextTaskDescription:    task.description,
-            nextAgentName:          nextSessionTitle,
-            nextAgentBestUsedFor:   '',
-            ollamaHost:             this.config.ollamaHost,
-            model:                  this.config.ollamaModel,
-          });
+          const { system, userContent } = buildRelayPrompt(
+            this.plan.goal, completedContexts[0], task.description, nextSessionTitle,
+          );
+          contextBrief = await this.config.relayProvider.complete(
+            [{ role: 'user', content: userContent }], system,
+          );
         } else {
-          contextBrief = await mergeAndRelayViaOllama({
-            goal:                   this.plan.goal,
-            completedTasks:         completedContexts,
-            nextTaskDescription:    task.description,
-            nextAgentName:          nextSessionTitle,
-            nextAgentBestUsedFor:   '',
-            ollamaHost:             this.config.ollamaHost,
-            model:                  this.config.ollamaModel,
-          });
+          const { system, userContent } = buildMergeRelayPrompt(
+            this.plan.goal, completedContexts, task.description, nextSessionTitle,
+          );
+          contextBrief = await this.config.relayProvider.complete(
+            [{ role: 'user', content: userContent }], system,
+          );
         }
 
-        this.log('relay', `Ollama relay complete for task "${task.title}"`, task.id);
+        this.log('relay', `Relay complete for task "${task.title}"`, task.id);
 
-        // Store the brief on the last parent's output for display in the conductor log
         const lastParent = parentTasks[parentTasks.length - 1];
         if (lastParent.output) {
           this.updateTask(lastParent.id, {
             output: { ...lastParent.output, relayedBrief: contextBrief },
           });
         }
-
       } catch {
-        // Ollama offline or failed — use pass-through
         contextBrief = buildPassThroughBrief(completedContexts, task.description);
-        this.log('info', `Ollama unavailable — pass-through relay used for "${task.title}"`, task.id);
+        this.log('info', `Provider unavailable — pass-through relay used for "${task.title}"`, task.id);
       }
     }
 
@@ -373,32 +361,28 @@ ${task.description}${buildAgentProtocol(task.id)}`;
         this.onSentinelReceived(task.id, output);
       },
       async (promptText) => {
-        // Truncate prompt text if it's too long
         const shortPrompt = promptText.length > 50 ? promptText.slice(0, 47) + '...' : promptText;
-        
-        // Ask Ollama for the auto-answer
-        const answer = await autoAnswerInteractivePrompt(
-          promptText,
-          this.config.ollamaHost,
-          this.config.ollamaModel
-        );
+        try {
+          const { system, userContent } = buildAutoAnswerPrompt(promptText);
+          const answer = await this.config.autoAnswerProvider.complete(
+            [{ role: 'user', content: userContent }], system,
+          );
+          const trimmed = answer.trim();
 
-        if (answer !== 'UNKNOWN') {
-          try {
-            await writePtyChunked(task.assignedSessionId, answer + '\r');
+          if (trimmed && trimmed !== 'UNKNOWN') {
+            await writePtyChunked(task.assignedSessionId, trimmed + '\r');
             this.log(
               'info',
-              `🤖 Auto-answered prompt ("${shortPrompt}") with: ${answer}`,
+              `🤖 Auto-answered prompt ("${shortPrompt}") with: ${trimmed}`,
               task.id,
               task.assignedSessionId
             );
-            return; // Successfully auto-answered
-          } catch (err) {
-            this.log('error', `Failed to inject auto-answer: ${err}`, task.id, task.assignedSessionId);
+            return;
           }
+        } catch (err) {
+          this.log('error', `Auto-answer provider error: ${err}`, task.id, task.assignedSessionId);
         }
 
-        // Fallback: Notify user to manually override
         this.log(
           'user-override',
           `⚠️ ${task.assignedSessionTitle} is waiting for user input ("${shortPrompt}"). Type INJECT → ${task.assignedSessionTitle}: [your answer] to continue.`,
@@ -526,9 +510,12 @@ ${task.description}${buildAgentProtocol(task.id)}`;
 // ── Singleton export ────────────────────────────────────────────────────────────
 // One engine instance for the whole app. Config is updated when settings change.
 
+const _defaultProvider = createProvider({ provider: 'ollama', model: 'llama3.2' });
+
 export const orchestratorEngine = new OrchestratorEngine({
-  ollamaHost: 'http://localhost:11434',
-  ollamaModel: 'llama3.2',
+  relayProvider:      _defaultProvider,
+  planGenProvider:    _defaultProvider,
+  autoAnswerProvider: _defaultProvider,
   taskTimeoutMinutes: 30,
-  sessionTitles: new Map(),
+  sessionTitles:      new Map(),
 });
