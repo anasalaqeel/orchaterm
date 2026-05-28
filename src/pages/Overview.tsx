@@ -62,9 +62,6 @@ export const DashboardView: React.FC = () => {
   const [chatCollapsed, setChatCollapsed] = useState<boolean>(() => {
     return localStorage.getItem('orchaterm:chatCollapsed') === 'true';
   });
-  /** True only while the user is actively dragging the resize handle. */
-  const [isResizing, setIsResizing] = useState(false);
-
   const isResizingRef   = useRef(false);
   const startXRef       = useRef(0);
   const startWidthRef   = useRef(0);
@@ -124,14 +121,12 @@ export const DashboardView: React.FC = () => {
       document.body.style.cursor      = '';
       document.body.style.userSelect  = '';
       localStorage.setItem('orchaterm:chatWidth', String(chatWidthRef.current));
-      setIsResizing(false);
       cleanup();
     };
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     dragCleanupRef.current = cleanup;
-    setIsResizing(true);
   }, [chatCollapsed]);
 
   // Open the New Workspace modal whenever the sidebar + button sets the flag.
@@ -175,408 +170,313 @@ export const DashboardView: React.FC = () => {
     setShowAddProj(false);
   };
 
+  /* ── Console view ── */
   /* ── Derived ── */
-  const activeSpace = (viewMode === 'console' && activeProject && activeSpaceId)
+  const showConsole = viewMode === 'console' && !!activeProject;
+  const activeSpace = activeProject && activeSpaceId
     ? spaces.find(sp => sp.id === activeSpaceId && sp.workspaceId === activeProject.id)
     : null;
   const panelKey = activeProject
     ? `${activeProject.id}::${activeSpaceId ?? 'workspace'}`
     : 'empty';
 
-  /* ── Render ── */
+  /*
+   * Single return — console view is ALWAYS mounted so PTY sessions survive
+   * viewMode switches. The grid flies in as a position:absolute overlay on top.
+   * This mirrors how AppLayout keeps DashboardView alive across route changes.
+   */
   return (
-    <AnimatePresence mode="wait">
+    <div className={s.pageRoot}>
 
-    {/* ══ Console view ══════════════════════════════════════════════════════════ */}
-    {viewMode === 'console' && activeProject ? (
-      <motion.div
-        key="console"
-        className={s.consoleRoot}
-        variants={pageVariants}
-        initial="initial"
-        animate="animate"
-        exit="exit"
-      >
-        {/* Console header */}
-        <div className={s.consoleHeader}>
-          <div className={s.consoleHeaderLeft}>
-            <span
-              className={s.consoleDot}
-              style={{ backgroundColor: activeProject.color }}
-            />
-            <h2 className={s.consoleName}>{activeProject.name}</h2>
-            <span className={s.consolePath}>{activeProject.path}</span>
+      {/* ── Console — always mounted, CSS-toggled ───────────────────────────── */}
+      <div className={showConsole ? s.consoleLayer : s.consoleLayerHidden}>
+        {activeProject && (
+          <div className={s.consoleRoot}>
 
-            <AnimatePresence>
-              {activeSpace && (
-                <motion.div
-                  className={s.spacePill}
-                  initial={{ opacity: 0, scale: 0.85 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.85 }}
-                  style={{ borderColor: activeSpace.color + '40' }}
+            {/* Console header */}
+            <div className={s.consoleHeader}>
+              <div className={s.consoleHeaderLeft}>
+                <span className={s.consoleDot} style={{ backgroundColor: activeProject.color }} />
+                <h2 className={s.consoleName}>{activeProject.name}</h2>
+                <span className={s.consolePath}>{activeProject.path}</span>
+
+                <AnimatePresence>
+                  {activeSpace && (
+                    <motion.div
+                      className={s.spacePill}
+                      initial={{ opacity: 0, scale: 0.85 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.85 }}
+                      style={{ borderColor: activeSpace.color + '40' }}
+                    >
+                      <span className={s.spacePillDot} style={{ backgroundColor: activeSpace.color }} />
+                      <span className={s.spacePillName} style={{ color: activeSpace.color }}>
+                        {activeSpace.name}
+                      </span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <motion.button
+                whileHover={{ x: -2 }}
+                onClick={() => setViewMode('grid')}
+                className={s.backBtn}
+              >
+                <ArrowLeft size={13} />
+                <span>Workspaces</span>
+              </motion.button>
+            </div>
+
+            {/* Split */}
+            <div className={s.consoleSplit}>
+              <div className={s.consoleSplitLeft}>
+                <TerminalContainer
+                  key={panelKey}
+                  scopeKey={panelKey}
+                  workspaceId={activeProject.id}
+                  workspacePath={activeProject.path}
+                />
+              </div>
+
+              {/* Drag overlay — absolute, zero flex space; only needed when console is visible */}
+              {showConsole && !chatCollapsed && (
+                <div
+                  className={s.dragZone}
+                  style={{ right: chatWidth - 4 }}
+                  onMouseDown={handleResizeStart}
+                />
+              )}
+
+              {/* Chat panel — opacity+x only, no width animation (avoids ResizeObserver cascade).
+                  GroupChat is conditionally rendered inside the motion.div so its live-feed,
+                  needsBroker, and autonomousOrchestrator effects don't run while the grid
+                  overlay is covering the console (consoleLayerHidden = display:none). */}
+              <AnimatePresence>
+                {!chatCollapsed && (
+                  <motion.div
+                    key="chat"
+                    className={s.consoleSplitRight}
+                    style={{ width: chatWidth, minWidth: chatWidth }}
+                    initial={{ opacity: 0, x: 16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 16 }}
+                    transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                  >
+                    {showConsole && <GroupChat key={panelKey} workspaceId={activeProject.id} />}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Collapse pill — absolutely positioned, never clips */}
+              <button
+                className={s.collapseBtn}
+                style={{ right: chatCollapsed ? 0 : chatWidth }}
+                onClick={toggleChatCollapsed}
+                title={chatCollapsed ? 'Expand chat' : 'Collapse chat'}
+              >
+                {chatCollapsed ? <ChevronLeft size={11} /> : <ChevronRight size={11} />}
+              </button>
+            </div>
+
+          </div>
+        )}
+      </div>
+
+      {/* ── Grid — absolute overlay, animates in/out over the console ───────── */}
+      <AnimatePresence>
+        {!showConsole && (
+          <motion.div
+            key="grid"
+            className={s.gridRoot}
+            variants={pageVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
+            {/* Header */}
+            <div className={s.gridHeader}>
+              <div>
+                <h1 className={s.gridTitle}>Workspaces</h1>
+                <p className={s.gridSubtitle}>
+                  {workspaces.length === 0
+                    ? 'Create a workspace to get started'
+                    : `${workspaces.length} workspace${workspaces.length !== 1 ? 's' : ''}`}
+                </p>
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => setShowAddProj(true)}
+                className={s.createBtn}
+              >
+                <Plus size={15} />
+                <span>New Workspace</span>
+              </motion.button>
+            </div>
+
+            {/* Empty state */}
+            {workspaces.length === 0 ? (
+              <motion.div
+                className={s.emptyState}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1, duration: 0.3 }}
+              >
+                <div className={s.emptyIcon}><FolderOpen size={32} /></div>
+                <p className={s.emptyTitle}>No workspaces yet</p>
+                <p className={s.emptyText}>Add a project directory to start orchestrating agents</p>
+                <motion.button
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.96 }}
+                  onClick={() => setShowAddProj(true)}
+                  className={s.createBtn}
                 >
-                  <span className={s.spacePillDot} style={{ backgroundColor: activeSpace.color }} />
-                  <span className={s.spacePillName} style={{ color: activeSpace.color }}>
-                    {activeSpace.name}
-                  </span>
+                  <Plus size={15} />
+                  <span>Add Your First Workspace</span>
+                </motion.button>
+              </motion.div>
+            ) : (
+              <motion.div className={s.cardsGrid} variants={gridVariants} initial="initial" animate="animate">
+                {workspaces.map((proj) => {
+                  const isActive   = proj.id === activeProject?.id;
+                  const spaceCount = spaces.filter(sp => sp.workspaceId === proj.id).length;
+                  return (
+                    <motion.div
+                      key={proj.id}
+                      variants={cardVariants}
+                      whileHover={{ y: -3, transition: { duration: 0.2 } }}
+                      className={cx(s.card, isActive && s.cardActive)}
+                      style={{ '--card-color': proj.color } as React.CSSProperties}
+                    >
+                      <div className={s.cardBar} style={{ background: `linear-gradient(90deg, ${proj.color}, ${proj.color}80)` }} />
+                      <div className={s.cardHeader}>
+                        <div className={s.cardAvatar} style={{ backgroundColor: proj.color + '1a', border: `1px solid ${proj.color}30` }}>
+                          <Terminal size={14} style={{ color: proj.color }} />
+                        </div>
+                        <div className={s.cardMeta}>
+                          <h4 className={s.cardName}>{proj.name}</h4>
+                          <p className={s.cardPath}>{proj.path}</p>
+                        </div>
+                      </div>
+                      {proj.description && <p className={s.cardDesc}>{proj.description}</p>}
+                      {spaceCount > 0 && (
+                        <div className={s.cardBadges}>
+                          <span className={s.spaceBadge}>{spaceCount} space{spaceCount !== 1 ? 's' : ''}</span>
+                        </div>
+                      )}
+                      <div className={s.taskBlock}>
+                        {editingTaskId === proj.id ? (
+                          <div className={s.taskEditRow}>
+                            <input
+                              type="text"
+                              value={editTaskValue}
+                              onChange={e => setEditTaskValue(e.target.value)}
+                              onBlur={() => handleTaskSave(proj.id)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleTaskSave(proj.id);
+                                if (e.key === 'Escape') setEditingTaskId(null);
+                              }}
+                              className={s.taskInput}
+                              autoFocus
+                              placeholder="What are you working on?"
+                            />
+                            <button onClick={() => handleTaskSave(proj.id)} className={s.taskSaveBtn}>Save</button>
+                          </div>
+                        ) : (
+                          <div
+                            onClick={() => { setEditingTaskId(proj.id); setEditTaskValue(proj.currentTask || ''); }}
+                            className={s.taskDisplay}
+                          >
+                            <span className={cx(s.taskText, !proj.currentTask && s.taskPlaceholder)}>
+                              {proj.currentTask || 'Set a focus…'}
+                            </span>
+                            <Edit2 size={11} className={s.taskEditIcon} />
+                          </div>
+                        )}
+                      </div>
+                      <motion.button
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => {
+                          if (!isActive) { setActiveWorkspaceId(proj.id); showToast(`Switched to ${proj.name}`, 'info'); }
+                          setViewMode('console');
+                        }}
+                        className={isActive ? s.openBtnActive : s.openBtn}
+                      >
+                        <span>Open Console</span>
+                        <ChevronRight size={14} />
+                      </motion.button>
+                    </motion.div>
+                  );
+                })}
+              </motion.div>
+            )}
+
+            {/* New Workspace Dialog */}
+            <AnimatePresence>
+              {showAddProj && (
+                <motion.div
+                  className={s.overlay}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={e => { if (e.target === e.currentTarget) setShowAddProj(false); }}
+                >
+                  <motion.div
+                    className={s.dialog}
+                    initial={{ opacity: 0, scale: 0.93, y: 16 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.93, y: 8 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                  >
+                    <h3 className={s.dialogTitle}>New Workspace</h3>
+                    <p className={s.dialogSubtitle}>Connect a local project directory</p>
+                    <form onSubmit={handleAddProjectSubmit} className={s.dialogForm}>
+                      <div className={s.fieldGroup}>
+                        <label className={s.fieldLabel}>Name</label>
+                        <input type="text" placeholder="e.g. My API" value={newProjName} onChange={e => setNewProjName(e.target.value)} className={s.fieldInput} required />
+                      </div>
+                      <div className={s.fieldGroup}>
+                        <label className={s.fieldLabel}>Directory path</label>
+                        <div className={s.pathInputRow}>
+                          <input type="text" placeholder="C:\Users\me\projects\my-app" value={newProjPath} onChange={e => setNewProjPath(e.target.value)} className={cx(s.fieldInput, s.pathInput)} required />
+                          <button type="button" className={s.browseBtn} onClick={handleBrowseDirectory} title="Browse for folder">
+                            <FolderOpen size={14} /><span>Browse</span>
+                          </button>
+                        </div>
+                      </div>
+                      <div className={s.fieldGroup}>
+                        <label className={s.fieldLabel}>Description <span className={s.optional}>(optional)</span></label>
+                        <textarea placeholder="What does this workspace do?" value={newProjDesc} onChange={e => setNewProjDesc(e.target.value)} rows={2} className={s.fieldInput} />
+                      </div>
+                      <div className={s.fieldGroup}>
+                        <label className={s.fieldLabel}>Color</label>
+                        <div className={s.colorRow}>
+                          {['#7B68EE','#6B5CE7','#3b82f6','#10b981','#ef4444','#ec4899','#06b6d4','#f59e0b'].map(c => (
+                            <button key={c} type="button" className={cx(s.colorSwatch, newProjColor === c && s.colorSwatchActive)} style={{ backgroundColor: c }} onClick={() => setNewProjColor(c)} />
+                          ))}
+                          <input type="color" value={newProjColor} onChange={e => setNewProjColor(e.target.value)} className={s.colorCustom} title="Custom color" />
+                        </div>
+                      </div>
+                      <div className={s.dialogActions}>
+                        <button type="button" onClick={() => setShowAddProj(false)} className={s.cancelBtn}>Cancel</button>
+                        <motion.button type="submit" className={s.submitBtn} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
+                          Create Workspace
+                        </motion.button>
+                      </div>
+                    </form>
+                  </motion.div>
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
 
-          <motion.button
-            whileHover={{ x: -2 }}
-            onClick={() => setViewMode('grid')}
-            className={s.backBtn}
-          >
-            <ArrowLeft size={13} />
-            <span>Workspaces</span>
-          </motion.button>
-        </div>
-
-        {/* Split — position:relative so the floating collapse button can anchor here */}
-        <div className={s.consoleSplit}>
-          {/* Terminal pane */}
-          <div className={s.consoleSplitLeft}>
-            <TerminalContainer
-              key={panelKey}
-              scopeKey={panelKey}
-              workspaceId={activeProject.id}
-              workspacePath={activeProject.path}
-            />
-          </div>
-
-          {/*
-            Drag overlay — always present but invisible + inert when collapsed.
-            position:absolute so it contributes zero flex space.
-          */}
-          <div
-            className={s.dragZone}
-            style={{
-              right: chatWidth - 4,
-              opacity: chatCollapsed ? 0 : 1,
-              pointerEvents: chatCollapsed ? 'none' : 'auto',
-            }}
-            onMouseDown={handleResizeStart}
-          />
-
-          {/*
-            Chat panel — always rendered so GroupChat never loses state on
-            collapse. Width transitions via CSS so resize stays instant
-            (no framer-motion easing conflict on rapid mousemove events).
-          */}
-          <div
-            className={s.consoleSplitRight}
-            style={{
-              width:      chatCollapsed ? 0 : chatWidth,
-              minWidth:   0,
-              opacity:    chatCollapsed ? 0 : 1,
-              transition: isResizing
-                ? 'none'
-                : 'width 0.22s cubic-bezier(0.4,0,0.2,1), opacity 0.18s ease',
-            }}
-          >
-            {/* Inner wrapper keeps content at chatWidth so it doesn't squish during animation */}
-            <div style={{ width: chatWidth, minWidth: chatWidth, height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <GroupChat key={panelKey} workspaceId={activeProject.id} />
-            </div>
-          </div>
-
-          {/*
-            Floating collapse/expand pill — absolutely positioned at the
-            boundary between terminal and chat. consoleSplit has no
-            overflow:hidden so this is never clipped.
-          */}
-          <button
-            className={s.collapseBtn}
-            style={{
-              right: chatCollapsed ? 0 : chatWidth,
-              transition: 'right 0.22s cubic-bezier(0.4,0,0.2,1)',
-            }}
-            onClick={toggleChatCollapsed}
-            title={chatCollapsed ? 'Expand chat' : 'Collapse chat'}
-          >
-            {chatCollapsed ? <ChevronLeft size={11} /> : <ChevronRight size={11} />}
-          </button>
-        </div>
-      </motion.div>
-
-    ) : (
-
-    /* ══ Grid view ════════════════════════════════════════════════════════════ */
-    <motion.div
-      key="grid"
-      className={s.gridRoot}
-      variants={pageVariants}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-    >
-      {/* Header */}
-      <div className={s.gridHeader}>
-        <div>
-          <h1 className={s.gridTitle}>Workspaces</h1>
-          <p className={s.gridSubtitle}>
-            {workspaces.length === 0
-              ? 'Create a workspace to get started'
-              : `${workspaces.length} workspace${workspaces.length !== 1 ? 's' : ''}`}
-          </p>
-        </div>
-        <motion.button
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={() => setShowAddProj(true)}
-          className={s.createBtn}
-        >
-          <Plus size={15} />
-          <span>New Workspace</span>
-        </motion.button>
-      </div>
-
-      {/* Empty state */}
-      {workspaces.length === 0 ? (
-        <motion.div
-          className={s.emptyState}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1, duration: 0.3 }}
-        >
-          <div className={s.emptyIcon}>
-            <FolderOpen size={32} />
-          </div>
-          <p className={s.emptyTitle}>No workspaces yet</p>
-          <p className={s.emptyText}>Add a project directory to start orchestrating agents</p>
-          <motion.button
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.96 }}
-            onClick={() => setShowAddProj(true)}
-            className={s.createBtn}
-          >
-            <Plus size={15} />
-            <span>Add Your First Workspace</span>
-          </motion.button>
-        </motion.div>
-      ) : (
-        <motion.div
-          className={s.cardsGrid}
-          variants={gridVariants}
-          initial="initial"
-          animate="animate"
-        >
-          {workspaces.map((proj) => {
-            const isActive   = proj.id === activeProject?.id;
-            const spaceCount = spaces.filter(sp => sp.workspaceId === proj.id).length;
-
-            return (
-              <motion.div
-                key={proj.id}
-                variants={cardVariants}
-                whileHover={{ y: -3, transition: { duration: 0.2 } }}
-                className={cx(s.card, isActive && s.cardActive)}
-                style={{ '--card-color': proj.color } as React.CSSProperties}
-              >
-                {/* Color bar at top */}
-                <div
-                  className={s.cardBar}
-                  style={{ background: `linear-gradient(90deg, ${proj.color}, ${proj.color}80)` }}
-                />
-
-                {/* Card header */}
-                <div className={s.cardHeader}>
-                  <div
-                    className={s.cardAvatar}
-                    style={{
-                      backgroundColor: proj.color + '1a',
-                      border: `1px solid ${proj.color}30`,
-                    }}
-                  >
-                    <Terminal size={14} style={{ color: proj.color }} />
-                  </div>
-                  <div className={s.cardMeta}>
-                    <h4 className={s.cardName}>{proj.name}</h4>
-                    <p className={s.cardPath}>{proj.path}</p>
-                  </div>
-                </div>
-
-                {/* Description */}
-                {proj.description && (
-                  <p className={s.cardDesc}>{proj.description}</p>
-                )}
-
-                {/* Badges row */}
-                {spaceCount > 0 && (
-                  <div className={s.cardBadges}>
-                    <span className={s.spaceBadge}>
-                      {spaceCount} space{spaceCount !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                )}
-
-                {/* Task block */}
-                <div className={s.taskBlock}>
-                  {editingTaskId === proj.id ? (
-                    <div className={s.taskEditRow}>
-                      <input
-                        type="text"
-                        value={editTaskValue}
-                        onChange={e => setEditTaskValue(e.target.value)}
-                        onBlur={() => handleTaskSave(proj.id)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') handleTaskSave(proj.id);
-                          if (e.key === 'Escape') setEditingTaskId(null);
-                        }}
-                        className={s.taskInput}
-                        autoFocus
-                        placeholder="What are you working on?"
-                      />
-                      <button onClick={() => handleTaskSave(proj.id)} className={s.taskSaveBtn}>
-                        Save
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      onClick={() => { setEditingTaskId(proj.id); setEditTaskValue(proj.currentTask || ''); }}
-                      className={s.taskDisplay}
-                    >
-                      <span className={cx(s.taskText, !proj.currentTask && s.taskPlaceholder)}>
-                        {proj.currentTask || 'Set a focus…'}
-                      </span>
-                      <Edit2 size={11} className={s.taskEditIcon} />
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer */}
-                <motion.button
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => {
-                    if (!isActive) {
-                      setActiveWorkspaceId(proj.id);
-                      showToast(`Switched to ${proj.name}`, 'info');
-                    }
-                    setViewMode('console');
-                  }}
-                  className={isActive ? s.openBtnActive : s.openBtn}
-                >
-                  <span>Open Console</span>
-                  <ChevronRight size={14} />
-                </motion.button>
-              </motion.div>
-            );
-          })}
-        </motion.div>
-      )}
-
-      {/* New Workspace Dialog */}
-      <AnimatePresence>
-        {showAddProj && (
-          <motion.div
-            className={s.overlay}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={e => { if (e.target === e.currentTarget) setShowAddProj(false); }}
-          >
-            <motion.div
-              className={s.dialog}
-              initial={{ opacity: 0, scale: 0.93, y: 16 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.93, y: 8 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-            >
-              <h3 className={s.dialogTitle}>New Workspace</h3>
-              <p className={s.dialogSubtitle}>Connect a local project directory</p>
-
-              <form onSubmit={handleAddProjectSubmit} className={s.dialogForm}>
-                <div className={s.fieldGroup}>
-                  <label className={s.fieldLabel}>Name</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. My API"
-                    value={newProjName}
-                    onChange={e => setNewProjName(e.target.value)}
-                    className={s.fieldInput}
-                    required
-                  />
-                </div>
-                <div className={s.fieldGroup}>
-                  <label className={s.fieldLabel}>Directory path</label>
-                  <div className={s.pathInputRow}>
-                    <input
-                      type="text"
-                      placeholder="C:\Users\me\projects\my-app"
-                      value={newProjPath}
-                      onChange={e => setNewProjPath(e.target.value)}
-                      className={cx(s.fieldInput, s.pathInput)}
-                      required
-                    />
-                    <button
-                      type="button"
-                      className={s.browseBtn}
-                      onClick={handleBrowseDirectory}
-                      title="Browse for folder"
-                    >
-                      <FolderOpen size={14} />
-                      <span>Browse</span>
-                    </button>
-                  </div>
-                </div>
-                <div className={s.fieldGroup}>
-                  <label className={s.fieldLabel}>Description <span className={s.optional}>(optional)</span></label>
-                  <textarea
-                    placeholder="What does this workspace do?"
-                    value={newProjDesc}
-                    onChange={e => setNewProjDesc(e.target.value)}
-                    rows={2}
-                    className={s.fieldInput}
-                  />
-                </div>
-                <div className={s.fieldGroup}>
-                  <label className={s.fieldLabel}>Color</label>
-                  <div className={s.colorRow}>
-                    {['#7B68EE','#6B5CE7','#3b82f6','#10b981','#ef4444','#ec4899','#06b6d4','#f59e0b'].map(c => (
-                      <button
-                        key={c}
-                        type="button"
-                        className={cx(s.colorSwatch, newProjColor === c && s.colorSwatchActive)}
-                        style={{ backgroundColor: c }}
-                        onClick={() => setNewProjColor(c)}
-                      />
-                    ))}
-                    <input
-                      type="color"
-                      value={newProjColor}
-                      onChange={e => setNewProjColor(e.target.value)}
-                      className={s.colorCustom}
-                      title="Custom color"
-                    />
-                  </div>
-                </div>
-                <div className={s.dialogActions}>
-                  <button type="button" onClick={() => setShowAddProj(false)} className={s.cancelBtn}>
-                    Cancel
-                  </button>
-                  <motion.button
-                    type="submit"
-                    className={s.submitBtn}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.97 }}
-                  >
-                    Create Workspace
-                  </motion.button>
-                </div>
-              </form>
-            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
 
-    )}
-    </AnimatePresence>
+    </div>
   );
 };
 
@@ -584,10 +484,32 @@ export const DashboardView: React.FC = () => {
 
 const s = {
 
+  /* ── Page shell (single always-rendered root) ── */
+  pageRoot: css`
+    display: flex; flex-direction: column;
+    flex: 1; height: 100%; overflow: hidden;
+    position: relative;          /* grid overlay anchors here */
+    background: var(--bg-canvas);
+  `,
+
+  /* Console wrapper — CSS-toggled so TerminalContainer never unmounts */
+  consoleLayer: css`
+    display: flex; flex-direction: column;
+    flex: 1; min-height: 0; overflow: hidden;
+    animation: consoleFadeIn 0.22s ease forwards;
+    @keyframes consoleFadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0);   }
+    }
+  `,
+  consoleLayerHidden: css`
+    display: none;
+  `,
+
   /* ── Console mode ── */
   consoleRoot: css`
     display: flex; flex-direction: column;
-    flex: 1; height: 100vh; overflow: hidden;
+    flex: 1; min-height: 0; overflow: hidden;
     background: var(--bg-canvas);
   `,
   consoleHeader: css`
@@ -699,9 +621,9 @@ const s = {
     }
   `,
 
-  /* ── Grid view ── */
+  /* ── Grid view — absolute overlay so console stays mounted beneath ── */
   gridRoot: css`
-    flex: 1;
+    position: absolute; inset: 0; z-index: 10;
     overflow-y: auto;
     padding: 36px 36px 48px;
     display: flex; flex-direction: column; gap: 32px;
