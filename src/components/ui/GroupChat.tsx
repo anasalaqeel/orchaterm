@@ -744,7 +744,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
   // ── Guards ────────────────────────────────────────────────────────────────
 
-  const modelMissing = !settings.conductorOllamaModel;
+  const modelMissing = !settings.llmProviders?.chat?.model;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -835,7 +835,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       {/* Warning banners */}
       {modelMissing && (
         <div className={s.warningBanner}>
-          ⚠ No Ollama model configured — go to <strong>Settings → Conductor Settings</strong> to pick one.
+          ⚠ No chat model configured — go to <strong>Settings → LLM Providers</strong> to configure one.
         </div>
       )}
       {ollamaOnline === false && !modelMissing && (
