@@ -127,16 +127,18 @@ class BufferWatcher {
     if (entry.buffer.mode !== 'sentinel') return;
     if (!entry.onInteractivePrompt) return;
 
-    const tail = stripAnsiCodes(entry.buffer.buffer.slice(-300));
-    const INTERACTIVE_PROMPT_REGEX = /(\[y\/n\]|\?\s*(\n.*)?$|Select an option|Do you want to proceed\?|Type a number)/i;
-    
-    if (INTERACTIVE_PROMPT_REGEX.test(tail)) {
-      // Avoid re-firing for the exact same prompt output
-      const cleanTail = tail.trim();
-      if ((entry as any)._lastPromptTail === cleanTail) return;
-      (entry as any)._lastPromptTail = cleanTail;
+    // Time-based cooldown: allow retry every 6s so a failed/UNKNOWN answer can be retried
+    const now = Date.now();
+    const lastFired: number = (entry as any)._lastPromptFiredAt ?? 0;
+    if (now - lastFired < 6000) return;
 
-      entry.onInteractivePrompt(cleanTail);
+    const tail = stripAnsiCodes(entry.buffer.buffer.slice(-300));
+    const INTERACTIVE_PROMPT_REGEX =
+      /(\[y\/n\]|\(y\/n\)|\[Y\/n\]|\(Y\/n\)|\[n\/Y\]|\(n\/Y\)|Do you want to|Press Enter to|Continue\?|Select an option|Type a number|Overwrite\?|already exists|Esc to cancel)/i;
+
+    if (INTERACTIVE_PROMPT_REGEX.test(tail)) {
+      (entry as any)._lastPromptFiredAt = now;
+      entry.onInteractivePrompt(tail.trim());
     }
   }
 

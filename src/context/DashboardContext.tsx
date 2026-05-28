@@ -7,6 +7,11 @@ import {
   loadData, saveData, loadPlans, savePlans,
   loadUIState, saveUIState,
 } from '../services/storage';
+import { createProvider, LLMProvider } from '../services/llm';
+import type { UseCaseProviders } from '../services/llm/types';
+import { orchestratorEngine } from '../services/orchestratorEngine';
+import { autonomousOrchestrator } from '../services/autonomousOrchestrator';
+import { needsBroker } from '../services/needsBroker';
 
 export interface ToastInfo {
   id: string;
@@ -68,6 +73,16 @@ export interface DashboardContextType {
   exportSettings: () => string;
   importSettings: (jsonData: string) => Promise<boolean>;
 
+  // ── Live LLM provider instances ─────────────────────────────────────────────
+  /** Provider instances, recreated when settings.llmProviders changes. */
+  llmProviders: {
+    relay:      LLMProvider;
+    planGen:    LLMProvider;
+    autoAnswer: LLMProvider;
+    chat:       LLMProvider;
+    routing:    LLMProvider;
+  };
+
   // ── Orchestrator plans (persisted) ──────────────────────────────────────────
   plans: OrchestratorPlan[];
   addPlan: (plan: OrchestratorPlan) => Promise<void>;
@@ -83,6 +98,56 @@ export interface DashboardContextType {
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
 
+const DEFAULT_OLLAMA_CONFIG = {
+  provider: 'ollama' as const,
+  model: 'llama3.2',
+  baseUrl: 'http://localhost:11434',
+};
+
+/** Migrate settings from legacy ollamaHost/conductorOllamaModel to llmProviders. */
+function migrateSettings(raw: Partial<AppSettings>): AppSettings {
+  if (raw.llmProviders) {
+    return {
+      shellPath: raw.shellPath ?? '',
+      conductorTaskTimeoutMinutes: raw.conductorTaskTimeoutMinutes ?? 30,
+      llmProviders: {
+        relay:      raw.llmProviders.relay      ?? { ...DEFAULT_OLLAMA_CONFIG },
+        planGen:    raw.llmProviders.planGen    ?? { ...DEFAULT_OLLAMA_CONFIG },
+        autoAnswer: raw.llmProviders.autoAnswer ?? { ...DEFAULT_OLLAMA_CONFIG },
+        chat:       raw.llmProviders.chat       ?? { ...DEFAULT_OLLAMA_CONFIG },
+        routing:    raw.llmProviders.routing    ?? { ...DEFAULT_OLLAMA_CONFIG },
+      },
+    };
+  }
+
+  const legacyConfig = {
+    provider: 'ollama' as const,
+    model: raw.conductorOllamaModel || 'llama3.2',
+    baseUrl: raw.ollamaHost || 'http://localhost:11434',
+  };
+  return {
+    shellPath: raw.shellPath ?? '',
+    conductorTaskTimeoutMinutes: raw.conductorTaskTimeoutMinutes ?? 30,
+    llmProviders: {
+      relay:      { ...legacyConfig },
+      planGen:    { ...legacyConfig },
+      autoAnswer: { ...legacyConfig },
+      chat:       { ...legacyConfig },
+      routing:    { ...legacyConfig },
+    },
+  };
+}
+
+function makeProviders(cfg: UseCaseProviders) {
+  return {
+    relay:      createProvider(cfg.relay),
+    planGen:    createProvider(cfg.planGen),
+    autoAnswer: createProvider(cfg.autoAnswer),
+    chat:       createProvider(cfg.chat),
+    routing:    createProvider(cfg.routing),
+  };
+}
+
 export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [workspaces, setWorkspaces]     = useState<Workspace[]>([]);
   const [spaces, setSpaces]             = useState<Space[]>([]);
@@ -96,15 +161,27 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isLoaded, setIsLoaded]         = useState<boolean>(false);
   const [newWorkspaceModalOpen, setNewWorkspaceModalOpen] = useState(false);
   const [settings, setSettings]         = useState<AppSettings>({
-    shellPath: '',   // resolved at runtime by get_available_shells → shells[0]
-    ollamaHost: 'http://localhost:11434',
-    openaiApiKey: '',
-    anthropicApiKey: '',
-    conductorOllamaModel: '',
+    shellPath: '',
     conductorTaskTimeoutMinutes: 30,
+    llmProviders: {
+      relay:      { ...DEFAULT_OLLAMA_CONFIG },
+      planGen:    { ...DEFAULT_OLLAMA_CONFIG },
+      autoAnswer: { ...DEFAULT_OLLAMA_CONFIG },
+      chat:       { ...DEFAULT_OLLAMA_CONFIG },
+      routing:    { ...DEFAULT_OLLAMA_CONFIG },
+    },
   });
   const [plans, setPlans]                       = useState<OrchestratorPlan[]>([]);
   const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
+  const [llmProviders, setLlmProviders] = useState(() =>
+    makeProviders({
+      relay:      { ...DEFAULT_OLLAMA_CONFIG },
+      planGen:    { ...DEFAULT_OLLAMA_CONFIG },
+      autoAnswer: { ...DEFAULT_OLLAMA_CONFIG },
+      chat:       { ...DEFAULT_OLLAMA_CONFIG },
+      routing:    { ...DEFAULT_OLLAMA_CONFIG },
+    })
+  );
 
   // ── Load from storage on mount ───────────────────────────────────────────────
   useEffect(() => {
@@ -123,7 +200,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setSpaces(sps);
         setTaskLogs(data.taskLogs || []);
         setSavedPrompts(data.savedPrompts || []);
-        if (data.settings) setSettings(prev => ({ ...prev, ...data.settings }));
+        if (data.settings) setSettings(migrateSettings(data.settings));
         setPlans(savedPlans);
 
         // Restore active workspace — validate it still exists
@@ -182,6 +259,24 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // ── Sync LLM providers to engines when settings change ───────────────────────
+  useEffect(() => {
+    if (!isLoaded) return;
+    const p = makeProviders(settings.llmProviders);
+    setLlmProviders(p);
+
+    orchestratorEngine.updateConfig({
+      relayProvider:      p.relay,
+      planGenProvider:    p.planGen,
+      autoAnswerProvider: p.autoAnswer,
+      taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
+      sessionTitles:      new Map(),
+    });
+
+    autonomousOrchestrator.updateConfig({ routingProvider: p.routing });
+    needsBroker.updateConfig({ provider: p.planGen });
+  }, [settings.llmProviders, settings.conductorTaskTimeoutMinutes, isLoaded]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ id: crypto.randomUUID(), message, type });
@@ -387,7 +482,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       spaces,
       taskLogs,
       savedPrompts,
-      settings: { ...settings, openaiApiKey: '', anthropicApiKey: '' },
+      settings,
     };
     return JSON.stringify(data, null, 2);
   };
@@ -445,6 +540,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       addTaskLog, updateTaskLog, deleteTaskLog,
       addSavedPrompt, updateSavedPrompt, deleteSavedPrompt, copyPromptToClipboard,
       settings, updateSettings, exportSettings, importSettings,
+      llmProviders,
       plans, addPlan, updatePlan, deletePlan,
       terminalSessions, addTerminalSession, removeTerminalSession, updateTerminalSession,
     }}>

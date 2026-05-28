@@ -4,7 +4,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { useDashboard } from '../context/DashboardContext';
 import { Workspace } from '../types';
 import { ConfirmDialog, Select } from '../components/ui';
-import { fetchOllamaModels } from '../services/ollamaRelay';
+import { createProvider } from '../services/llm';
+import type { ProviderConfig, UseCaseProviders } from '../services/llm/types';
 import {
   Sun,
   Moon,
@@ -12,7 +13,6 @@ import {
   Upload,
   Trash2,
   Edit2,
-  Settings,
   RefreshCw,
   Network,
   Terminal,
@@ -46,6 +46,174 @@ function shellDisplayName(path: string, shells: ShellInfo[]): string {
   return path.replace(/\\/g, '/').split('/').pop()?.replace(/\.(exe|cmd|bat|sh)$/i, '') ?? path;
 }
 
+// ── LLM Provider editor ──────────────────────────────────────────────────────
+
+type ProviderPreset = { label: string; config: Omit<ProviderConfig, 'model'> };
+
+const PROVIDER_PRESETS: ProviderPreset[] = [
+  { label: 'Ollama (local)',         config: { provider: 'ollama',            baseUrl: 'http://localhost:11434' } },
+  { label: 'LM Studio (local)',      config: { provider: 'openai-compatible', baseUrl: 'http://localhost:1234' } },
+  { label: 'OpenAI',                 config: { provider: 'openai-compatible', baseUrl: 'https://api.openai.com' } },
+  { label: 'DeepSeek',               config: { provider: 'openai-compatible', baseUrl: 'https://api.deepseek.com' } },
+  { label: 'Together.ai',            config: { provider: 'openai-compatible', baseUrl: 'https://api.together.xyz' } },
+  { label: 'Anthropic',              config: { provider: 'anthropic',         baseUrl: 'https://api.anthropic.com' } },
+  { label: 'Google Gemini',          config: { provider: 'gemini',            baseUrl: 'https://generativelanguage.googleapis.com' } },
+  { label: 'Custom (OpenAI-compat)', config: { provider: 'openai-compatible', baseUrl: '' } },
+];
+
+const USE_CASE_LABELS: Record<keyof UseCaseProviders, string> = {
+  relay:      'Relay (task handoff)',
+  planGen:    'Plan Generation',
+  autoAnswer: 'Auto-Answer',
+  chat:       'Chat',
+  routing:    'Routing',
+};
+
+interface ProviderConfigEditorProps {
+  label: string;
+  value: ProviderConfig;
+  onChange: (cfg: ProviderConfig) => void;
+}
+
+const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, value, onChange }) => {
+  const [models, setModels] = React.useState<string[]>([]);
+  const [modelsLoading, setModelsLoading] = React.useState(false);
+  const [testStatus, setTestStatus] = React.useState<'idle' | 'ok' | 'fail'>('idle');
+
+  const currentPreset = PROVIDER_PRESETS.find(
+    p => p.config.provider === value.provider && p.config.baseUrl === value.baseUrl,
+  );
+
+  const handlePresetChange = (presetLabel: string) => {
+    const preset = PROVIDER_PRESETS.find(p => p.label === presetLabel);
+    if (!preset) return;
+    onChange({ ...value, ...preset.config });
+  };
+
+  const needsApiKey = value.provider !== 'ollama' && value.baseUrl !== 'http://localhost:1234';
+  const needsBaseUrl = value.provider === 'ollama' || value.provider === 'openai-compatible';
+
+  const fetchModels = async () => {
+    setModelsLoading(true);
+    try {
+      const provider = createProvider(value);
+      const list = await provider.listModels();
+      setModels(list);
+    } catch { setModels([]); }
+    finally { setModelsLoading(false); }
+  };
+
+  React.useEffect(() => { fetchModels(); }, [value.provider, value.baseUrl, value.apiKey]);
+
+  const handleRefreshModels = fetchModels;
+
+  const handleTest = async () => {
+    try {
+      const provider = createProvider(value);
+      const ok = await provider.checkOnline();
+      setTestStatus(ok ? 'ok' : 'fail');
+    } catch { setTestStatus('fail'); }
+    setTimeout(() => setTestStatus('idle'), 3000);
+  };
+
+  const editorStyles = {
+    wrapper: css`display:flex;flex-direction:column;gap:8px;padding:12px 0;border-bottom:1px solid var(--border-color);`,
+    sectionLabel: css`font-weight:600;font-size:13px;color:var(--text-primary);`,
+    fieldLabel: css`font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;`,
+    modelRow: css`display:flex;gap:6px;align-items:flex-end;`,
+    iconBtn: css`
+      background-color:var(--bg-tertiary);border:1px solid var(--border-color);
+      border-radius:var(--border-radius-sm);padding:7px 8px;cursor:pointer;
+      color:var(--text-secondary);display:flex;align-items:center;justify-content:center;
+      transition:color 0.15s,background-color 0.15s;font-size:13px;line-height:1;
+      &:hover:not(:disabled){color:var(--text-primary);background-color:var(--bg-hover);}
+      &:disabled{opacity:0.4;cursor:not-allowed;}
+    `,
+  };
+
+  return (
+    <div className={editorStyles.wrapper}>
+      <div className={editorStyles.sectionLabel}>{label}</div>
+
+      <Select
+        label="Provider"
+        value={currentPreset?.label ?? 'Custom (OpenAI-compat)'}
+        onChange={handlePresetChange}
+        options={PROVIDER_PRESETS.map(p => ({ value: p.label, name: p.label }))}
+      />
+
+      {needsBaseUrl && (
+        <div>
+          <label className={editorStyles.fieldLabel}>Base URL</label>
+          <input
+            type="text"
+            className={providerInputStyle}
+            value={value.baseUrl ?? ''}
+            onChange={e => onChange({ ...value, baseUrl: e.target.value })}
+            placeholder="http://localhost:11434"
+          />
+        </div>
+      )}
+
+      {needsApiKey && (
+        <div>
+          <label className={editorStyles.fieldLabel}>API Key</label>
+          <input
+            type="password"
+            className={providerInputStyle}
+            value={value.apiKey ?? ''}
+            onChange={e => onChange({ ...value, apiKey: e.target.value })}
+            placeholder="sk-..."
+          />
+        </div>
+      )}
+
+      <div className={editorStyles.modelRow}>
+        <div style={{ flex: 1 }}>
+          {models.length > 0 ? (
+            <Select
+              label="Model"
+              value={value.model}
+              onChange={m => onChange({ ...value, model: m })}
+              options={models.map(m => ({ value: m, name: m }))}
+            />
+          ) : (
+            <div>
+              <label className={editorStyles.fieldLabel}>Model</label>
+              <input
+                type="text"
+                className={providerInputStyle}
+                value={value.model}
+                onChange={e => onChange({ ...value, model: e.target.value })}
+                placeholder="e.g. llama3.2"
+              />
+            </div>
+          )}
+        </div>
+        <button type="button" className={editorStyles.iconBtn} onClick={handleRefreshModels} disabled={modelsLoading} title="Fetch model list">
+          <RefreshCw className={cx(css`width:14px;height:14px;`, modelsLoading && css`animation:spin 1s linear infinite;@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}`)} />
+        </button>
+        <button
+          type="button"
+          className={editorStyles.iconBtn}
+          onClick={handleTest}
+          title="Test connection"
+          style={{ color: testStatus === 'ok' ? 'var(--color-success)' : testStatus === 'fail' ? 'var(--color-error)' : undefined }}
+        >
+          {testStatus === 'idle' ? '⚡' : testStatus === 'ok' ? '✓' : '✗'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const providerInputStyle = css`
+  width:100%;background-color:var(--bg-input);border:1px solid var(--border-color);
+  border-radius:var(--border-radius-sm);padding:8px;font-size:var(--font-size-xs);
+  color:var(--text-primary);outline:none;transition:all 0.15s ease-in-out;
+  &:focus{border-color:var(--color-brand);box-shadow:0 0 0 1px var(--color-brand);}
+`;
+
 export const SettingsView: React.FC = () => {
   const {
     workspaces,
@@ -62,19 +230,10 @@ export const SettingsView: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Integration Settings form states
-  const [ollamaHost, setOllamaHost] = useState(settings.ollamaHost);
-  const [openaiApiKey, setOpenaiApiKey] = useState(settings.openaiApiKey);
-  const [anthropicApiKey, setAnthropicApiKey] = useState(settings.anthropicApiKey);
-
-  // Conductor settings
-  const [conductorOllamaModel, setConductorOllamaModel] = useState(settings.conductorOllamaModel);
+  const [llmProviders, setLlmProviders] = useState<UseCaseProviders>(settings.llmProviders);
   const [conductorTaskTimeoutMinutes, setConductorTaskTimeoutMinutes] = useState(
     settings.conductorTaskTimeoutMinutes
   );
-  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
-  const [modelsError, setModelsError] = useState('');
 
   // Terminal settings state
   const [detectedShells, setDetectedShells] = useState<ShellInfo[]>([]);
@@ -85,52 +244,16 @@ export const SettingsView: React.FC = () => {
   const [customShellPath, setCustomShellPath] = useState('');
   const shellsFetchedRef = React.useRef(false);
 
-  const loadOllamaModels = async () => {
-    setModelsLoading(true);
-    setModelsError('');
-    try {
-      const models = await fetchOllamaModels(ollamaHost || settings.ollamaHost);
-      setOllamaModels(models);
-      if (models.length > 0 && !conductorOllamaModel) {
-        setConductorOllamaModel(models[0]);
-      }
-    } catch (err: any) {
-      setModelsError(err?.message ?? 'Could not reach Ollama');
-    } finally {
-      setModelsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    setOllamaHost(settings.ollamaHost);
-    setOpenaiApiKey(settings.openaiApiKey);
-    setAnthropicApiKey(settings.anthropicApiKey);
-    setConductorOllamaModel(settings.conductorOllamaModel);
+    setLlmProviders(settings.llmProviders);
     setConductorTaskTimeoutMinutes(settings.conductorTaskTimeoutMinutes);
-    // Sync defaultShell when settings change externally (e.g. importSettings)
     if (!useCustomPath) {
       setDefaultShell(settings.shellPath || '');
     }
   }, [settings, useCustomPath]);
 
-  // Pre-load models when component mounts so the dropdown is ready
-  useEffect(() => {
-    if (settings.ollamaHost) {
-      loadOllamaModels();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleSaveIntegrations = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateSettings({
-      ollamaHost,
-      openaiApiKey,
-      anthropicApiKey,
-      conductorOllamaModel,
-      conductorTaskTimeoutMinutes,
-    });
-    showToast('Settings saved', 'success');
+  const handleSaveIntegrations = () => {
+    updateSettings({ llmProviders, conductorTaskTimeoutMinutes });
   };
 
   // Confirm delete dialog
@@ -374,132 +497,40 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Integration & API keys card */}
-          <div className={styles.integrationsCard}>
-            <h3 className={styles.cardTitle}>
-              <Settings className={cx(styles.cardTitleIcon, styles.settingsIcon)} />
-              <span>Developer Integrations & APIs</span>
-            </h3>
-            <p className={styles.cardDescription}>
-              Configure local Ollama API host and backup cloud keys for OpenAI/Anthropic model execution.
-            </p>
-            <form onSubmit={handleSaveIntegrations} className={styles.integrationForm}>
-              <div className={styles.grid2Col}>
-                <div>
-                  <label className={styles.formLabel}>Ollama API Host</label>
-                  <input
-                    type="text"
-                    value={ollamaHost}
-                    onChange={(e) => setOllamaHost(e.target.value)}
-                    placeholder="e.g. http://localhost:11434"
-                    className={styles.integrationInput}
-                  />
-                </div>
-              </div>
-
-              <div className={styles.grid2Col}>
-                <div>
-                  <label className={styles.formLabel}>OpenAI API Key (Cloud Fallback)</label>
-                  <input
-                    type="password"
-                    value={openaiApiKey || ''}
-                    onChange={(e) => setOpenaiApiKey(e.target.value)}
-                    placeholder="sk-..."
-                    className={styles.integrationInput}
-                  />
-                </div>
-                <div>
-                  <label className={styles.formLabel}>Anthropic API Key (Cloud Fallback)</label>
-                  <input
-                    type="password"
-                    value={anthropicApiKey || ''}
-                    onChange={(e) => setAnthropicApiKey(e.target.value)}
-                    placeholder="sk-ant-..."
-                    className={styles.integrationInput}
-                  />
-                </div>
-              </div>
-
-              <div className={styles.flexEndPt2}>
-                <button
-                  type="submit"
-                  className={styles.amberButton}
-                >
-                  Save Integration Settings
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Conductor / Ollama card */}
+          {/* LLM Providers card */}
           <div className={styles.integrationsCard}>
             <h3 className={styles.cardTitle}>
               <Network className={cx(styles.cardTitleIcon, styles.settingsIcon)} />
-              <span>Conductor Settings</span>
+              <span>LLM Providers</span>
             </h3>
             <p className={styles.cardDescription}>
-              Configure the Ollama model used as the orchestration relay and the per-task timeout.
-              The relay model must be running locally via Ollama — a small/fast model like
-              <code> llama3.2</code> or <code>mistral</code> is recommended.
+              Configure the AI model for each orchestration use case. Supports Ollama, LM Studio,
+              OpenAI, DeepSeek, Together.ai, Anthropic, and Gemini.
             </p>
 
-            <div className={styles.conductorRow}>
-              <div style={{ flex: 1 }}>
-                <label className={styles.formLabel}>Ollama Relay Model</label>
-                <div className={styles.modelPickerRow}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Select
-                      value={conductorOllamaModel}
-                      onChange={setConductorOllamaModel}
-                      disabled={modelsLoading}
-                      options={
-                        ollamaModels.length === 0
-                          ? [{ value: '', name: '— Refresh to load models —' }]
-                          : [
-                              { value: '', name: '— Select a model —' },
-                              ...ollamaModels.map(m => ({ value: m, name: m })),
-                            ]
-                      }
-                    />
-                  </div>
-                  <button
-                    type='button'
-                    className={styles.refreshBtn}
-                    onClick={loadOllamaModels}
-                    disabled={modelsLoading}
-                    title='Refresh model list from Ollama'
-                  >
-                    <RefreshCw className={cx(styles.refreshIcon, modelsLoading && styles.spin)} />
-                  </button>
-                </div>
-                {modelsError && (
-                  <p className={styles.modelsError}>{modelsError}</p>
-                )}
-              </div>
+            {(Object.keys(USE_CASE_LABELS) as Array<keyof UseCaseProviders>).map(key => (
+              <ProviderConfigEditor
+                key={key}
+                label={USE_CASE_LABELS[key]}
+                value={llmProviders[key]}
+                onChange={cfg => setLlmProviders(prev => ({ ...prev, [key]: cfg }))}
+              />
+            ))}
 
-              <div style={{ width: 160 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 8 }}>
+              <div>
                 <label className={styles.formLabel}>Task Timeout (minutes)</label>
                 <input
-                  type='number'
-                  min={1}
-                  max={480}
+                  type="number" min={1} max={480}
                   className={styles.integrationInput}
                   value={conductorTaskTimeoutMinutes}
                   onChange={e => setConductorTaskTimeoutMinutes(Number(e.target.value))}
+                  style={{ width: 100 }}
                 />
               </div>
-            </div>
-
-            <div className={styles.flexEndPt2}>
-              <button
-                type='button'
-                className={styles.amberButton}
-                onClick={() => {
-                  updateSettings({ conductorOllamaModel, conductorTaskTimeoutMinutes });
-                  showToast('Conductor settings saved', 'success');
-                }}
-              >
-                Save Conductor Settings
+              <div style={{ flex: 1 }} />
+              <button type="button" className={styles.amberButton} onClick={handleSaveIntegrations}>
+                Save Provider Settings
               </button>
             </div>
           </div>

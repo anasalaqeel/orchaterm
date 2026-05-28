@@ -19,7 +19,8 @@
 
 import { InterruptPolicy, RoutingEvent } from '../types';
 import { bufferWatcher } from './bufferWatcher';
-import { evaluateAndRoute, checkOllamaOnline } from './ollamaRelay';
+import { buildRoutingPrompt } from './ollamaRelay';
+import { LLMProvider, createProvider } from './llm';
 import { canInjectNow } from '../utils/interruptPolicy';
 import { writePtyChunked } from '../utils/ptyUtils';
 
@@ -46,16 +47,13 @@ interface ActiveSpace {
 // ── AutonomousOrchestrator ─────────────────────────────────────────────────────
 
 export class AutonomousOrchestrator {
-  private config = {
-    ollamaHost:  'http://localhost:11434',
-    ollamaModel: 'llama3.2',
-  };
+  private routingProvider: LLMProvider = createProvider({ provider: 'ollama', model: 'llama3.2' });
 
   private activeSpaces = new Map<string, ActiveSpace>();
   private eventListeners: Array<(event: RoutingEvent) => void> = [];
 
-  updateConfig(config: { ollamaHost: string; ollamaModel: string }): void {
-    this.config = config;
+  updateConfig(config: { routingProvider: LLMProvider }): void {
+    this.routingProvider = config.routingProvider;
   }
 
   /** Subscribe to routing events (for GroupChat display). Returns unsubscribe fn. */
@@ -111,24 +109,26 @@ export class AutonomousOrchestrator {
     const siblings = active.config.sessions.filter(s => s.id !== fromSession.id);
     if (siblings.length === 0) return;
 
-    // Don't try to route if Ollama is offline
-    const online = await checkOllamaOnline(this.config.ollamaHost);
-    if (!online) return;
-
-    let decision;
+    let decision: { type: 'no_relay' | 'inject'; targetTitle?: string; message?: string };
     try {
-      decision = await evaluateAndRoute({
-        fromTitle:    fromSession.title,
-        recentChunk:  chunk,
-        siblings:     siblings.map(s => ({
-          title:        s.title,
-          recentOutput: bufferWatcher.getBuffer(s.id).slice(-600),
-        })),
-        ollamaHost: this.config.ollamaHost,
-        model:      this.config.ollamaModel,
-      });
+      const { system, userContent } = buildRoutingPrompt(
+        fromSession.title,
+        chunk,
+        siblings.map(s => ({ title: s.title, recentOutput: bufferWatcher.getBuffer(s.id).slice(-600) })),
+      );
+      const response = await this.routingProvider.complete([{ role: 'user', content: userContent }], system);
+      const trimmed = response.trim();
+
+      if (trimmed === 'NO_RELAY' || !trimmed.includes('INJECT')) {
+        decision = { type: 'no_relay' };
+      } else {
+        const match = trimmed.match(/INJECT\s*→\s*([^:\n]+):\s*(.+)/i);
+        decision = match
+          ? { type: 'inject', targetTitle: match[1].trim(), message: match[2].trim() }
+          : { type: 'no_relay' };
+      }
     } catch {
-      return; // Ollama error — skip silently
+      return;
     }
 
     if (decision.type === 'no_relay' || !decision.targetTitle || !decision.message) return;
@@ -142,24 +142,14 @@ export class AutonomousOrchestrator {
     // Respect interrupt policy
     const targetBuffer = bufferWatcher.getBuffer(target.id);
     if (!canInjectNow(targetBuffer, target.interruptPolicy)) {
-      this.emit({
-        type:   'relay-skipped',
-        reason: 'interrupt-policy',
-        target: target.title,
-      });
+      this.emit({ type: 'relay-skipped', reason: 'interrupt-policy', target: target.title });
       return;
     }
 
-    // Inject
     const injection = `\n[Orchaterm from ${fromSession.title}]: ${decision.message}\r`;
     await writePtyChunked(target.id, injection).catch(() => {});
 
-    this.emit({
-      type:    'relayed',
-      from:    fromSession.title,
-      to:      target.title,
-      message: decision.message,
-    });
+    this.emit({ type: 'relayed', from: fromSession.title, to: target.title, message: decision.message });
   }
 
   private emit(event: RoutingEvent): void {
