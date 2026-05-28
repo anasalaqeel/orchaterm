@@ -131,14 +131,14 @@ function renderMarkdown(text: string): React.ReactNode {
 
 const md = {
   codeBlock: css`
-    background: rgba(0,0,0,0.35); border-radius: 6px; padding: 8px 10px;
-    margin: 6px 0; font-family: 'Fira Code','Cascadia Code',monospace;
-    font-size: 11px; overflow-x: auto; white-space: pre; color: #94a3b8;
+    background: var(--bg-tertiary); border-radius: 6px; padding: 8px 10px;
+    margin: 6px 0; font-family: var(--font-family-mono);
+    font-size: 11px; overflow-x: auto; white-space: pre; color: var(--text-secondary);
   `,
-  bold: css`color: #e2e8f0;`,
+  bold: css`color: var(--text-primary);`,
   inlineCode: css`
-    background: rgba(0,0,0,0.3); border-radius: 3px; padding: 1px 5px;
-    font-family: 'Fira Code',monospace; font-size: 0.9em; color: #f59e0b;
+    background: var(--bg-tertiary); border-radius: 3px; padding: 1px 5px;
+    font-family: var(--font-family-mono); font-size: 0.9em; color: var(--color-warning);
   `,
 };
 
@@ -1058,9 +1058,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             display:flex;align-items:center;gap:6px;
           `}>
             <span style={{color:
-              livePlan.status==='running' ? '#7b68ee' :
-              livePlan.status==='done'    ? '#3fb950' :
-              livePlan.status==='failed'  ? '#f85149' : '#e3b341'
+              livePlan.status==='running' ? 'var(--color-brand)' :
+              livePlan.status==='done'    ? 'var(--color-success)' :
+              livePlan.status==='failed'  ? 'var(--color-error)' : 'var(--color-warning)'
             }}>
               {livePlan.status==='running' ? '⚡' :
                livePlan.status==='done'    ? '✓'  :
@@ -1082,18 +1082,18 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
               <button
                 title="Resume orchestration"
                 onClick={() => orchestratorEngine.resume()}
-                className={css`background:none;border:1px solid #7b68ee;color:#7b68ee;
+                className={css`background:none;border:1px solid var(--color-brand);color:var(--color-brand);
                   border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;
-                  &:hover{background:#7b68ee20;}`}
+                  &:hover{background:rgba(var(--color-brand-rgb),0.12);}`}
               >▶</button>
             )}
             {(livePlan.status === 'running' || livePlan.status === 'paused') && (
               <button
                 title="Stop orchestration"
                 onClick={() => orchestratorEngine.stop()}
-                className={css`background:none;border:1px solid #f85149;color:#f85149;
+                className={css`background:none;border:1px solid var(--color-error);color:var(--color-error);
                   border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;
-                  &:hover{background:#f8514920;}`}
+                  &:hover{background:rgba(var(--color-error-rgb),0.12);}`}
               >■</button>
             )}
             {(livePlan.status === 'done' || livePlan.status === 'failed') && (
@@ -1108,9 +1108,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
           </div>
           {livePlan.tasks.map(task => {
             const statusColor =
-              task.status==='running' ? '#7b68ee' :
-              task.status==='done'    ? '#3fb950' :
-              task.status==='failed'  ? '#f85149' : '#6e7681';
+              task.status==='running' ? 'var(--color-brand)' :
+              task.status==='done'    ? 'var(--color-success)' :
+              task.status==='failed'  ? 'var(--color-error)' : 'var(--text-tertiary)';
             const statusIcon =
               task.status==='running' ? '▶' :
               task.status==='done'    ? '✓' :
@@ -1132,7 +1132,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
                 <span className={css`color:var(--text-secondary);font-size:10px;flex-shrink:0;`}>{task.assignedSessionTitle}</span>
                 {elapsed && <span className={css`color:var(--text-secondary);font-size:10px;min-width:32px;text-align:right;flex-shrink:0;`}>{elapsed}</span>}
                 {task.status==='done' && (task.output?.filesModified?.length ?? 0) > 0 && (
-                  <span title={task.output!.filesModified.join(', ')} className={css`color:#3fb950;font-size:10px;flex-shrink:0;cursor:default;`}>
+                  <span title={task.output!.filesModified.join(', ')} className={css`color:var(--color-success);font-size:10px;flex-shrink:0;cursor:default;`}>
                     📄{task.output!.filesModified.length}
                   </span>
                 )}
@@ -1271,8 +1271,8 @@ const MessageRow: React.FC<{
       error: '✗', timeout: '⏱', info: 'ℹ', 'user-override': '⚙',
     };
     const colors: Record<string, string> = {
-      dispatch: '#7b68ee', sentinel: '#3fb950', relay: '#a371f7',
-      error: '#f85149', timeout: '#e3b341', info: '#6e7681', 'user-override': '#e3b341',
+      dispatch: 'var(--color-brand)', sentinel: 'var(--color-success)', relay: 'var(--color-info)',
+      error: 'var(--color-error)', timeout: 'var(--color-warning)', info: 'var(--text-tertiary)', 'user-override': 'var(--color-warning)',
     };
     const type = msg.conductorType ?? 'info';
 
@@ -1283,14 +1283,14 @@ const MessageRow: React.FC<{
         margin: 4px 0;
         padding: 10px 12px;
         border-radius: var(--border-radius-sm);
-        border: 1px solid #3fb95033;
-        background: #3fb9500d;
+        border: 1px solid rgba(var(--color-success-rgb), 0.2);
+        background: rgba(var(--color-success-rgb), 0.05);
         font-size: 12px;
         line-height: 1.5;
       `;
       const headerStyle = css`
         display: flex; align-items: center; gap: 6px;
-        font-weight: 600; color: #3fb950; margin-bottom: 6px;
+        font-weight: 600; color: var(--color-success); margin-bottom: 6px;
       `;
       const labelStyle = css`color: var(--text-secondary); font-size: 11px; font-weight: 600; margin-top: 4px;`;
       const valueStyle = css`color: var(--text-primary);`;
@@ -1320,7 +1320,7 @@ const MessageRow: React.FC<{
 
     return (
       <div className={s.conductorRow}>
-        <span className={s.conductorIcon} style={{ color: colors[type] ?? '#6e7681' }}>
+        <span className={s.conductorIcon} style={{ color: colors[type] ?? 'var(--text-tertiary)' }}>
           {icons[type] ?? '·'}
         </span>
         <span className={s.conductorText}>{msg.content}</span>
@@ -1331,7 +1331,7 @@ const MessageRow: React.FC<{
   if (msg.role === 'agent-summary') {
     return (
       <div className={s.agentSummaryRow}>
-        <span className={s.agentSummaryDot} style={{ backgroundColor: msg.sessionColor ?? '#475569' }} />
+        <span className={s.agentSummaryDot} style={{ backgroundColor: msg.sessionColor ?? 'var(--text-tertiary)' }} />
         <span className={s.agentSummaryTitle}>{msg.sessionTitle}</span>
         <span className={s.agentSummaryText}>{msg.content}</span>
       </div>
@@ -1378,56 +1378,56 @@ const s = {
   root: css`
     display: flex; flex-direction: column;
     flex: 1; min-height: 0; height: 100%;
-    background: #010409; overflow: hidden; position: relative;
+    background: var(--bg-canvas); overflow: hidden; position: relative;
   `,
 
   /* ── Workspace info overlay ── */
   infoPanelHeader: css`
     display: flex; align-items: center; justify-content: space-between;
     padding: 10px 14px;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
-    background: #0d1117;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
     flex-shrink: 0;
   `,
   infoPanelTitle: css`
-    font-size: 12px; font-weight: 700; color: #f0f6fc;
+    font-size: 12px; font-weight: 700; color: var(--text-primary);
   `,
   infoPanelClose: css`
     display: flex; align-items: center; justify-content: center;
     width: 24px; height: 24px; border-radius: 6px;
     background: transparent; border: none;
-    color: #7d8590; cursor: pointer;
+    color: var(--text-tertiary); cursor: pointer;
     transition: background 0.15s, color 0.15s;
-    &:hover { background: rgba(255,255,255,0.07); color: #f0f6fc; }
+    &:hover { background: var(--bg-hover); color: var(--text-primary); }
   `,
 
   /* ── Input mode bar ── */
   inputModeBar: css`
     display: flex; align-items: center; justify-content: space-between;
     padding: 5px 10px 5px 12px;
-    border-top: 1px solid rgba(255,255,255,0.07);
-    border-bottom: 1px solid rgba(255,255,255,0.07);
-    background: #0d1117;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
     flex-shrink: 0;
   `,
   inputModePill: css`
     display: flex; gap: 2px;
-    background: #010409;
+    background: var(--bg-canvas);
     border-radius: 99px;
     padding: 3px;
-    border: 1px solid rgba(255,255,255,0.07);
+    border: 1px solid var(--border-color);
   `,
   inputModeBtn: css`
     display: flex; align-items: center; gap: 4px;
     padding: 4px 12px;
     border-radius: 99px;
     font-size: 11px; font-weight: 600;
-    color: #7d8590;
+    color: var(--text-tertiary);
     background: transparent;
     border: none; cursor: pointer;
     transition: color 0.15s, background 0.15s;
     white-space: nowrap;
-    &:hover { color: #adbac7; }
+    &:hover { color: var(--text-secondary); }
   `,
   inputModeBtnActive: css`
     background: var(--color-brand) !important;
@@ -1438,12 +1438,12 @@ const s = {
     display: flex; align-items: center; justify-content: center;
     width: 26px; height: 26px;
     border-radius: 7px;
-    color: #7d8590;
+    color: var(--text-tertiary);
     background: transparent;
     border: 1px solid transparent;
     cursor: pointer;
     transition: all 0.15s;
-    &:hover { color: #adbac7; border-color: rgba(255,255,255,0.1); }
+    &:hover { color: var(--text-secondary); border-color: var(--border-color); }
   `,
   inputModeIconBtnActive: css`
     color: var(--color-brand) !important;
@@ -1459,10 +1459,10 @@ const s = {
   /* ── Pipeline builder area ── */
   pipelineArea: css`
     flex-shrink: 0;
-    border-top: 1px solid rgba(255,255,255,0.07);
+    border-top: 1px solid var(--border-color);
     padding: 8px 10px;
     display: flex; flex-direction: column; gap: 6px;
-    background: #0d1117;
+    background: var(--bg-secondary);
   `,
   pipelineTaskList: css`
     display: flex; flex-direction: column; gap: 3px;
@@ -1472,15 +1472,15 @@ const s = {
     display: flex; align-items: center; gap: 6px;
     padding: 4px 8px;
     border-radius: 6px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.07);
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
   `,
   pipelineTaskNum: css`
-    font-size: 10px; color: #7d8590; font-weight: 700;
+    font-size: 10px; color: var(--text-tertiary); font-weight: 700;
     flex-shrink: 0; width: 14px; text-align: right;
   `,
   pipelineTaskTitle: css`
-    flex: 1; font-size: 11px; color: #f0f6fc;
+    flex: 1; font-size: 11px; color: var(--text-primary);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   `,
   pipelineTaskAgent: css`
@@ -1492,12 +1492,12 @@ const s = {
     display: flex; align-items: center; justify-content: center;
     width: 16px; height: 16px; border-radius: 3px;
     background: transparent; border: none;
-    color: #7d8590; cursor: pointer; flex-shrink: 0;
+    color: var(--text-tertiary); cursor: pointer; flex-shrink: 0;
     transition: color 0.12s, background 0.12s;
-    &:hover { color: #f85149; background: rgba(248,81,73,0.12); }
+    &:hover { color: var(--color-error); background: rgba(var(--color-error-rgb), 0.12); }
   `,
   pipelineEmpty: css`
-    font-size: 11px; color: #7d8590;
+    font-size: 11px; color: var(--text-tertiary);
     text-align: center; padding: 4px 0; font-style: italic;
   `,
   pipelineAddRow: css`
@@ -1508,23 +1508,23 @@ const s = {
   `,
   pipelineTitleInput: css`
     flex: 1; min-width: 0;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: var(--bg-input);
+    border: 1px solid var(--border-color-hover);
     border-radius: 6px;
     padding: 5px 8px;
-    font-size: 11px; color: #f0f6fc;
+    font-size: 11px; color: var(--text-primary);
     outline: none; font-family: var(--font-family);
     transition: border-color 0.15s;
     &:focus { border-color: var(--color-brand); }
-    &::placeholder { color: #7d8590; }
+    &::placeholder { color: var(--text-tertiary); }
   `,
   pipelineAddBtn: css`
     width: 28px; height: 28px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     border-radius: 6px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
-    color: #adbac7; font-size: 16px; font-weight: 400;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color-hover);
+    color: var(--text-secondary); font-size: 16px; font-weight: 400;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
     &:hover { background: var(--color-brand); border-color: var(--color-brand); color: #fff; }
@@ -1546,23 +1546,23 @@ const s = {
   `,
   pipelineClearBtn: css`
     background: transparent;
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid var(--border-color);
     border-radius: 7px;
     padding: 6px 10px;
     font-size: 11px; font-weight: 600;
-    color: #7d8590; cursor: pointer;
+    color: var(--text-tertiary); cursor: pointer;
     transition: border-color 0.15s, color 0.15s;
-    &:hover { border-color: rgba(255,255,255,0.2); color: #adbac7; }
+    &:hover { border-color: var(--border-color-hover); color: var(--text-secondary); }
   `,
   header: css`
     display: flex; align-items: center; justify-content: space-between;
-    padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.07);
-    background: #0d1117; flex-shrink: 0; gap: 8px;
+    padding: 10px 12px; border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary); flex-shrink: 0; gap: 8px;
   `,
   headerLeft: css`display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; overflow: hidden;`,
   headerRight: css`display: flex; align-items: center; gap: 4px; flex-shrink: 0;`,
   botIcon: css`color: var(--color-brand); flex-shrink: 0;`,
-  headerTitle: css`font-size: 12px; font-weight: 700; color: #f0f6fc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;`,
+  headerTitle: css`font-size: 12px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;`,
   groupBadge: css`
     display: inline-flex; align-items: center; gap: 4px;
     font-size: 10px; font-weight: 600; padding: 1px 6px;
@@ -1571,69 +1571,69 @@ const s = {
   `,
   headerIconBtn: css`
     width: 24px; height: 24px; border-radius: 5px; border: none;
-    background: transparent; color: #6e7681; cursor: pointer;
+    background: transparent; color: var(--text-tertiary); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: all 150ms ease;
-    &:hover { background: rgba(255,255,255,0.07); color: #c9d1d9; }
+    &:hover { background: var(--bg-hover); color: var(--text-primary); }
   `,
   headerIconBtnActive: css`
-    color: #3fb950 !important;
-    background: rgba(63,185,80,0.1) !important;
+    color: var(--color-success) !important;
+    background: rgba(var(--color-success-rgb), 0.1) !important;
   `,
   headerIconBtnAutoMode: css`
-    color: #e3b341 !important;
-    background: rgba(227,179,65,0.1) !important;
+    color: var(--color-warning) !important;
+    background: rgba(var(--color-warning-rgb), 0.1) !important;
   `,
-  onlineBadge: css`display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: #3fb950;`,
+  onlineBadge: css`display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: var(--color-success);`,
   onlineDot: css`
-    width: 5px; height: 5px; border-radius: 50%; background: #3fb950;
+    width: 5px; height: 5px; border-radius: 50%; background: var(--color-success);
     animation: blink 2.5s ease-in-out infinite;
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
   `,
-  offlineBadge: css`display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: #f85149;`,
+  offlineBadge: css`display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: var(--color-error);`,
   refreshBtn: css`
     width: 22px; height: 22px; border-radius: 5px; border: none;
-    background: transparent; color: #6e7681; cursor: pointer;
+    background: transparent; color: var(--text-tertiary); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: all 150ms ease;
-    &:hover { background: rgba(255,255,255,0.07); color: #c9d1d9; }
+    &:hover { background: var(--bg-hover); color: var(--text-primary); }
     &:disabled { opacity: 0.4; cursor: default; }
   `,
   spin: css`animation: spin 0.8s linear infinite; @keyframes spin { to { transform: rotate(360deg); } }`,
   warningBanner: css`
-    background: rgba(245,158,11,0.07); border-bottom: 1px solid rgba(245,158,11,0.15);
-    padding: 8px 14px; font-size: 11px; color: #e3b341; flex-shrink: 0; line-height: 1.5;
-    code { font-family: 'Fira Code',monospace; color: #e3b341; }
-    strong { color: #e3b341; }
+    background: rgba(var(--color-warning-rgb), 0.07); border-bottom: 1px solid rgba(var(--color-warning-rgb), 0.2);
+    padding: 8px 14px; font-size: 11px; color: var(--color-warning); flex-shrink: 0; line-height: 1.5;
+    code { font-family: var(--font-family-mono); color: var(--color-warning); }
+    strong { color: var(--color-warning); }
   `,
   inlineLinkBtn: css`
-    background: transparent; border: none; color: #e3b341;
+    background: transparent; border: none; color: var(--color-warning);
     text-decoration: underline; cursor: pointer; font-size: inherit; padding: 0;
-    &:hover { color: #f0f6fc; }
+    &:hover { color: var(--text-primary); }
   `,
   messageList: css`
     flex: 1; overflow-y: auto; padding: 14px 12px;
     display: flex; flex-direction: column; gap: 10px;
     scroll-behavior: smooth;
     &::-webkit-scrollbar { width: 4px; }
-    &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+    &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
   `,
   emptyState: css`
     flex: 1; display: flex; flex-direction: column; align-items: center;
     justify-content: center; text-align: center; padding: 40px 24px;
     gap: 8px; margin: auto 0;
   `,
-  emptyIcon: css`color: #1e3a5f; margin-bottom: 4px;`,
-  emptyTitle: css`font-size: 13px; font-weight: 700; color: #64748b; margin: 0;`,
-  emptyHint: css`font-size: 11px; color: #475569; line-height: 1.5; margin: 0; max-width: 260px;`,
+  emptyIcon: css`color: var(--border-color-hover); margin-bottom: 4px;`,
+  emptyTitle: css`font-size: 13px; font-weight: 700; color: var(--text-tertiary); margin: 0;`,
+  emptyHint: css`font-size: 11px; color: var(--text-tertiary); line-height: 1.5; margin: 0; max-width: 260px; opacity: 0.8;`,
   suggestions: css`
     display: flex; flex-direction: column; gap: 6px; margin-top: 12px; width: 100%; max-width: 280px;
   `,
   suggestionBtn: css`
-    background: #0b1520; border: 1px solid #1e3a5f; border-radius: 8px;
-    color: #64748b; font-size: 11px; padding: 8px 12px; cursor: pointer;
+    background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px;
+    color: var(--text-tertiary); font-size: 11px; padding: 8px 12px; cursor: pointer;
     text-align: left; transition: all 150ms ease; line-height: 1.4; width: 100%;
-    &:hover:not(:disabled) { border-color: var(--color-brand); color: #e2e8f0; background: rgba(123, 104, 238, 0.08); }
+    &:hover:not(:disabled) { border-color: var(--color-brand); color: var(--text-primary); background: rgba(var(--color-brand-rgb), 0.08); }
     &:disabled { opacity: 0.4; cursor: not-allowed; }
   `,
   msgRow: css`display: flex; align-items: flex-end; gap: 8px; position: relative;`,
@@ -1641,22 +1641,22 @@ const s = {
   msgRowAssistant: css`flex-direction: row;`,
   avatar: css`
     width: 22px; height: 22px; border-radius: 50%;
-    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+    background: var(--bg-tertiary); border: 1px solid var(--border-color);
     display: flex; align-items: center; justify-content: center;
     color: var(--color-brand); flex-shrink: 0;
   `,
-  avatarUser: css`background: rgba(123, 104, 238, 0.10); border-color: rgba(123, 104, 238, 0.28);`,
+  avatarUser: css`background: rgba(var(--color-brand-rgb), 0.10); border-color: rgba(var(--color-brand-rgb), 0.28);`,
   bubble: css`
     max-width: 82%; padding: 9px 12px; border-radius: 10px;
     font-size: 12px; line-height: 1.6; word-break: break-word; position: relative;
   `,
   bubbleUser: css`
-    background: rgba(123, 104, 238, 0.12); border: 1px solid rgba(123, 104, 238, 0.22);
-    border-bottom-right-radius: 3px; color: #c4b5fd;
+    background: rgba(var(--color-brand-rgb), 0.12); border: 1px solid rgba(var(--color-brand-rgb), 0.22);
+    border-bottom-right-radius: 3px; color: var(--text-primary);
   `,
   bubbleAssistant: css`
-    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
-    border-bottom-left-radius: 3px; color: #c9d1d9;
+    background: var(--bg-tertiary); border: 1px solid var(--border-color);
+    border-bottom-left-radius: 3px; color: var(--text-primary);
   `,
   msgText: css`margin: 0; font-size: inherit; line-height: 1.6;`,
   cursor: css`
@@ -1668,46 +1668,46 @@ const s = {
   vaultBtn: css`
     position: absolute; top: -8px; right: -8px;
     width: 20px; height: 20px; border-radius: 50%;
-    background: #0d1117; border: 1px solid rgba(255,255,255,0.12);
-    color: #6e7681; cursor: pointer;
+    background: var(--bg-secondary); border: 1px solid var(--border-color);
+    color: var(--text-tertiary); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: all 150ms ease;
     &:hover { border-color: var(--color-brand); color: var(--color-brand); }
   `,
   agentSummaryRow: css`
     display: flex; align-items: baseline; gap: 6px;
-    padding: 4px 8px; background: rgba(255,255,255,0.03);
-    border-radius: 5px; border-left: 2px solid rgba(255,255,255,0.12);
+    padding: 4px 8px; background: var(--bg-tertiary);
+    border-radius: 5px; border-left: 2px solid var(--border-color);
   `,
   agentSummaryDot: css`width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-top: 3px;`,
-  agentSummaryTitle: css`font-size: 10px; font-weight: 600; color: #6e7681; white-space: nowrap; flex-shrink: 0;`,
-  agentSummaryText: css`font-size: 11px; color: #8b949e; line-height: 1.4;`,
+  agentSummaryTitle: css`font-size: 10px; font-weight: 600; color: var(--text-tertiary); white-space: nowrap; flex-shrink: 0;`,
+  agentSummaryText: css`font-size: 11px; color: var(--text-secondary); line-height: 1.4;`,
   systemRow: css`
-    font-size: 11px; color: #8b949e; padding: 5px 10px;
-    border-left: 2px solid rgba(255,255,255,0.12); border-radius: 3px;
-    background: rgba(255,255,255,0.03); line-height: 1.4;
+    font-size: 11px; color: var(--text-secondary); padding: 5px 10px;
+    border-left: 2px solid var(--border-color); border-radius: 3px;
+    background: var(--bg-tertiary); line-height: 1.4;
   `,
   scrollBtn: css`
     position: absolute; bottom: 70px; right: 14px;
     width: 26px; height: 26px; border-radius: 50%;
-    border: 1px solid rgba(255,255,255,0.12); background: #0d1117; color: #6e7681;
+    border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-tertiary);
     cursor: pointer; display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5); transition: all 150ms ease;
-    &:hover { border-color: rgba(255,255,255,0.2); color: #c9d1d9; }
+    box-shadow: var(--shadow-md); transition: all 150ms ease;
+    &:hover { border-color: var(--border-color-hover); color: var(--text-primary); }
   `,
   inputArea: css`
     display: flex; align-items: flex-end; gap: 8px;
-    padding: 10px 12px; border-top: 1px solid rgba(255,255,255,0.07);
-    background: #0d1117; flex-shrink: 0;
+    padding: 10px 12px; border-top: 1px solid var(--border-color);
+    background: var(--bg-secondary); flex-shrink: 0;
   `,
   textarea: css`
-    flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 8px; padding: 8px 12px; color: #f0f6fc;
+    flex: 1; background: var(--bg-input); border: 1px solid var(--border-color-hover);
+    border-radius: 8px; padding: 8px 12px; color: var(--text-primary);
     font-size: 12px; font-family: inherit; line-height: 1.5;
     resize: none; outline: none; max-height: 120px; min-height: 36px;
     transition: border-color 150ms ease;
-    &:focus { border-color: rgba(123, 104, 238, 0.5); }
-    &::placeholder { color: #6e7681; }
+    &:focus { border-color: var(--border-color-focus); }
+    &::placeholder { color: var(--text-tertiary); }
     &:disabled { opacity: 0.4; cursor: not-allowed; }
   `,
   sendBtn: css`
@@ -1718,107 +1718,107 @@ const s = {
     &:hover:not(:disabled) { filter: brightness(1.10); }
     &:disabled { opacity: 0.35; cursor: not-allowed; }
   `,
-  stopBtn: css`background: #ef4444 !important; color: #fff !important; &:hover { background: #f87171 !important; }`,
+  stopBtn: css`background: var(--color-error) !important; color: #fff !important; &:hover { filter: brightness(1.1); }`,
 
   // ── Conductor event row ──────────────────────────────────────────────────
   conductorRow: css`
     display: flex; align-items: baseline; gap: 7px;
     padding: 3px 10px; border-radius: 4px;
-    background: rgba(123,104,238,0.04);
-    border-left: 2px solid rgba(123,104,238,0.2);
+    background: rgba(var(--color-brand-rgb), 0.04);
+    border-left: 2px solid rgba(var(--color-brand-rgb), 0.2);
   `,
   conductorIcon: css`font-size: 11px; font-weight: 700; flex-shrink: 0; min-width: 12px; text-align: center;`,
-  conductorText: css`font-size: 11px; color: #8b949e; line-height: 1.4;`,
+  conductorText: css`font-size: 11px; color: var(--text-secondary); line-height: 1.4;`,
 
   // ── Plan mode ────────────────────────────────────────────────────────────
   headerIconBtnPlanMode: css`
-    color: #58a6ff !important;
-    background: rgba(88,166,255,0.1) !important;
+    color: var(--color-info) !important;
+    background: rgba(var(--color-info-rgb), 0.1) !important;
   `,
   planThinking: css`
     display: flex; align-items: center; gap: 5px;
     padding: 8px 12px; border-radius: 6px;
-    background: rgba(88,166,255,0.06); border: 1px solid rgba(88,166,255,0.15);
+    background: rgba(var(--color-info-rgb), 0.06); border: 1px solid rgba(var(--color-info-rgb), 0.2);
   `,
   planThinkingDot: css`
-    width: 5px; height: 5px; border-radius: 50%; background: #58a6ff;
+    width: 5px; height: 5px; border-radius: 50%; background: var(--color-info);
     animation: planPulse 1.2s ease-in-out infinite;
     @keyframes planPulse { 0%,100%{opacity:0.2;transform:scale(0.8)} 50%{opacity:1;transform:scale(1)} }
   `,
-  planThinkingLabel: css`font-size: 11px; color: #58a6ff; margin-left: 4px;`,
+  planThinkingLabel: css`font-size: 11px; color: var(--color-info); margin-left: 4px;`,
   planPreview: css`
-    border: 1px solid rgba(88,166,255,0.2); border-radius: 8px; overflow: hidden;
-    background: rgba(88,166,255,0.04);
+    border: 1px solid rgba(var(--color-info-rgb), 0.2); border-radius: 8px; overflow: hidden;
+    background: rgba(var(--color-info-rgb), 0.04);
   `,
   planPreviewHeader: css`
     display: flex; align-items: center; gap: 7px;
-    padding: 9px 12px; background: rgba(88,166,255,0.07);
-    border-bottom: 1px solid rgba(88,166,255,0.15);
-    font-size: 11px; font-weight: 600; color: #58a6ff;
+    padding: 9px 12px; background: rgba(var(--color-info-rgb), 0.07);
+    border-bottom: 1px solid rgba(var(--color-info-rgb), 0.15);
+    font-size: 11px; font-weight: 600; color: var(--color-info);
   `,
   planPreviewGoal: css`
-    font-weight: 400; color: #8b949e; overflow: hidden;
+    font-weight: 400; color: var(--text-secondary); overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
   `,
   planTaskList: css`display: flex; flex-direction: column; gap: 1px; padding: 6px 0;`,
   planTask: css`
     display: flex; align-items: flex-start; gap: 10px; padding: 7px 12px;
-    &:hover { background: rgba(255,255,255,0.02); }
+    &:hover { background: var(--bg-input); }
   `,
   planTaskNum: css`
-    font-size: 10px; font-weight: 700; color: #6e7681;
+    font-size: 10px; font-weight: 700; color: var(--text-tertiary);
     min-width: 16px; text-align: right; padding-top: 1px; flex-shrink: 0;
   `,
   planTaskBody: css`display: flex; flex-direction: column; gap: 2px; min-width: 0;`,
-  planTaskTitle: css`font-size: 12px; color: #e2e8f0; font-weight: 500;`,
+  planTaskTitle: css`font-size: 12px; color: var(--text-primary); font-weight: 500;`,
   planTaskMeta: css`display: flex; align-items: center; gap: 8px; flex-wrap: wrap;`,
   planTaskAgent: css`
-    font-size: 10px; color: #7b68ee; font-weight: 600;
-    background: rgba(123,104,238,0.1); padding: 1px 6px; border-radius: 99px;
+    font-size: 10px; color: var(--color-brand); font-weight: 600;
+    background: rgba(var(--color-brand-rgb), 0.1); padding: 1px 6px; border-radius: 99px;
   `,
-  planTaskDeps: css`font-size: 10px; color: #6e7681;`,
+  planTaskDeps: css`font-size: 10px; color: var(--text-tertiary);`,
   planPreviewActions: css`
     display: flex; gap: 8px; padding: 10px 12px;
-    border-top: 1px solid rgba(88,166,255,0.12); background: rgba(0,0,0,0.15);
+    border-top: 1px solid rgba(var(--color-info-rgb), 0.12); background: var(--bg-canvas);
   `,
   planRunBtn: css`
     flex: 1; padding: 7px 12px; border-radius: 6px; border: none;
-    background: #58a6ff; color: #0d1117; font-size: 12px; font-weight: 700;
+    background: var(--color-info); color: var(--bg-secondary); font-size: 12px; font-weight: 700;
     cursor: pointer; transition: all 150ms ease;
     &:hover:not(:disabled) { filter: brightness(1.1); }
     &:disabled { opacity: 0.4; cursor: not-allowed; }
   `,
   planDiscardBtn: css`
     padding: 7px 14px; border-radius: 6px;
-    border: 1px solid rgba(255,255,255,0.1);
-    background: transparent; color: #6e7681; font-size: 12px;
+    border: 1px solid var(--border-color);
+    background: transparent; color: var(--text-tertiary); font-size: 12px;
     cursor: pointer; transition: all 150ms ease;
-    &:hover { border-color: #f85149; color: #f85149; }
+    &:hover { border-color: var(--color-error); color: var(--color-error); }
   `,
 
   // ── Mode badge (header) ──────────────────────────────────────────────────
   modeBadge: css`
     font-size: 10px; font-weight: 600; padding: 2px 8px;
-    border-radius: 99px; background: rgba(88,166,255,0.12);
-    color: #58a6ff; border: 1px solid rgba(88,166,255,0.25);
+    border-radius: 99px; background: rgba(var(--color-info-rgb), 0.12);
+    color: var(--color-info); border: 1px solid rgba(var(--color-info-rgb), 0.25);
     white-space: nowrap;
   `,
 
   // ── Features popover ─────────────────────────────────────────────────────
   featuresPopover: css`
     position: absolute; top: calc(100% + 6px); right: 0;
-    width: 240px; background: #161b22;
-    border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    width: 240px; background: var(--bg-secondary);
+    border: 1px solid var(--border-color); border-radius: 10px;
+    box-shadow: var(--shadow-lg);
     overflow: hidden; z-index: 50;
   `,
   featureSection: css`
     padding: 10px 0 6px;
-    & + & { border-top: 1px solid rgba(255,255,255,0.06); }
+    & + & { border-top: 1px solid var(--border-color); }
   `,
   featureSectionLabel: css`
     display: block; font-size: 10px; font-weight: 600;
-    color: #6e7681; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em;
     padding: 0 14px 6px;
   `,
   featureOption: css`
@@ -1826,18 +1826,18 @@ const s = {
     width: 100%; padding: 7px 14px; border: none;
     background: transparent; cursor: pointer; text-align: left;
     transition: background 120ms ease;
-    &:hover { background: rgba(255,255,255,0.04); }
+    &:hover { background: var(--bg-hover); }
   `,
-  featureOptionActive: css`background: rgba(123,104,238,0.08) !important;`,
-  featureOptionActivePlan: css`background: rgba(88,166,255,0.08) !important;`,
-  featureOptionActiveGreen: css`background: rgba(63,185,80,0.08) !important;`,
-  featureOptionActiveYellow: css`background: rgba(227,179,65,0.08) !important;`,
+  featureOptionActive: css`background: rgba(var(--color-brand-rgb), 0.08) !important;`,
+  featureOptionActivePlan: css`background: rgba(var(--color-info-rgb), 0.08) !important;`,
+  featureOptionActiveGreen: css`background: rgba(var(--color-success-rgb), 0.08) !important;`,
+  featureOptionActiveYellow: css`background: rgba(var(--color-warning-rgb), 0.08) !important;`,
   featureOptionCheck: css`
     width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; margin-top: 1px;
-    border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.04);
-    display: flex; align-items: center; justify-content: center; color: #c9d1d9;
+    border: 1px solid var(--border-color-hover); background: var(--bg-input);
+    display: flex; align-items: center; justify-content: center; color: var(--text-primary);
   `,
   featureOptionContent: css`display: flex; flex-direction: column; gap: 1px; min-width: 0;`,
-  featureOptionTitle: css`font-size: 12px; font-weight: 500; color: #e2e8f0;`,
-  featureOptionDesc: css`font-size: 10px; color: #6e7681; line-height: 1.4;`,
+  featureOptionTitle: css`font-size: 12px; font-weight: 500; color: var(--text-primary);`,
+  featureOptionDesc: css`font-size: 10px; color: var(--text-tertiary); line-height: 1.4;`,
 };
