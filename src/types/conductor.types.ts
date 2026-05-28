@@ -70,4 +70,8 @@ export interface ConductorLogEntry {
   message: string;
   taskId?: string;
   sessionId?: string;
+  /** Full task output — present on 'sentinel' entries only. */
+  taskOutput?: OrchestratorTaskOutput;
+  /** Display name of the agent that completed the task — present on 'sentinel' entries. */
+  agentTitle?: string;
 }

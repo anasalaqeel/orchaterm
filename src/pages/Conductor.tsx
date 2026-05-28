@@ -176,6 +176,7 @@ export const ConductorView: React.FC = () => {
       planGenProvider:    llmProviders.planGen,
       autoAnswerProvider: llmProviders.autoAnswer,
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
+      interactionMode:    settings.conductorInteractionMode,
       sessionTitles:      new Map(workspaceSessions.map(s => [s.id, s.title])),
     });
     // Stop any existing plan (paused/failed/etc.) before starting the new one.
