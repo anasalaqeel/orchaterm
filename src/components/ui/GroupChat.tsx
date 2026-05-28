@@ -26,14 +26,13 @@ import { Select } from './Select';
 import { useDashboard } from '../../context/DashboardContext';
 import { writePtyChunked } from '../../utils/ptyUtils';
 import {
-  streamChatWithOllama,
-  summariseChunk,
-  checkOllamaOnline,
-  ChatMessage,
-  generatePlanFromNL,
+  buildPlanGenPrompt,
+  buildSummarisePrompt,
+  buildIntentClassifyPrompt,
+  parsePlanGenResponse,
   RawPlanTask,
-  classifyChatIntent,
 } from '../../services/ollamaRelay';
+import type { ChatMessage } from '../../services/llm/types';
 import { bufferWatcher } from '../../services/bufferWatcher';
 import { stripAnsiCodes } from '../../services/sentinelParser';
 import { needsBroker } from '../../services/needsBroker';
@@ -200,7 +199,7 @@ function getSuggestions(sessionTitles: string[]): string[] {
 export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   const {
     workspaces, spaces, terminalSessions,
-    activeSpaceId, settings, addSavedPrompt, showToast, addPlan,
+    activeSpaceId, settings, addSavedPrompt, showToast, addPlan, llmProviders,
   } = useDashboard();
 
   const workspace     = workspaces.find(w => w.id === workspaceId);
@@ -219,12 +218,11 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   const [checking, setChecking]         = useState(false);
 
   const checkOnline = useCallback(async () => {
-    if (!settings.ollamaHost) { setOllamaOnline(false); return; }
     setChecking(true);
-    const ok = await checkOllamaOnline(settings.ollamaHost);
+    const ok = await llmProviders.chat.checkOnline();
     setOllamaOnline(ok);
     setChecking(false);
-  }, [settings.ollamaHost]);
+  }, [llmProviders.chat]);
 
   useEffect(() => { checkOnline(); }, [checkOnline]);
 
@@ -321,7 +319,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   const groupSessionIds = groupSessions.map(s => s.id).join(',');
 
   useEffect(() => {
-    if (!liveFeedOn || !settings.conductorOllamaModel || !settings.ollamaHost) return;
+    if (!liveFeedOn) return;
 
     const unsubscribers: (() => void)[] = [];
 
@@ -333,10 +331,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
         if (readable.length < 25) return;
 
         try {
-          const summary = await summariseChunk(
-            chunk, session.title,
-            settings.ollamaHost, settings.conductorOllamaModel,
-          );
+          const { system, userContent } = buildSummarisePrompt(chunk, session.title);
+          const summary = await llmProviders.routing.complete([{ role: 'user', content: userContent }], system);
           setMessages(prev => [...prev, {
             id: crypto.randomUUID(),
             role: 'agent-summary',
@@ -354,16 +350,11 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
     return () => { unsubscribers.forEach(fn => fn()); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveFeedOn, groupSessionIds, settings.conductorOllamaModel, settings.ollamaHost]);
+  }, [liveFeedOn, groupSessionIds, llmProviders.routing]);
 
   // ── NeedsBroker wiring ────────────────────────────────────────────────────
   useEffect(() => {
     if (!activeSpaceId) return;
-
-    needsBroker.updateConfig({
-      ollamaHost:  settings.ollamaHost,
-      ollamaModel: settings.conductorOllamaModel,
-    });
 
     needsBroker.registerSpace(activeSpaceId, groupSessions.map(s => ({
       id:              s.id,
@@ -403,16 +394,11 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       if (activeSpaceId) needsBroker.unregisterSpace(activeSpaceId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSpaceId, groupSessionIds, settings.ollamaHost, settings.conductorOllamaModel]);
+  }, [activeSpaceId, groupSessionIds]);
 
   // ── Autonomous mode effect ────────────────────────────────────────────────
   useEffect(() => {
-    if (!autoModeOn || !activeSpaceId || !settings.conductorOllamaModel) return;
-
-    autonomousOrchestrator.updateConfig({
-      ollamaHost:  settings.ollamaHost,
-      ollamaModel: settings.conductorOllamaModel,
-    });
+    if (!autoModeOn || !activeSpaceId) return;
 
     autonomousOrchestrator.startSpace({
       spaceId:  activeSpaceId,
@@ -442,7 +428,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       autonomousOrchestrator.stopSpace(activeSpaceId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoModeOn, activeSpaceId, groupSessionIds, settings.ollamaHost, settings.conductorOllamaModel]);
+  }, [autoModeOn, activeSpaceId, groupSessionIds]);
 
   // ── Conductor engine log → chat feed ────────────────────────────────────
   // Bridges OrchestratorEngine events into the chat so the user sees every
@@ -485,8 +471,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     };
 
     orchestratorEngine.updateConfig({
-      ollamaHost:         settings.ollamaHost,
-      ollamaModel:        settings.conductorOllamaModel,
+      relayProvider:      llmProviders.relay,
+      planGenProvider:    llmProviders.planGen,
+      autoAnswerProvider: llmProviders.autoAnswer,
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
       sessionTitles:      new Map(groupSessions.map(s => [s.id, s.title])),
     });
@@ -500,7 +487,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       content: `▶ Plan started — ${plan.tasks.length} task${plan.tasks.length !== 1 ? 's' : ''} dispatched`,
     }]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingPlan, activeSpaceId, workspaceId, groupSessions, settings, addPlan]);
+  }, [pendingPlan, activeSpaceId, workspaceId, groupSessions, settings, addPlan, llmProviders]);
 
   const handleDiscardPlan = useCallback(() => {
     setPendingPlan(null);
@@ -554,8 +541,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     };
 
     orchestratorEngine.updateConfig({
-      ollamaHost:         settings.ollamaHost,
-      ollamaModel:        settings.conductorOllamaModel,
+      relayProvider:      llmProviders.relay,
+      planGenProvider:    llmProviders.planGen,
+      autoAnswerProvider: llmProviders.autoAnswer,
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
       sessionTitles:      new Map(groupSessions.map(s => [s.id, s.title])),
     });
@@ -569,7 +557,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       content: `▶ Pipeline started — ${plan.tasks.length} task${plan.tasks.length !== 1 ? 's' : ''} dispatched`,
     }]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buildTasks, activeSpaceId, workspaceId, groupSessions, settings, addPlan]);
+  }, [buildTasks, activeSpaceId, workspaceId, groupSessions, settings, addPlan, llmProviders]);
 
   const handleClearBuild = useCallback(() => {
     setBuildTasks([]);
@@ -581,7 +569,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
   const handleSend = useCallback((overrideText?: string) => {
     const text = (overrideText ?? input).trim();
-    if (!text || streaming || generatingPlan || !settings.conductorOllamaModel) return;
+    if (!text || streaming || generatingPlan) return;
     if (inputMode !== 'chat') return; // pipeline mode uses handleRunBuildPlan instead
 
     setInput('');
@@ -591,15 +579,16 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content: text }]);
     setGeneratingPlan(true); // Show thinking state while classifying
 
-    classifyChatIntent(text, settings.ollamaHost, settings.conductorOllamaModel).then(intent => {
+    const { system: intentSystem, userContent: intentContent } = buildIntentClassifyPrompt(text);
+    llmProviders.planGen.complete([{ role: 'user', content: intentContent }], intentSystem).then(res => {
+      const intent = res.toLowerCase().trim().includes('plan') ? 'plan' : 'chat';
       if (intent === 'plan') {
         // Plan generation mode
-        generatePlanFromNL({
-          goal:              text,
-          availableSessions: groupSessions.map(s => ({ title: s.title })),
-          ollamaHost:        settings.ollamaHost,
-          model:             settings.conductorOllamaModel,
-        }).then(rawTasks => {
+        const { system: planSystem, userContent: planContent } = buildPlanGenPrompt(
+          text, groupSessions.map(s => ({ title: s.title })),
+        );
+        llmProviders.planGen.complete([{ role: 'user', content: planContent }], planSystem).then(planRes => {
+          const rawTasks = parsePlanGenResponse(planRes);
           const idMap = new Map<string, string>();
           rawTasks.forEach(t => idMap.set(t.title, crypto.randomUUID()));
 
@@ -647,53 +636,52 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
           groupSessions.map(s => s.title),
         );
 
-        const cancel = streamChatWithOllama({
-          ollamaHost:   settings.ollamaHost,
-          model:        settings.conductorOllamaModel,
+        const cancel = llmProviders.chat.stream(
+          newHistory,
           systemPrompt,
-          messages:     newHistory,
-          onToken: (token) => {
-            streamingContentRef.current += token;
-            setMessages(prev =>
-              prev.map(m => m.id === assistantId ? { ...m, content: m.content + token } : m),
-            );
-          },
-          onDone: () => {
-            const finalContent = streamingContentRef.current;
-            setStreaming(false);
-            setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, streaming: false } : m));
-            setApiHistory(h => [...h, { role: 'assistant', content: finalContent }]);
-            cancelRef.current = null;
-            scrollToBottom();
+          {
+            onToken: (token) => {
+              streamingContentRef.current += token;
+              setMessages(prev =>
+                prev.map(m => m.id === assistantId ? { ...m, content: m.content + token } : m),
+              );
+            },
+            onDone: () => {
+              const finalContent = streamingContentRef.current;
+              setStreaming(false);
+              setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, streaming: false } : m));
+              setApiHistory(h => [...h, { role: 'assistant', content: finalContent }]);
+              cancelRef.current = null;
+              scrollToBottom();
 
-            // Handle inject pattern
-            const inj = parseInject(finalContent, groupSessions);
-            if (inj) {
-              writePtyChunked(inj.sessionId, inj.message + '\r').catch(() => {});
-              setMessages(prev => [...prev, {
-                id: crypto.randomUUID(),
-                role: 'system',
-                content: `✦ Sent to ${inj.sessionTitle}: ${inj.message}`,
-                injectedSessionTitle: inj.sessionTitle,
-                sessionColor: inj.sessionColor,
-              }]);
-            }
-          },
-          onError: (err) => {
-            setStreaming(false);
-            setOllamaOnline(false);
-            setMessages(prev =>
-              prev.map(m => m.id === assistantId ? { ...m, content: `Error: ${err}`, streaming: false } : m),
-            );
-            cancelRef.current = null;
-          },
-        });
+              const inj = parseInject(finalContent, groupSessions);
+              if (inj) {
+                writePtyChunked(inj.sessionId, inj.message + '\r').catch(() => {});
+                setMessages(prev => [...prev, {
+                  id: crypto.randomUUID(),
+                  role: 'system',
+                  content: `✦ Sent to ${inj.sessionTitle}: ${inj.message}`,
+                  injectedSessionTitle: inj.sessionTitle,
+                  sessionColor: inj.sessionColor,
+                }]);
+              }
+            },
+            onError: (err) => {
+              setStreaming(false);
+              setOllamaOnline(false);
+              setMessages(prev =>
+                prev.map(m => m.id === assistantId ? { ...m, content: `Error: ${err}`, streaming: false } : m),
+              );
+              cancelRef.current = null;
+            },
+          }
+        );
 
         cancelRef.current = cancel;
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, streaming, generatingPlan, inputMode, settings, workspace, activeSpace, groupSessions, apiHistory, workspaceId]);
+  }, [input, streaming, generatingPlan, inputMode, settings, workspace, activeSpace, groupSessions, apiHistory, workspaceId, llmProviders]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -852,7 +840,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       )}
       {ollamaOnline === false && !modelMissing && (
         <div className={s.warningBanner}>
-          ⚠ Ollama is offline at <code>{settings.ollamaHost}</code> — start it to enable chat.
+          ⚠ Chat provider is offline. Check your LLM provider settings.
         </div>
       )}
       {/* Stale space sessions */}

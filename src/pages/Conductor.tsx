@@ -91,6 +91,7 @@ export const ConductorView: React.FC = () => {
     settings,
     activeWorkspaceId,
     showToast,
+    llmProviders,
   } = useDashboard();
 
   // ── Local state ──────────────────────────────────────────────────────────────
@@ -171,8 +172,9 @@ export const ConductorView: React.FC = () => {
     setLiveTasks([]);
 
     orchestratorEngine.updateConfig({
-      ollamaHost:         settings.ollamaHost,
-      ollamaModel:        settings.conductorOllamaModel,
+      relayProvider:      llmProviders.relay,
+      planGenProvider:    llmProviders.planGen,
+      autoAnswerProvider: llmProviders.autoAnswer,
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
       sessionTitles:      new Map(workspaceSessions.map(s => [s.id, s.title])),
     });
