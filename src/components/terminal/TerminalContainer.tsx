@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { TerminalTab, TerminalTabHandle } from "./TerminalTab";
 import { useDashboard } from "../../context/DashboardContext";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, X, Terminal, Edit2, Check, Palette, ChevronDown } from "lucide-react";
+import { Plus, X, Terminal, Edit2, Check, Palette, ChevronDown, Minimize2 } from "lucide-react";
 import { css, cx } from "@emotion/css";
 import type { TerminalSession, InterruptPolicy } from "../../types";
 import { loadTerminalTabs, saveTerminalTabs } from "../../services/storage";
@@ -206,17 +206,27 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const [hoveredDrop, setHoveredDrop] = useState<HoveredDrop | null>(null);
   const draggingSessionIdRef = useRef<string | null>(null);
 
-  // ── Fit newly-visible terminals ──────────────────────────────────────────
+  // ── Pane enter / leave animations ───────────────────────────────────────
+  const [animatingPaneIds, setAnimatingPaneIds] = useState<Set<string>>(new Set());
+  const [leavingPaneIds, setLeavingPaneIds] = useState<Set<string>>(new Set());
+
+  // ── Fit newly-visible terminals + trigger enter animation ────────────────
   const prevVisibleRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const current = new Set(visibleSessionIds);
+    const entering: string[] = [];
     requestAnimationFrame(() => {
       for (const sid of current) {
         if (!prevVisibleRef.current.has(sid)) {
           tabRefs.current.get(sid)?.current?.fit();
+          entering.push(sid);
         }
       }
       prevVisibleRef.current = current;
+      if (entering.length > 0) {
+        setAnimatingPaneIds(new Set(entering));
+        setTimeout(() => setAnimatingPaneIds(new Set()), 260);
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleSessionIds.join(",")]);
@@ -431,6 +441,17 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     [removePanesBySession],
   );
 
+  const collapsePaneAnimated = useCallback(
+    (leafId: string, sessionId: string) => {
+      setLeavingPaneIds((prev) => new Set([...prev, sessionId]));
+      setTimeout(() => {
+        closePane(leafId);
+        setLeavingPaneIds((prev) => { const n = new Set(prev); n.delete(sessionId); return n; });
+      }, 180);
+    },
+    [closePane],
+  );
+
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
 
@@ -531,6 +552,12 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       return;
     }
     const capturedFromId = fromId;
+    // Dragging an in-view tab onto a background tab → detach from split
+    const fromInView = visibleSessionIdsRef.current.includes(capturedFromId);
+    const toInView = visibleSessionIdsRef.current.includes(targetId);
+    if (fromInView && !toInView) {
+      removePanesBySession(capturedFromId);
+    }
     setSessions((prev) => {
       const from = prev.findIndex((s) => s.id === capturedFromId);
       const to = prev.findIndex((s) => s.id === targetId);
@@ -573,6 +600,10 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       return;
     }
     const capturedFromId = fromId;
+    // Dragging an in-view tab onto the strip → detach from split
+    if (visibleSessionIdsRef.current.includes(capturedFromId)) {
+      removePanesBySession(capturedFromId);
+    }
     setSessions((prev) => {
       const from = prev.findIndex((s) => s.id === capturedFromId);
       if (from === -1 || from === prev.length - 1) return prev;
@@ -1085,7 +1116,11 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
               return (
                 <div
                   key={session.id}
-                  className={pane ? styles.paneWrapper : undefined}
+                  className={cx(
+                    pane ? styles.paneWrapper : undefined,
+                    pane && animatingPaneIds.has(session.id) && styles.paneEntering,
+                    pane && leavingPaneIds.has(session.id) && styles.paneLeaving,
+                  )}
                   style={
                     pane
                       ? {
@@ -1135,10 +1170,10 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                         data-pane-close=""
                         className={styles.paneCloseBtn}
                         style={{ position: "absolute", top: 4, right: 4, zIndex: 26 }}
-                        title="Close pane"
-                        onClick={(e) => { e.stopPropagation(); closePane(pane.leafId); }}
+                        title="Collapse to tab"
+                        onClick={(e) => { e.stopPropagation(); collapsePaneAnimated(pane.leafId, session.id); }}
                       >
-                        <X style={{ width: 9, height: 9 }} />
+                        <Minimize2 style={{ width: 11, height: 11 }} />
                       </button>
                     </>
                   )}
@@ -1681,6 +1716,11 @@ const styles = {
   divider: css`
     background: var(--border-color);
     transition: background 150ms ease;
+    animation: dividerAppear 220ms ease-out;
+    @keyframes dividerAppear {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
     &:hover {
       background: var(--color-brand);
     }
@@ -1693,28 +1733,44 @@ const styles = {
   `,
   paneWrapper: css`
     &:hover [data-pane-close] {
-      opacity: 0.6;
+      opacity: 1;
+    }
+  `,
+  paneEntering: css`
+    animation: paneAppear 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    @keyframes paneAppear {
+      from { opacity: 0; transform: scale(0.97); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+  `,
+  paneLeaving: css`
+    animation: paneLeave 175ms ease-in forwards;
+    pointer-events: none;
+    @keyframes paneLeave {
+      from { opacity: 1; transform: scale(1); }
+      to   { opacity: 0; transform: scale(0.97); }
     }
   `,
   paneCloseBtn: css`
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 4px;
-    background: rgba(0, 0, 0, 0.5);
-    border: none;
-    color: var(--text-tertiary);
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
     cursor: pointer;
     opacity: 0;
     transition:
       opacity 150ms ease,
-      background 150ms ease;
+      background 150ms ease,
+      color 150ms ease;
     &:hover {
-      background: rgba(244, 63, 94, 0.7);
-      color: #fff;
-      opacity: 1 !important;
+      background: rgba(123, 104, 238, 0.45);
+      color: var(--color-brand);
+      border-color: rgba(123, 104, 238, 0.4);
     }
   `,
   emptyState: css`
