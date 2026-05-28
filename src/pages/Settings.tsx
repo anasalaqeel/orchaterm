@@ -93,7 +93,7 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
   const needsApiKey = value.provider !== 'ollama' && value.baseUrl !== 'http://localhost:1234';
   const needsBaseUrl = value.provider === 'ollama' || value.provider === 'openai-compatible';
 
-  const handleRefreshModels = async () => {
+  const fetchModels = async () => {
     setModelsLoading(true);
     try {
       const provider = createProvider(value);
@@ -102,6 +102,10 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
     } catch { setModels([]); }
     finally { setModelsLoading(false); }
   };
+
+  React.useEffect(() => { fetchModels(); }, [value.provider, value.baseUrl, value.apiKey]);
+
+  const handleRefreshModels = fetchModels;
 
   const handleTest = async () => {
     try {
