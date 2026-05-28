@@ -7,6 +7,11 @@ import {
   loadData, saveData, loadPlans, savePlans,
   loadUIState, saveUIState,
 } from '../services/storage';
+import { createProvider, LLMProvider } from '../services/llm';
+import type { UseCaseProviders } from '../services/llm/types';
+import { orchestratorEngine } from '../services/orchestratorEngine';
+import { autonomousOrchestrator } from '../services/autonomousOrchestrator';
+import { needsBroker } from '../services/needsBroker';
 
 export interface ToastInfo {
   id: string;
@@ -68,6 +73,16 @@ export interface DashboardContextType {
   exportSettings: () => string;
   importSettings: (jsonData: string) => Promise<boolean>;
 
+  // ── Live LLM provider instances ─────────────────────────────────────────────
+  /** Provider instances, recreated when settings.llmProviders changes. */
+  llmProviders: {
+    relay:      LLMProvider;
+    planGen:    LLMProvider;
+    autoAnswer: LLMProvider;
+    chat:       LLMProvider;
+    routing:    LLMProvider;
+  };
+
   // ── Orchestrator plans (persisted) ──────────────────────────────────────────
   plans: OrchestratorPlan[];
   addPlan: (plan: OrchestratorPlan) => Promise<void>;
@@ -123,6 +138,16 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
   };
 }
 
+function makeProviders(cfg: UseCaseProviders) {
+  return {
+    relay:      createProvider(cfg.relay),
+    planGen:    createProvider(cfg.planGen),
+    autoAnswer: createProvider(cfg.autoAnswer),
+    chat:       createProvider(cfg.chat),
+    routing:    createProvider(cfg.routing),
+  };
+}
+
 export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [workspaces, setWorkspaces]     = useState<Workspace[]>([]);
   const [spaces, setSpaces]             = useState<Space[]>([]);
@@ -148,6 +173,15 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
   const [plans, setPlans]                       = useState<OrchestratorPlan[]>([]);
   const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
+  const [llmProviders, setLlmProviders] = useState(() =>
+    makeProviders({
+      relay:      { ...DEFAULT_OLLAMA_CONFIG },
+      planGen:    { ...DEFAULT_OLLAMA_CONFIG },
+      autoAnswer: { ...DEFAULT_OLLAMA_CONFIG },
+      chat:       { ...DEFAULT_OLLAMA_CONFIG },
+      routing:    { ...DEFAULT_OLLAMA_CONFIG },
+    })
+  );
 
   // ── Load from storage on mount ───────────────────────────────────────────────
   useEffect(() => {
@@ -225,6 +259,24 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // ── Sync LLM providers to engines when settings change ───────────────────────
+  useEffect(() => {
+    if (!isLoaded) return;
+    const p = makeProviders(settings.llmProviders);
+    setLlmProviders(p);
+
+    orchestratorEngine.updateConfig({
+      relayProvider:      p.relay,
+      planGenProvider:    p.planGen,
+      autoAnswerProvider: p.autoAnswer,
+      taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
+      sessionTitles:      new Map(),
+    });
+
+    autonomousOrchestrator.updateConfig({ routingProvider: p.routing });
+    needsBroker.updateConfig({ provider: p.planGen });
+  }, [settings.llmProviders, settings.conductorTaskTimeoutMinutes, isLoaded]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ id: crypto.randomUUID(), message, type });
@@ -488,6 +540,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       addTaskLog, updateTaskLog, deleteTaskLog,
       addSavedPrompt, updateSavedPrompt, deleteSavedPrompt, copyPromptToClipboard,
       settings, updateSettings, exportSettings, importSettings,
+      llmProviders,
       plans, addPlan, updatePlan, deletePlan,
       terminalSessions, addTerminalSession, removeTerminalSession, updateTerminalSession,
     }}>
