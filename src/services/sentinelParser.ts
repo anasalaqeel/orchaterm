@@ -66,13 +66,29 @@ export function stripAnsiCodes(text: string): string {
  */
 export function extractField(block: string, fieldName: string): string {
   const lines = block.split('\n');
-  for (const line of lines) {
+  const knownFields = ['task_id', 'summary', 'files_modified', 'needs', 'ask', 'context'];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const colonIdx = line.indexOf(':');
     if (colonIdx === -1) continue;
     const key = line.slice(0, colonIdx).trim();
-    if (key === fieldName) {
-      return line.slice(colonIdx + 1).trim();
+    if (key !== fieldName) continue;
+
+    // Collect the first line value
+    const parts = [line.slice(colonIdx + 1).trim()];
+
+    // Collect continuation lines — lines that don't start a new known field
+    for (let j = i + 1; j < lines.length; j++) {
+      const next = lines[j].trim();
+      if (!next) break;
+      const nextColon = lines[j].indexOf(':');
+      const nextKey = nextColon !== -1 ? lines[j].slice(0, nextColon).trim() : '';
+      if (knownFields.includes(nextKey)) break;
+      parts.push(next);
     }
+
+    return parts.join(' ').trim();
   }
   return '';
 }
@@ -93,11 +109,14 @@ export function parseSentinel(rawBuffer: string): OrchestratorTaskOutput | null 
   // that can land within marker text, breaking a raw indexOf search.
   const buffer = stripAnsiCodes(rawBuffer);
 
-  const startIdx = buffer.indexOf(SENTINEL_START);
-  if (startIdx === -1) return null;
-
-  const endIdx = buffer.indexOf(SENTINEL_END, startIdx);
+  // Use the LAST complete sentinel block — the buffer contains the echoed prompt
+  // template (with placeholder values) before the agent's real output. lastIndexOf
+  // ensures we always parse the agent's actual sentinel, not the echo.
+  const endIdx = buffer.lastIndexOf(SENTINEL_END);
   if (endIdx === -1) return null;
+
+  const startIdx = buffer.lastIndexOf(SENTINEL_START, endIdx);
+  if (startIdx === -1) return null;
 
   const block = buffer.slice(startIdx + SENTINEL_START.length, endIdx).trim();
   const raw   = buffer.slice(0, startIdx).trim();
@@ -111,7 +130,10 @@ export function parseSentinel(rawBuffer: string): OrchestratorTaskOutput | null 
     ? []
     : filesRaw.split(',').map(f => f.trim()).filter(Boolean);
 
-  if (summary.includes('<2-3 sentences')) return null;
+  // Reject echoed dispatch template — placeholder fields start with '<'.
+  // PTY line-wrapping can split '<2-3 sentences' across lines so we guard on
+  // any field that starts with '<' (all template placeholders use that form).
+  if (summary.startsWith('<') || needs.startsWith('<') || filesRaw.startsWith('<')) return null;
 
   return { raw, taskId, summary, filesModified, needs };
 }

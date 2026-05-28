@@ -19,6 +19,28 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { OrchestratorTaskOutput, SessionBuffer, BufferWatchMode } from '../types';
 import { parseSentinel, parsePlanBlock, validatePlanJSON, parseNeedsBlock, stripAnsiCodes } from './sentinelParser';
 
+// ── Interactive prompt detection regex ─────────────────────────────────────────
+// Compiled once at module load — used by checkInteractivePrompt on every idle tick.
+const INTERACTIVE_PROMPT_REGEX = new RegExp([
+  // y/n bracket markers — any casing
+  String.raw`\[y\/n\]|\(y\/n\)|\[Y\/n\]|\(Y\/n\)|\[n\/Y\]|\(n\/Y\)`,
+  // Claude Code TUI navigation footer — always present for selection prompts
+  String.raw`↑\s*\/\s*↓`,
+  // "esc to cancel" footer (appears in all Claude Code interactive dialogs)
+  String.raw`esc\s+to\s+cancel`,
+  // Numbered option with leading cursor marker: "> 1." or "• 1."
+  String.raw`^[>•]\s*\d+\.`,
+  // Numbered option list: standalone "1." / "2." lines (option menus)
+  String.raw`^\s*\d+\.\s+\S`,
+  // Claude Code permission header
+  String.raw`Requesting permission for:`,
+  // Generic proceed / confirm / allow / deny patterns
+  String.raw`Do you want|Press Enter to|Proceed\?|Are you sure|Overwrite\?|Allow\?|Deny\?`,
+  String.raw`Select an option|Type a number|Choose an option`,
+  // Bare question at end of a line (agent asking something directly)
+  String.raw`\?\s*$`,
+].join('|'), 'im');
+
 // ── Internal entry ─────────────────────────────────────────────────────────────
 
 interface WatchEntry {
@@ -132,9 +154,7 @@ class BufferWatcher {
     const lastFired: number = (entry as any)._lastPromptFiredAt ?? 0;
     if (now - lastFired < 6000) return;
 
-    const tail = stripAnsiCodes(entry.buffer.buffer.slice(-300));
-    const INTERACTIVE_PROMPT_REGEX =
-      /(\[y\/n\]|\(y\/n\)|\[Y\/n\]|\(Y\/n\)|\[n\/Y\]|\(n\/Y\)|Do you want to|Press Enter to|Continue\?|Select an option|Type a number|Overwrite\?|already exists|Esc to cancel)/i;
+    const tail = stripAnsiCodes(entry.buffer.buffer.slice(-3000));
 
     if (INTERACTIVE_PROMPT_REGEX.test(tail)) {
       (entry as any)._lastPromptFiredAt = now;
@@ -145,6 +165,18 @@ class BufferWatcher {
   // ── Internal: sentinel check ───────────────────────────────────────────────
 
   private checkSentinel(entry: WatchEntry): void {
+    // Echo-suppress window: discard incoming data until the delay has elapsed.
+    // The dispatch prompt (~2000 chars) echoes back from the PTY after write.
+    // Without suppression the echo's sentinel template (with placeholder summary)
+    // can trigger a false positive, marking the task done in ~1-2 s.
+    if (entry.ignoreUntil !== undefined) {
+      if (Date.now() < entry.ignoreUntil) {
+        entry.buffer.buffer = '';
+        return;
+      }
+      entry.ignoreUntil = undefined;
+    }
+
     const result = parseSentinel(entry.buffer.buffer);
     if (!result) return;
 
@@ -239,11 +271,16 @@ class BufferWatcher {
   /**
    * Switch a session into sentinel-detection mode. Any previous mode and buffer
    * is cleared. The callback fires once when the sentinel is detected.
+   *
+   * @param echoSuppressMs - milliseconds to discard incoming data before starting
+   *   detection. Covers PTY echo of the dispatch prompt (~2000 chars, ~200 ms to
+   *   send). Default 500 ms. Set 0 to disable.
    */
   async watchForSentinel(
     sessionId: string,
     onSentinel: (output: OrchestratorTaskOutput) => void,
-    onInteractivePrompt?: (text: string) => void
+    onInteractivePrompt?: (text: string) => void,
+    echoSuppressMs = 500,
   ): Promise<void> {
     const entry = await this.ensureListening(sessionId);
     entry.buffer.buffer = '';
@@ -252,6 +289,7 @@ class BufferWatcher {
     entry.onInteractivePrompt = onInteractivePrompt;
     entry.onPlan = undefined;
     entry.onPlanError = undefined;
+    entry.ignoreUntil = echoSuppressMs > 0 ? Date.now() + echoSuppressMs : undefined;
   }
 
   /**

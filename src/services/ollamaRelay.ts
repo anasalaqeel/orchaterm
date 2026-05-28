@@ -42,26 +42,42 @@ Rules you must follow:
 6. Preserve specific identifiers: function names, file paths, API contracts, variable names.`;
 
 export const PLAN_GEN_SYSTEM_PROMPT = `You are a task planner for a multi-agent terminal orchestration system.
-Given a goal and a list of available terminal agents, break the goal into a minimal set of concrete tasks.
+Given a user request and a list of available terminal agents, extract the core technical goal and break it into a minimal set of concrete tasks.
 
-Return ONLY a valid JSON array. No markdown fences. No explanation. No prose before or after.
+Return ONLY a valid JSON object. No markdown fences. No explanation. No prose before or after.
 
 JSON format:
-[
-  {
-    "title": "Short task name",
-    "description": "Precise, self-contained instructions for the agent. Be specific and direct.",
-    "assignedSessionTitle": "<MUST match one of the available agent names exactly>",
-    "dependsOn": ["<title of a task that must complete before this one starts>"]
-  }
-]
+{
+  "goal": "Concise technical goal extracted from the user request. Strip orchestrator meta-instructions (role assignments, 'share with me', 'let me know', etc.) — keep only the actionable coding objective.",
+  "tasks": [
+    {
+      "title": "Short task name",
+      "description": "Precise, self-contained instructions for the agent. Be specific and direct.",
+      "assignedSessionTitle": "<MUST match one of the available agent names exactly>",
+      "dependsOn": []
+    }
+  ]
+}
 
-Rules:
-- Tasks that can run in parallel must NOT depend on each other.
-- Each task description must stand alone — the agent receives nothing else.
-- Only add a dependency when the task genuinely needs that task's output.
-- Assign tasks thoughtfully based on agent names/roles.
-- dependsOn titles must exactly match the "title" field of another task in the array.`;
+Dependency rules — this is critical:
+- dependsOn: [] means the task starts immediately. Tasks with no dependsOn run IN PARALLEL with each other.
+- Add a dependency ONLY when the task cannot start without the other task's output — e.g. it needs to call an API the other task defines, import a module the other task writes, or build on a schema the other task designs.
+- Do NOT add a dependency just because tasks are logically related or touch the same area of the codebase.
+- Do NOT chain tasks sequentially by default. Prefer parallel execution.
+
+Parallelism examples (dependsOn: []):
+  - "Write backend auth endpoints" and "Write frontend login form" can start at the same time if the API contract is specified in the task description.
+  - "Add unit tests for module A" and "Add unit tests for module B" have no dependency on each other.
+
+Dependency examples (dependsOn required):
+  - "Implement payment checkout" depends on "Design payment API schema" because it must import the schema.
+  - "Deploy to staging" depends on "Build production bundle" because it needs the built artifact.
+
+Other rules:
+- Specify enough in each task description that the agent can work without waiting — include interface shapes, file paths, function signatures if known.
+- Each task description must stand alone — the agent receives nothing else about the plan.
+- Assign tasks based on agent names/roles when they suggest specialization.
+- dependsOn values must exactly match the "title" field of another task in the tasks array.`;
 
 // ── Prompt builders ───────────────────────────────────────────────────────────
 
@@ -121,24 +137,38 @@ Synthesize all completed work into a single unified brief for the next agent:`,
 
 export function buildAutoAnswerPrompt(promptText: string): { system: string; userContent: string } {
   return {
-    system: "You are an automated terminal responder. Output only the answer or 'UNKNOWN'. Never explain.",
-    userContent: `An AI coding agent is blocked by an interactive terminal prompt and cannot continue until it is answered.
+    system: "You are an automated terminal responder for an AI coding agent. Output ONLY the answer token. Never explain.",
+    userContent: `Below is the last ~3000 characters of a terminal session running an AI coding agent.
 
-Prompt text:
+Terminal tail:
 """
 ${promptText}
 """
 
-Rules:
-1. Yes/no questions ([y/N], [Y/n], "Do you want to", "Do you want to proceed") → answer: y
-2. Numbered list where option 1 is "Yes" or an affirmative/proceed option → answer: 1
-3. "Press Enter to continue" or similar → answer: ENTER
-4. Allowing file reads, access grants, or bash command execution in the project → answer: 1
-5. Lines like "Esc to cancel" or "Tab to amend" are status hints, NOT prompt options — ignore them.
-6. Answer UNKNOWN only if the prompt asks to permanently delete files, overwrite without backup, or requires specific user-supplied text (e.g. a commit message or filename).
+STEP 1 — Is the terminal actually waiting for user input RIGHT NOW?
+Signs it IS waiting: a selection cursor ("> 1."), a [y/N] bracket, a permission dialog ("Requesting permission for:"), a navigation footer ("↑/↓ Navigate"), or a bare question on the last non-empty line with no further output after it.
+Signs it is NOT waiting: the question appears mid-output, the agent is still writing (more lines follow the question), or it is just status/log text that contains a "?".
+If NOT waiting → return UNKNOWN immediately.
 
-Return ONLY the answer character(s). No explanation. No quotes.
-Examples: "Do you want to proceed?" → y | "1. Yes  2. No" → 1 | "Press Enter to continue" → ENTER`,
+STEP 2 — Identify the prompt and answer it using these rules (apply in order):
+1. Navigation footer lines ("↑/↓ Navigate", "tab Amend", "esc to cancel", "e edit command") are UI hints — NOT answer options. Ignore them when choosing.
+2. "Press Enter to continue" / "press any key" / empty-input continue prompts → ENTER
+3. Yes/no question ([y/N], [Y/n], "Do you want to", "Would you like to", "Shall we", etc.) → y
+4. Numbered option menu where option 1 is "Yes", "Allow", "Proceed", "Continue", or any affirmative/permissive action → 1
+5. Permission to read a file, execute a command, install a package, write a file, or run bash in the project → 1 (always allow for project work)
+6. "Always allow" option exists (persist permission) → pick that option number over a one-time allow
+7. The agent is directly asking a question that requires specific factual input (e.g. "What is the database name?", "Enter your API key:", "Enter filename:") → UNKNOWN
+8. The prompt would permanently destroy data, force-push to production, or drop a live database → UNKNOWN
+
+Return ONLY the answer token. No quotes, no explanation.
+Valid tokens: single character (y/n/1/2/3/4), the word ENTER, or UNKNOWN.
+Examples:
+  "Do you want to proceed?  > 1. Yes  2. No" → 1
+  "[y/N]" → y
+  "Press Enter to continue" → ENTER
+  "Requesting permission for: npm install …  1. Yes  2. Yes, and always allow  3. No" → 2
+  "Enter your commit message:" → UNKNOWN
+  (agent mid-output that mentions "should we do X?") → UNKNOWN`,
   };
 }
 
@@ -254,13 +284,35 @@ export function buildPassThroughBrief(
 
 // ── Plan JSON parsing (used after calling planGen provider) ──────────────────
 
-export function parsePlanGenResponse(response: string): RawPlanTask[] {
-  const jsonMatch = response.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('Plan generation returned no JSON array. Try rephrasing your goal.');
+export interface PlanGenResult {
+  goal: string;
+  tasks: RawPlanTask[];
+}
+
+export function parsePlanGenResponse(response: string, fallbackGoal: string): PlanGenResult {
+  // Try new object format first: { "goal": "...", "tasks": [...] }
+  const objMatch = response.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try {
+      const parsed = JSON.parse(objMatch[0]) as Record<string, unknown>;
+      if (Array.isArray(parsed.tasks) && parsed.tasks.length > 0) {
+        return {
+          goal: typeof parsed.goal === 'string' && parsed.goal.trim()
+            ? parsed.goal.trim()
+            : fallbackGoal,
+          tasks: parsed.tasks as RawPlanTask[],
+        };
+      }
+    } catch { /* fall through to array format */ }
+  }
+
+  // Fallback: legacy plain array format
+  const arrMatch = response.match(/\[[\s\S]*\]/);
+  if (!arrMatch) throw new Error('Plan generation returned no JSON. Try rephrasing your goal.');
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(jsonMatch[0]);
+    parsed = JSON.parse(arrMatch[0]);
   } catch (e) {
     throw new Error(`Plan generation returned invalid JSON: ${e}`);
   }
@@ -268,5 +320,5 @@ export function parsePlanGenResponse(response: string): RawPlanTask[] {
   if (!Array.isArray(parsed) || parsed.length === 0) {
     throw new Error('Plan generation returned an empty or invalid task list.');
   }
-  return parsed as RawPlanTask[];
+  return { goal: fallbackGoal, tasks: parsed as RawPlanTask[] };
 }

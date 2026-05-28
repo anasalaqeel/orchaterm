@@ -60,6 +60,10 @@ interface DisplayMessage {
   injectedSessionTitle?: string;
   /** Set on 'conductor' messages — controls icon and colour. */
   conductorType?: ConductorLogEntry['type'];
+  /** Full task output — present on sentinel conductor messages. */
+  taskOutput?: ConductorLogEntry['taskOutput'];
+  /** Agent title — present on sentinel conductor messages. */
+  agentTitle?: string;
 }
 
 /** Pending plan awaiting user confirmation before starting. */
@@ -235,6 +239,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   // ── Plan mode state ───────────────────────────────────────────────────────
   const [pendingPlan,    setPendingPlan]    = useState<PendingPlan | null>(null);
   const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [livePlan,       setLivePlan]       = useState<OrchestratorPlan | null>(null);
 
   // ── Input mode (chat vs manual pipeline builder) ──────────────────────────
   const [inputMode,      setInputMode]      = useState<'chat' | 'pipeline'>('chat');
@@ -430,20 +435,26 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoModeOn, activeSpaceId, groupSessionIds]);
 
-  // ── Conductor engine log → chat feed ────────────────────────────────────
-  // Bridges OrchestratorEngine events into the chat so the user sees every
-  // dispatch, relay, sentinel, and error alongside the conversational feed.
+  // ── Conductor engine log + state → chat feed ────────────────────────────
   // Engine is a singleton — subscribe once on mount, never re-subscribe.
   useEffect(() => {
-    const unsub = orchestratorEngine.onLog((entry) => {
+    const unsubLog = orchestratorEngine.onLog((entry) => {
       setMessages(prev => [...prev, {
         id:            crypto.randomUUID(),
         role:          'conductor',
         content:       entry.message,
         conductorType: entry.type,
+        taskOutput:    entry.taskOutput,
+        agentTitle:    entry.agentTitle,
       }]);
     });
-    return unsub;
+    const unsubState = orchestratorEngine.onStateChange((plan) => {
+      setLivePlan({ ...plan });
+    });
+    // Sync initial state in case a plan is already running
+    const existing = orchestratorEngine.getCurrentPlan();
+    if (existing) setLivePlan({ ...existing });
+    return () => { unsubLog(); unsubState(); };
   }, []);
 
   // ── Plan: confirm and start ───────────────────────────────────────────────
@@ -475,6 +486,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       planGenProvider:    llmProviders.planGen,
       autoAnswerProvider: llmProviders.autoAnswer,
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
+      interactionMode:    settings.conductorInteractionMode,
       sessionTitles:      new Map(groupSessions.map(s => [s.id, s.title])),
     });
 
@@ -545,6 +557,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       planGenProvider:    llmProviders.planGen,
       autoAnswerProvider: llmProviders.autoAnswer,
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
+      interactionMode:    settings.conductorInteractionMode,
       sessionTitles:      new Map(groupSessions.map(s => [s.id, s.title])),
     });
 
@@ -588,7 +601,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
           text, groupSessions.map(s => ({ title: s.title })),
         );
         llmProviders.planGen.complete([{ role: 'user', content: planContent }], planSystem).then(planRes => {
-          const rawTasks = parsePlanGenResponse(planRes);
+          const { goal: extractedGoal, tasks: rawTasks } = parsePlanGenResponse(planRes, text);
           const idMap = new Map<string, string>();
           rawTasks.forEach(t => idMap.set(t.title, crypto.randomUUID()));
 
@@ -609,7 +622,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             };
           });
 
-          setPendingPlan({ goal: text, tasks });
+          setPendingPlan({ goal: extractedGoal, tasks });
         }).catch((err: Error) => {
           setMessages(prev => [...prev, {
             id: crypto.randomUUID(), role: 'system',
@@ -1024,6 +1037,95 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
         )}
       </div>
 
+      {/* ── Live pipeline board — always visible when a plan is running ── */}
+      {livePlan && livePlan.tasks.length > 0 && (
+        <div className={css`
+          border-top: 1px solid var(--border-color);
+          padding: 8px 12px;
+          background: var(--bg-secondary);
+          display: flex; flex-direction: column; gap: 3px;
+        `}>
+          <div className={css`
+            font-size:10px;font-weight:700;letter-spacing:.08em;
+            color:var(--text-secondary);text-transform:uppercase;margin-bottom:4px;
+            display:flex;align-items:center;gap:6px;
+          `}>
+            <span style={{color:
+              livePlan.status==='running' ? '#7b68ee' :
+              livePlan.status==='done'    ? '#3fb950' :
+              livePlan.status==='failed'  ? '#f85149' : '#e3b341'
+            }}>
+              {livePlan.status==='running' ? '⚡' :
+               livePlan.status==='done'    ? '✓'  :
+               livePlan.status==='failed'  ? '✗'  : '⏸'}
+            </span>
+            <span className={css`flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`}>
+              {livePlan.goal}
+            </span>
+            {livePlan.status === 'running' && (
+              <button
+                title="Pause orchestration"
+                onClick={() => orchestratorEngine.pause()}
+                className={css`background:none;border:1px solid var(--border-color);color:var(--text-secondary);
+                  border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;
+                  &:hover{color:var(--text-primary);border-color:var(--text-secondary);}`}
+              >⏸</button>
+            )}
+            {livePlan.status === 'paused' && (
+              <button
+                title="Resume orchestration"
+                onClick={() => orchestratorEngine.resume()}
+                className={css`background:none;border:1px solid #7b68ee;color:#7b68ee;
+                  border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;
+                  &:hover{background:#7b68ee20;}`}
+              >▶</button>
+            )}
+            {(livePlan.status === 'running' || livePlan.status === 'paused') && (
+              <button
+                title="Stop orchestration"
+                onClick={() => orchestratorEngine.stop()}
+                className={css`background:none;border:1px solid #f85149;color:#f85149;
+                  border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;
+                  &:hover{background:#f8514920;}`}
+              >■</button>
+            )}
+          </div>
+          {livePlan.tasks.map(task => {
+            const statusColor =
+              task.status==='running' ? '#7b68ee' :
+              task.status==='done'    ? '#3fb950' :
+              task.status==='failed'  ? '#f85149' : '#6e7681';
+            const statusIcon =
+              task.status==='running' ? '▶' :
+              task.status==='done'    ? '✓' :
+              task.status==='failed'  ? '✗' : '○';
+            const elapsed = task.startedAt
+              ? task.completedAt
+                ? ((task.completedAt - task.startedAt) / 1000).toFixed(1) + 's'
+                : Math.round((Date.now() - task.startedAt) / 1000) + 's…'
+              : null;
+            return (
+              <div key={task.id} className={css`
+                display:flex;align-items:center;gap:6px;font-size:11px;
+                padding:3px 6px;border-radius:3px;
+                border-left:2px solid ${statusColor};
+                background:var(--bg-primary);
+              `}>
+                <span style={{color:statusColor,fontWeight:700,width:10,flexShrink:0}}>{statusIcon}</span>
+                <span className={css`flex:1;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`}>{task.title}</span>
+                <span className={css`color:var(--text-secondary);font-size:10px;flex-shrink:0;`}>{task.assignedSessionTitle}</span>
+                {elapsed && <span className={css`color:var(--text-secondary);font-size:10px;min-width:32px;text-align:right;flex-shrink:0;`}>{elapsed}</span>}
+                {task.status==='done' && (task.output?.filesModified?.length ?? 0) > 0 && (
+                  <span title={task.output!.filesModified.join(', ')} className={css`color:#3fb950;font-size:10px;flex-shrink:0;cursor:default;`}>
+                    📄{task.output!.filesModified.length}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Chat input area */}
       {inputMode === 'chat' && (
         <div className={s.inputArea}>
@@ -1156,7 +1258,50 @@ const MessageRow: React.FC<{
       dispatch: '#7b68ee', sentinel: '#3fb950', relay: '#a371f7',
       error: '#f85149', timeout: '#e3b341', info: '#6e7681', 'user-override': '#e3b341',
     };
-    const type  = msg.conductorType ?? 'info';
+    const type = msg.conductorType ?? 'info';
+
+    // Sentinel with full task output → rich agent report card
+    if (type === 'sentinel' && msg.taskOutput) {
+      const out = msg.taskOutput;
+      const cardStyle = css`
+        margin: 4px 0;
+        padding: 10px 12px;
+        border-radius: var(--border-radius-sm);
+        border: 1px solid #3fb95033;
+        background: #3fb9500d;
+        font-size: 12px;
+        line-height: 1.5;
+      `;
+      const headerStyle = css`
+        display: flex; align-items: center; gap: 6px;
+        font-weight: 600; color: #3fb950; margin-bottom: 6px;
+      `;
+      const labelStyle = css`color: var(--text-secondary); font-size: 11px; font-weight: 600; margin-top: 4px;`;
+      const valueStyle = css`color: var(--text-primary);`;
+      return (
+        <div className={cardStyle}>
+          <div className={headerStyle}>
+            <span>✓</span>
+            <span>{msg.agentTitle ?? 'Agent'} completed: {msg.content.replace('Task "', '').replace('" complete', '')}</span>
+          </div>
+          <div className={labelStyle}>SUMMARY</div>
+          <div className={valueStyle}>{out.summary}</div>
+          {out.filesModified.length > 0 && (
+            <>
+              <div className={labelStyle}>FILES MODIFIED</div>
+              <div className={valueStyle}>{out.filesModified.join(', ')}</div>
+            </>
+          )}
+          {out.needs && out.needs !== 'none' && (
+            <>
+              <div className={labelStyle}>HANDOFF TO NEXT AGENT</div>
+              <div className={valueStyle}>{out.needs}</div>
+            </>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div className={s.conductorRow}>
         <span className={s.conductorIcon} style={{ color: colors[type] ?? '#6e7681' }}>

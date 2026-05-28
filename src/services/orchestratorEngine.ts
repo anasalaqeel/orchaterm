@@ -43,8 +43,10 @@ export interface EngineConfig {
   relayProvider:      LLMProvider;
   planGenProvider:    LLMProvider;
   autoAnswerProvider: LLMProvider;
-  /** Minutes a task can run before being auto-failed. */
+  /** Minutes a task can run before being auto-failed. 0 = no timeout. */
   taskTimeoutMinutes: number;
+  /** 'auto' = LLM answers prompts. 'manual' = user must INJECT. */
+  interactionMode: 'auto' | 'manual';
   /** Maps sessionId → terminal tab title (for display in logs and relay prompts). */
   sessionTitles: Map<string, string>;
 }
@@ -327,7 +329,8 @@ export class OrchestratorEngine {
     // Build the full dispatch prompt
     const prompt = parentTasks.length > 0
       ? `TASK ID: ${task.id}
-OVERALL GOAL: ${this.plan.goal}
+AGENT: ${task.assignedSessionTitle}
+PROJECT: ${this.plan.goal}
 
 CONTEXT FROM PREVIOUS WORK:
 ${contextBrief}
@@ -335,7 +338,8 @@ ${contextBrief}
 YOUR TASK:
 ${task.description}${buildAgentProtocol(task.id)}`
       : `TASK ID: ${task.id}
-OVERALL GOAL: ${this.plan.goal}
+AGENT: ${task.assignedSessionTitle}
+PROJECT: ${this.plan.goal}
 
 YOUR TASK:
 ${task.description}${buildAgentProtocol(task.id)}`;
@@ -361,42 +365,46 @@ ${task.description}${buildAgentProtocol(task.id)}`;
         this.onSentinelReceived(task.id, output);
       },
       async (promptText) => {
-        const shortPrompt = promptText.length > 50 ? promptText.slice(0, 47) + '...' : promptText;
-        try {
-          const { system, userContent } = buildAutoAnswerPrompt(promptText);
-          const answer = await this.config.autoAnswerProvider.complete(
-            [{ role: 'user', content: userContent }], system,
-          );
-          const trimmed = answer.trim().toUpperCase() === 'ENTER' ? '' : answer.trim();
+        const shortPrompt = promptText.length > 80 ? promptText.slice(0, 77) + '...' : promptText;
 
-          if (trimmed !== 'UNKNOWN' && answer.trim() !== '') {
-            // Send the answer + carriage return (empty trimmed = just Enter)
-            await writePtyChunked(task.assignedSessionId, trimmed + '\r');
-            this.log(
-              'info',
-              `🤖 Auto-answered prompt ("${shortPrompt}") with: ${trimmed || '↵'}`,
-              task.id,
-              task.assignedSessionId
+        if (this.config.interactionMode === 'auto') {
+          try {
+            const { system, userContent } = buildAutoAnswerPrompt(promptText);
+            const answer = await this.config.autoAnswerProvider.complete(
+              [{ role: 'user', content: userContent }], system,
             );
-            return;
+            const trimmed = answer.trim().toUpperCase() === 'ENTER' ? '' : answer.trim();
+
+            if (trimmed !== 'UNKNOWN' && answer.trim() !== '') {
+              await writePtyChunked(task.assignedSessionId, trimmed + '\r');
+              this.log(
+                'info',
+                `🤖 Auto-answered ("${shortPrompt}") → ${trimmed || '↵'}`,
+                task.id,
+                task.assignedSessionId
+              );
+              return;
+            }
+          } catch (err) {
+            this.log('error', `Auto-answer provider error: ${err}`, task.id, task.assignedSessionId);
           }
-        } catch (err) {
-          this.log('error', `Auto-answer provider error: ${err}`, task.id, task.assignedSessionId);
         }
 
         this.log(
           'user-override',
-          `⚠️ ${task.assignedSessionTitle} is waiting for user input ("${shortPrompt}"). Type INJECT → ${task.assignedSessionTitle}: [your answer] to continue.`,
+          `⚠️ ${task.assignedSessionTitle} waiting for input ("${shortPrompt}"). Type INJECT → ${task.assignedSessionTitle}: [your answer] to continue.`,
           task.id,
           task.assignedSessionId
         );
       }
     );
 
-    // Start timeout timer
-    const timeoutMs = this.config.taskTimeoutMinutes * 60 * 1000;
-    const timer = setTimeout(() => this.onTaskTimeout(task.id), timeoutMs);
-    this.taskTimers.set(task.id, timer);
+    // Start timeout timer (0 = disabled)
+    if (this.config.taskTimeoutMinutes > 0) {
+      const timeoutMs = this.config.taskTimeoutMinutes * 60 * 1000;
+      const timer = setTimeout(() => this.onTaskTimeout(task.id), timeoutMs);
+      this.taskTimers.set(task.id, timer);
+    }
   }
 
   // ── Private: sentinel received ──────────────────────────────────────────────
@@ -407,7 +415,13 @@ ${task.description}${buildAgentProtocol(task.id)}`;
 
     this.clearTaskTimer(taskId);
     this.updateTask(taskId, { status: 'done', completedAt: Date.now(), output });
-    this.log('sentinel', `Task "${task.title}" complete — ${output.summary}`, taskId, task.assignedSessionId);
+    this.log(
+      'sentinel',
+      `Task "${task.title}" complete`,
+      taskId,
+      task.assignedSessionId,
+      { taskOutput: output, agentTitle: task.assignedSessionTitle },
+    );
     this.emitState();
     this.dispatchReady();
     this.checkPlanCompletion();
@@ -494,7 +508,8 @@ ${task.description}${buildAgentProtocol(task.id)}`;
     type: ConductorLogEntry['type'],
     message: string,
     taskId?: string,
-    sessionId?: string
+    sessionId?: string,
+    extra?: { taskOutput?: ConductorLogEntry['taskOutput']; agentTitle?: string }
   ): void {
     const entry: ConductorLogEntry = {
       id: crypto.randomUUID(),
@@ -503,6 +518,7 @@ ${task.description}${buildAgentProtocol(task.id)}`;
       message,
       taskId,
       sessionId,
+      ...extra,
     };
     for (const cb of this.logListeners) cb(entry);
   }
@@ -517,6 +533,7 @@ export const orchestratorEngine = new OrchestratorEngine({
   relayProvider:      _defaultProvider,
   planGenProvider:    _defaultProvider,
   autoAnswerProvider: _defaultProvider,
-  taskTimeoutMinutes: 30,
+  taskTimeoutMinutes: 0,
+  interactionMode:    'auto',
   sessionTitles:      new Map(),
 });

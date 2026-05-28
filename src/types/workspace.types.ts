@@ -55,6 +55,8 @@ export interface SavedPrompt {
 export interface AppSettings {
   shellPath: string;
   conductorTaskTimeoutMinutes: number;
+  /** 'auto' = LLM answers agent prompts automatically. 'manual' = user must INJECT answers. */
+  conductorInteractionMode: 'auto' | 'manual';
   /** Per-use-case LLM provider configuration. */
   llmProviders: UseCaseProviders;
   // ── Legacy fields kept for one-time migration on first load ──────────────

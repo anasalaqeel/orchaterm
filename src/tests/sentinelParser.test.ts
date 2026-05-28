@@ -135,4 +135,61 @@ describe('parseSentinel', () => {
     ].join('\n');
     expect(parseSentinel(buf)).toBeNull();
   });
+
+  it('rejects echo when PTY line-wrap splits placeholder text', () => {
+    // PTY wraps "<2-3 sentences..." mid-word; extractField joins with space
+    // producing "<2- 3 sentences..." which breaks the old includes() guard.
+    const buf = [
+      '###ORCHATERM_DONE###',
+      'task_id: task-1',
+      'summary: <2-',
+      '3 sentences: what you built, what changed, key decisions>',
+      'files_modified: <comma-separated files, or "none">',
+      'needs: <what the next agent must know>',
+      '###ORCHATERM_END###',
+    ].join('\n');
+    expect(parseSentinel(buf)).toBeNull();
+  });
+
+  it('ignores echoed prompt template and parses the real sentinel', () => {
+    // Buffer contains the injected task prompt (echo with placeholders) followed
+    // by the agent's actual sentinel — parseSentinel must use the LAST block.
+    const buf = [
+      '-- echoed dispatch prompt --',
+      '###ORCHATERM_DONE###',
+      'task_id: task-1',
+      'summary: <2-3 sentences: what you built, what changed, key decisions>',
+      'files_modified: <comma-separated files, or "none">',
+      'needs: <what the next agent must know to continue, or "none">',
+      '###ORCHATERM_END###',
+      '-- agent working... --',
+      '###ORCHATERM_DONE###',
+      'task_id: task-1',
+      'summary: Built the IAP architecture document.',
+      'files_modified: IAP_PLAN.md',
+      'needs: none',
+      '###ORCHATERM_END###',
+    ].join('\n');
+    const result = parseSentinel(buf);
+    expect(result).not.toBeNull();
+    expect(result!.summary).toBe('Built the IAP architecture document.');
+    expect(result!.filesModified).toEqual(['IAP_PLAN.md']);
+  });
+
+  it('handles multi-line summary and needs fields', () => {
+    const buf = [
+      '###ORCHATERM_DONE###',
+      'task_id: task-2',
+      'summary: Designed the payment flow.',
+      'Defined the webhook schema for receipt validation.',
+      'files_modified: PLAN.md',
+      'needs: Implement the backend endpoints.',
+      'Start with the webhook receiver.',
+      '###ORCHATERM_END###',
+    ].join('\n');
+    const result = parseSentinel(buf);
+    expect(result).not.toBeNull();
+    expect(result!.summary).toBe('Designed the payment flow. Defined the webhook schema for receipt validation.');
+    expect(result!.needs).toBe('Implement the backend endpoints. Start with the webhook receiver.');
+  });
 });

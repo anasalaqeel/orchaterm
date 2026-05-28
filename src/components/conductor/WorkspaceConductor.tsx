@@ -225,6 +225,7 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
       planGenProvider:    llmProviders.planGen,
       autoAnswerProvider: llmProviders.autoAnswer,
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
+      interactionMode:    settings.conductorInteractionMode,
       sessionTitles:      new Map(workspaceSessions.map(s => [s.id, s.title])),
     });
     orchestratorEngine.stop();

@@ -22,7 +22,8 @@ const DEFAULT_OLLAMA_CONFIG = {
 
 const DEFAULT_SETTINGS: AppSettings = {
   shellPath: '',
-  conductorTaskTimeoutMinutes: 30,
+  conductorTaskTimeoutMinutes: 0,
+  conductorInteractionMode: 'auto',
   llmProviders: {
     relay:      { ...DEFAULT_OLLAMA_CONFIG },
     planGen:    { ...DEFAULT_OLLAMA_CONFIG },
