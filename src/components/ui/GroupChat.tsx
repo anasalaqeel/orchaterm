@@ -149,6 +149,7 @@ function buildSystemPrompt(
   workspaceName: string,
   spaceName: string | null,
   sessionTitles: string[],
+  sessionOutputs?: { title: string; content: string }[],
 ): string {
   const spaceLine = spaceName
     ? `Active Space: "${spaceName}"`
@@ -157,13 +158,23 @@ function buildSystemPrompt(
     ? `Terminal sessions in this space:\n${sessionTitles.map(t => `  • ${t}`).join('\n')}`
     : 'No terminal sessions are currently assigned to this space.';
 
+  // Include recent terminal output so the LLM can answer questions about what
+  // agents printed without asking the user to paste it in manually.
+  const outputsSection = sessionOutputs && sessionOutputs.length > 0
+    ? `\n\nCurrent terminal output (most recent ~2 000 chars each, ANSI stripped):\n\n${
+        sessionOutputs
+          .map(s => `=== ${s.title} ===\n${s.content || '(no output yet)'}`)
+          .join('\n\n')
+      }`
+    : '';
+
   return `You are an AI orchestration assistant embedded inside Orchaterm, a developer workspace management tool.
 
 Workspace: "${workspaceName}"
 ${spaceLine}
-${sessionsLine}
+${sessionsLine}${outputsSection}
 
-Your job: help the developer plan, coordinate, and execute work across their terminal sessions. Be concise, direct, and practical. Think like a senior engineer and a tech lead — not a chatbot. Avoid filler, avoid markdown headers, keep answers short unless depth is needed.
+Your job: help the developer plan, coordinate, and execute work across their terminal sessions. You have full visibility into each terminal's recent output above — use it to answer questions directly without asking the user to paste anything. Be concise, direct, and practical. Think like a senior engineer and tech lead — not a chatbot. Avoid filler, avoid markdown headers, keep answers short unless depth is needed.
 
 When the developer asks you to send a message or instruction to a specific terminal session, include an injection line in your response formatted exactly like this:
 INJECT → <terminal-title>: <message to send>
@@ -344,6 +355,28 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   };
 
   const groupSessionIds = groupSessions.map(s => s.id).join(',');
+
+  // ── "Agent done" notifications ────────────────────────────────────────────
+  // Fires when a non-conductor terminal returns to a shell prompt after 2 s idle.
+  // Runs regardless of the live-feed toggle so the user always sees completions.
+  useEffect(() => {
+    const unsubscribers: (() => void)[] = [];
+
+    groupSessions.forEach(session => {
+      bufferWatcher.watchForIdle(session.id, () => {
+        setMessages(prev => [...prev, {
+          id:           crypto.randomUUID(),
+          role:         'system' as const,
+          content:      `✅ ${session.title} returned to shell prompt — agent finished`,
+          sessionTitle: session.title,
+          sessionColor: session.color,
+        }]);
+      }).then(unsub => unsubscribers.push(unsub));
+    });
+
+    return () => { unsubscribers.forEach(fn => fn()); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupSessionIds]);
 
   useEffect(() => {
     if (!liveFeedOn) return;
@@ -684,10 +717,18 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
         setStreaming(true);
         setProviderOnline(true); // optimistic
 
+        // Snapshot each session's buffer at send time so the LLM can answer
+        // questions about terminal output without the user having to paste it.
+        const sessionOutputs = groupSessions.map(s => ({
+          title:   s.title,
+          content: stripAnsiCodes(bufferWatcher.getBuffer(s.id)).slice(-2000).trim(),
+        }));
+
         const systemPrompt = buildSystemPrompt(
           workspace?.name ?? workspaceId,
           activeSpace?.name ?? null,
           groupSessions.map(s => s.title),
+          sessionOutputs,
         );
 
         const cancel = llmProviders.chat.stream(
