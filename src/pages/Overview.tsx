@@ -248,22 +248,21 @@ export const DashboardView: React.FC = () => {
                 />
               )}
 
-              {/* Chat panel — opacity+x only, no width animation (avoids ResizeObserver cascade).
-                  GroupChat is conditionally rendered inside the motion.div so its live-feed,
-                  needsBroker, and autonomousOrchestrator effects don't run while the grid
-                  overlay is covering the console (consoleLayerHidden = display:none). */}
+              {/* Chat panel — collapses width to 0. Inner wrapper holds fixed chatWidth so
+                  content doesn't squish during animation; outer motion.div clips it. */}
               <AnimatePresence>
                 {!chatCollapsed && (
                   <motion.div
                     key="chat"
                     className={s.consoleSplitRight}
-                    style={{ width: chatWidth, minWidth: chatWidth }}
-                    initial={{ opacity: 0, x: 16 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 16 }}
-                    transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                    initial={{ width: 0, minWidth: 0 }}
+                    animate={{ width: chatWidth, minWidth: chatWidth }}
+                    exit={{ width: 0, minWidth: 0 }}
+                    transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
                   >
-                    {showConsole && <GroupChat key={panelKey} workspaceId={activeProject.id} />}
+                    <div style={{ width: chatWidth, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                      {showConsole && <GroupChat key={panelKey} workspaceId={activeProject.id} />}
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -612,7 +611,7 @@ const s = {
     display: flex; align-items: center; justify-content: center;
     cursor: pointer;
     box-shadow: var(--shadow-sm);
-    transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
+    transition: right 0.22s cubic-bezier(0.4,0,0.2,1), color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
     &:hover {
       color: var(--color-brand);
       background: rgba(var(--color-brand-rgb), 0.08);
