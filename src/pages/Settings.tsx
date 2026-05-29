@@ -75,9 +75,10 @@ interface ProviderConfigEditorProps {
   label: string;
   value: ProviderConfig;
   onChange: (cfg: ProviderConfig) => void;
+  onApplyToAll?: () => void;
 }
 
-const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, value, onChange }) => {
+const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, value, onChange, onApplyToAll }) => {
   const [models, setModels] = React.useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = React.useState(false);
   const [testStatus, setTestStatus] = React.useState<'idle' | 'ok' | 'fail'>('idle');
@@ -123,7 +124,14 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
 
   const editorStyles = {
     wrapper: css`display:flex;flex-direction:column;gap:8px;padding:12px 0;border-bottom:1px solid var(--border-color);`,
+    headerRow: css`display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;`,
     sectionLabel: css`font-weight:600;font-size:13px;color:var(--text-primary);`,
+    applyAllBtn: css`
+      background:none;border:none;color:var(--color-brand,#7b68ee);font-size:10px;font-weight:600;
+      cursor:pointer;padding:2px 6px;border-radius:4px;transition:background 0.15s, opacity 0.15s;
+      &:hover{background:rgba(123,104,238,0.12);}
+      &:active{opacity:0.7;}
+    `,
     fieldLabel: css`font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;`,
     modelRow: css`display:flex;gap:6px;align-items:flex-end;`,
     iconBtn: css`
@@ -138,7 +146,19 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
 
   return (
     <div className={editorStyles.wrapper}>
-      <div className={editorStyles.sectionLabel}>{label}</div>
+      <div className={editorStyles.headerRow}>
+        <div className={editorStyles.sectionLabel}>{label}</div>
+        {onApplyToAll && (
+          <button
+            type="button"
+            className={editorStyles.applyAllBtn}
+            onClick={onApplyToAll}
+            title="Copy these settings to all other LLM use cases"
+          >
+            📋 Apply to all
+          </button>
+        )}
+      </div>
 
       <Select
         label="Provider"
@@ -531,6 +551,17 @@ export const SettingsView: React.FC = () => {
                 label={USE_CASE_LABELS[key]}
                 value={llmProviders[key]}
                 onChange={cfg => setLlmProviders(prev => ({ ...prev, [key]: cfg }))}
+                onApplyToAll={() => {
+                  const currentCfg = llmProviders[key];
+                  setLlmProviders({
+                    relay:      { ...currentCfg },
+                    planGen:    { ...currentCfg },
+                    autoAnswer: { ...currentCfg },
+                    chat:       { ...currentCfg },
+                    routing:    { ...currentCfg },
+                  });
+                  showToast(`Applied ${USE_CASE_LABELS[key]} settings to all use cases`, 'success');
+                }}
               />
             ))}
 
