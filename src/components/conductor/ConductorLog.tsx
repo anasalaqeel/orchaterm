@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { css, cx } from '@emotion/css';
 import { ConductorLogEntry } from '../../types';
-import { Terminal, Send, CheckCircle, GitMerge, Clock, AlertTriangle, Info, User } from 'lucide-react';
+import { Terminal, Send, CheckCircle, GitMerge, Clock, AlertTriangle, Info, User, Save } from 'lucide-react';
 
 interface ConductorLogProps {
   entries: ConductorLogEntry[];
@@ -19,6 +19,7 @@ const TYPE_META: Record<
   error:         { icon: AlertTriangle,label: 'ERROR',     colorVar: 'var(--color-danger)' },
   info:          { icon: Info,         label: 'INFO',      colorVar: 'var(--text-tertiary)' },
   'user-override': { icon: User,       label: 'OVERRIDE',  colorVar: '#f472b6' },
+  checkpoint:      { icon: Save,       label: 'CHECKPOINT', colorVar: '#34d399' },
 };
 
 function formatTime(ts: number): string {
