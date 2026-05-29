@@ -258,6 +258,7 @@ export const SettingsView: React.FC = () => {
   const [newBinding, setNewBinding] = useState<TerminalKeybinding>({
     key: '', action: 'clear', text: '',
   });
+  const [showCustomColors, setShowCustomColors] = useState(false);
 
   useEffect(() => {
     setLlmProviders(settings.llmProviders);
@@ -802,20 +803,6 @@ export const SettingsView: React.FC = () => {
                   </strong>
                 </p>
 
-                <div className={styles.flexEndPt2}>
-                  <button
-                    type="button"
-                    className={styles.amberButton}
-                    onClick={() => {
-                      const path = (useCustomPath ? customShellPath : defaultShell).trim();
-                      if (!path) { showToast('Shell path is required', 'error'); return; }
-                      updateSettings({ shellPath: path, terminalConfig });
-                      showToast('Terminal settings saved', 'success');
-                    }}
-                  >
-                    Save Terminal Settings
-                  </button>
-                </div>
               </>
             )}
           </div>
@@ -852,8 +839,22 @@ export const SettingsView: React.FC = () => {
               ))}
             </div>
 
+            {/* Expand/collapse custom color editor */}
+            <button
+              type="button"
+              onClick={() => setShowCustomColors(v => !v)}
+              className={css`
+                background:none;border:none;padding:0;cursor:pointer;
+                font-size:var(--font-size-xs);color:var(--color-brand);
+                text-decoration:underline;text-underline-offset:2px;align-self:flex-start;
+                &:hover{filter:brightness(1.15);}
+              `}
+            >
+              {showCustomColors ? '▲ Hide custom colors' : '▼ Customize colors'}
+            </button>
+
             {/* Color grid — color picker + hex/rgba text input per slot */}
-            <div className={css`
+            {showCustomColors && <div className={css`
               display:grid;grid-template-columns:repeat(2,1fr);gap:10px;
               @media(min-width:560px){grid-template-columns:repeat(3,1fr);}
             `}>
@@ -911,7 +912,7 @@ export const SettingsView: React.FC = () => {
                   </div>
                 );
               })}
-            </div>
+            </div>}
           </div>
 
           {/* ── Font ──────────────────────────────────────────────────────── */}
@@ -1148,6 +1149,22 @@ export const SettingsView: React.FC = () => {
                 + Add
               </button>
             </div>
+          </div>
+
+          {/* ── Save ─────────────────────────────────────────────────────────── */}
+          <div className={css`display:flex;justify-content:flex-end;padding-bottom:8px;`}>
+            <button
+              type="button"
+              className={styles.amberButton}
+              onClick={() => {
+                const path = (useCustomPath ? customShellPath : defaultShell).trim();
+                if (!path) { showToast('Shell path is required', 'error'); return; }
+                updateSettings({ shellPath: path, terminalConfig });
+                showToast('Terminal settings saved', 'success');
+              }}
+            >
+              Save Terminal Settings
+            </button>
           </div>
         </div>
       )}
