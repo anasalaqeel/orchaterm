@@ -67,7 +67,7 @@ export interface SessionBuffer {
 export interface ConductorLogEntry {
   id: string;
   timestamp: number;
-  type: 'dispatch' | 'sentinel' | 'relay' | 'timeout' | 'error' | 'info' | 'user-override';
+  type: 'dispatch' | 'sentinel' | 'relay' | 'timeout' | 'error' | 'info' | 'user-override' | 'checkpoint';
   message: string;
   taskId?: string;
   sessionId?: string;
@@ -75,4 +75,6 @@ export interface ConductorLogEntry {
   taskOutput?: OrchestratorTaskOutput;
   /** Display name of the agent that completed the task — present on 'sentinel' entries. */
   agentTitle?: string;
+  /** File path — present on 'checkpoint' entries only. */
+  checkpointPath?: string;
 }
