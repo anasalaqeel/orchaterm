@@ -7,7 +7,7 @@ import { DEFAULT_TERMINAL_CONFIG, TERMINAL_THEME_PRESETS } from '../utils/termin
 import type { TerminalConfig, TerminalKeybinding } from '../types';
 import { ConfirmDialog, Select } from '../components/ui';
 import { createProvider } from '../services/llm';
-import type { ProviderConfig, UseCaseProviders } from '../services/llm/types';
+import type { ProviderConfig, UseCaseProviders, ProviderType } from '../services/llm/types';
 import {
   Sun,
   Moon,
@@ -63,6 +63,8 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
   { label: 'Custom (OpenAI-compat)', config: { provider: 'openai-compatible', baseUrl: '' } },
 ];
 
+const STANDARD_PRESETS = PROVIDER_PRESETS.filter(p => p.label !== 'Custom (OpenAI-compat)');
+
 const USE_CASE_LABELS: Record<keyof UseCaseProviders, string> = {
   relay:      'Relay (task handoff)',
   planGen:    'Plan Generation',
@@ -83,6 +85,17 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
   const [modelsLoading, setModelsLoading] = React.useState(false);
   const [testStatus, setTestStatus] = React.useState<'idle' | 'ok' | 'fail'>('idle');
 
+  // Check if current active config matches a standard preset
+  const isPresetConfig = (cfg: ProviderConfig) => {
+    return STANDARD_PRESETS.some(
+      p => p.config.provider === cfg.provider && p.config.baseUrl === cfg.baseUrl
+    );
+  };
+
+  const [viewMode, setViewMode] = React.useState<'preset' | 'custom'>(() => {
+    return isPresetConfig(value) ? 'preset' : 'custom';
+  });
+
   const [savedConfigs, setSavedConfigs] = React.useState<Record<string, ProviderConfig>>(() => {
     try {
       const saved = localStorage.getItem(`preset_configs_${label}`);
@@ -91,12 +104,67 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
     return {};
   });
 
-  const currentPreset = PROVIDER_PRESETS.find(
-    p => p.config.provider === value.provider && p.config.baseUrl === value.baseUrl,
-  ) ?? PROVIDER_PRESETS[PROVIDER_PRESETS.length - 1];
+  const [customConfig, setCustomConfig] = React.useState<ProviderConfig>(() => {
+    try {
+      const saved = localStorage.getItem(`custom_config_${label}`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      provider: 'openai-compatible',
+      baseUrl: 'http://localhost:8080',
+      apiKey: '',
+      model: '',
+    };
+  });
+
+  // Track parent-initiated value updates (e.g. from Apply to All)
+  React.useEffect(() => {
+    const isStandard = isPresetConfig(value);
+    setViewMode(isStandard ? 'preset' : 'custom');
+
+    if (isStandard) {
+      const preset = STANDARD_PRESETS.find(
+        p => p.config.provider === value.provider && p.config.baseUrl === value.baseUrl
+      );
+      if (preset) {
+        setSavedConfigs(prev => {
+          const currentSaved = prev[preset.label];
+          if (
+            currentSaved &&
+            currentSaved.provider === value.provider &&
+            currentSaved.baseUrl === value.baseUrl &&
+            currentSaved.apiKey === value.apiKey &&
+            currentSaved.model === value.model
+          ) {
+            return prev;
+          }
+          const next = { ...prev, [preset.label]: value };
+          localStorage.setItem(`preset_configs_${label}`, JSON.stringify(next));
+          return next;
+        });
+      }
+    } else {
+      setCustomConfig(prev => {
+        if (
+          prev.provider === value.provider &&
+          prev.baseUrl === value.baseUrl &&
+          prev.apiKey === value.apiKey &&
+          prev.model === value.model
+        ) {
+          return prev;
+        }
+        localStorage.setItem(`custom_config_${label}`, JSON.stringify(value));
+        return value;
+      });
+    }
+  }, [value.provider, value.baseUrl, value.apiKey, value.model, label]);
+
+  const currentPreset = STANDARD_PRESETS.find(
+    p => p.config.provider === value.provider && p.config.baseUrl === value.baseUrl
+  );
 
   const handlePresetChange = (presetLabel: string) => {
-    const preset = PROVIDER_PRESETS.find(p => p.label === presetLabel);
+    const preset = STANDARD_PRESETS.find(p => p.label === presetLabel);
     if (!preset) return;
 
     const saved = savedConfigs[presetLabel];
@@ -111,38 +179,58 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
           : preset.config.provider === 'anthropic'
           ? 'claude-3-5-sonnet-20241022'
           : '';
-      onChange({
+      const newCfg = {
         ...value,
         ...preset.config,
         model: defaultModel,
-      });
+      };
+      onChange(newCfg);
     }
   };
 
-  React.useEffect(() => {
-    const preset = PROVIDER_PRESETS.find(
-      p => p.config.provider === value.provider && p.config.baseUrl === value.baseUrl,
-    ) ?? PROVIDER_PRESETS[PROVIDER_PRESETS.length - 1];
+  const handleCustomProviderChange = (prov: ProviderType) => {
+    const updated = { ...customConfig, provider: prov };
+    setCustomConfig(updated);
+    localStorage.setItem(`custom_config_${label}`, JSON.stringify(updated));
+    onChange(updated);
+  };
 
-    setSavedConfigs(prev => {
-      const currentSaved = prev[preset.label];
-      if (
-        currentSaved &&
-        currentSaved.provider === value.provider &&
-        currentSaved.baseUrl === value.baseUrl &&
-        currentSaved.apiKey === value.apiKey &&
-        currentSaved.model === value.model
-      ) {
-        return prev;
-      }
-      const next = { ...prev, [preset.label]: value };
-      localStorage.setItem(`preset_configs_${label}`, JSON.stringify(next));
-      return next;
-    });
-  }, [value, label]);
+  const handleCustomBaseUrlChange = (url: string) => {
+    const updated = { ...customConfig, baseUrl: url };
+    setCustomConfig(updated);
+    localStorage.setItem(`custom_config_${label}`, JSON.stringify(updated));
+    onChange(updated);
+  };
+
+  const handleCustomApiKeyChange = (key: string) => {
+    const updated = { ...customConfig, apiKey: key };
+    setCustomConfig(updated);
+    localStorage.setItem(`custom_config_${label}`, JSON.stringify(updated));
+    onChange(updated);
+  };
+
+  const handleCustomModelChange = (m: string) => {
+    const updated = { ...customConfig, model: m };
+    setCustomConfig(updated);
+    localStorage.setItem(`custom_config_${label}`, JSON.stringify(updated));
+    onChange(updated);
+  };
+
+  const handleViewModeChange = (mode: 'preset' | 'custom') => {
+    setViewMode(mode);
+    if (mode === 'preset') {
+      const activePreset = currentPreset ?? STANDARD_PRESETS[0];
+      const saved = savedConfigs[activePreset.label] ?? {
+        ...activePreset.config,
+        model: activePreset.config.provider === 'ollama' ? 'llama3.2' : '',
+      };
+      onChange(saved);
+    } else {
+      onChange(customConfig);
+    }
+  };
 
   const needsApiKey = value.provider !== 'ollama' && value.baseUrl !== 'http://localhost:1234';
-  const needsBaseUrl = value.provider === 'ollama' || value.provider === 'openai-compatible';
 
   const fetchModels = async () => {
     setModelsLoading(true);
@@ -180,6 +268,15 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
       &:hover{background:rgba(123,104,238,0.12);}
       &:active{opacity:0.7;}
     `,
+    toggleRow: css`display:flex;gap:4px;background:var(--bg-tertiary);padding:3px;border-radius:6px;width:fit-content;margin-bottom:8px;border:1px solid var(--border-color);`,
+    toggleBtn: css`
+      background:none;border:none;font-size:10px;font-weight:600;padding:4px 10px;border-radius:4px;
+      color:var(--text-secondary);cursor:pointer;transition:all 0.15s;
+      &:hover{color:var(--text-primary);}
+    `,
+    toggleBtnActive: css`
+      background:var(--bg-canvas);color:var(--text-primary);box-shadow:0 1px 3px rgba(0,0,0,0.1);
+    `,
     fieldLabel: css`font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;`,
     modelRow: css`display:flex;gap:6px;align-items:flex-end;`,
     iconBtn: css`
@@ -208,37 +305,81 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
         )}
       </div>
 
-      <Select
-        label="Provider"
-        value={currentPreset?.label ?? 'Custom (OpenAI-compat)'}
-        onChange={handlePresetChange}
-        options={PROVIDER_PRESETS.map(p => ({ value: p.label, name: p.label }))}
-      />
+      <div className={editorStyles.toggleRow}>
+        <button
+          type="button"
+          className={cx(editorStyles.toggleBtn, viewMode === 'preset' && editorStyles.toggleBtnActive)}
+          onClick={() => handleViewModeChange('preset')}
+        >
+          🔌 Standard Presets
+        </button>
+        <button
+          type="button"
+          className={cx(editorStyles.toggleBtn, viewMode === 'custom' && editorStyles.toggleBtnActive)}
+          onClick={() => handleViewModeChange('custom')}
+        >
+          🛠 Custom Endpoint
+        </button>
+      </div>
 
-      {needsBaseUrl && (
-        <div>
-          <label className={editorStyles.fieldLabel}>Base URL</label>
-          <input
-            type="text"
-            className={providerInputStyle}
-            value={value.baseUrl ?? ''}
-            onChange={e => onChange({ ...value, baseUrl: e.target.value })}
-            placeholder="http://localhost:11434"
+      {viewMode === 'preset' ? (
+        <>
+          <Select
+            label="Provider"
+            value={currentPreset?.label ?? STANDARD_PRESETS[0].label}
+            onChange={handlePresetChange}
+            options={STANDARD_PRESETS.map(p => ({ value: p.label, name: p.label }))}
           />
-        </div>
-      )}
 
-      {needsApiKey && (
-        <div>
-          <label className={editorStyles.fieldLabel}>API Key</label>
-          <input
-            type="password"
-            className={providerInputStyle}
-            value={value.apiKey ?? ''}
-            onChange={e => onChange({ ...value, apiKey: e.target.value })}
-            placeholder="sk-..."
+          {needsApiKey && (
+            <div>
+              <label className={editorStyles.fieldLabel}>API Key</label>
+              <input
+                type="password"
+                className={providerInputStyle}
+                value={value.apiKey ?? ''}
+                onChange={e => onChange({ ...value, apiKey: e.target.value })}
+                placeholder="sk-..."
+              />
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <Select
+            label="Provider Type"
+            value={customConfig.provider}
+            onChange={v => handleCustomProviderChange(v as ProviderType)}
+            options={[
+              { value: 'ollama', name: 'Ollama' },
+              { value: 'openai-compatible', name: 'OpenAI-compatible' },
+              { value: 'anthropic', name: 'Anthropic' },
+              { value: 'gemini', name: 'Google Gemini' },
+            ]}
           />
-        </div>
+
+          <div>
+            <label className={editorStyles.fieldLabel}>Custom Base URL</label>
+            <input
+              type="text"
+              className={providerInputStyle}
+              value={customConfig.baseUrl ?? ''}
+              onChange={e => handleCustomBaseUrlChange(e.target.value)}
+              placeholder="e.g. http://my-local-endpoint:port"
+            />
+          </div>
+
+          <div>
+            <label className={editorStyles.fieldLabel}>API Key</label>
+            <input
+              type="password"
+              className={providerInputStyle}
+              value={customConfig.apiKey ?? ''}
+              onChange={e => handleCustomApiKeyChange(e.target.value)}
+              placeholder="API key if required..."
+            />
+          </div>
+        </>
       )}
 
       <div className={editorStyles.modelRow}>
@@ -247,7 +388,13 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
             <Select
               label="Model"
               value={value.model}
-              onChange={m => onChange({ ...value, model: m })}
+              onChange={m => {
+                if (viewMode === 'custom') {
+                  handleCustomModelChange(m);
+                } else {
+                  onChange({ ...value, model: m });
+                }
+              }}
               options={models.map(m => ({ value: m, name: m }))}
             />
           ) : (
@@ -257,8 +404,14 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
                 type="text"
                 className={providerInputStyle}
                 value={value.model}
-                onChange={e => onChange({ ...value, model: e.target.value })}
-                placeholder="e.g. llama3.2"
+                onChange={e => {
+                  if (viewMode === 'custom') {
+                    handleCustomModelChange(e.target.value);
+                  } else {
+                    onChange({ ...value, model: e.target.value });
+                  }
+                }}
+                placeholder={viewMode === 'custom' ? "e.g. custom-model-name" : "e.g. llama3.2"}
               />
             </div>
           )}
