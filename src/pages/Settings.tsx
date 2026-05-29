@@ -233,6 +233,8 @@ export const SettingsView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [llmProviders, setLlmProviders] = useState<UseCaseProviders>(settings.llmProviders);
+  const [llmProviderMode, setLlmProviderMode] = useState<'simple' | 'advanced'>(settings.llmProviderMode ?? 'advanced');
+  const [simpleLlmProvider, setSimpleLlmProvider] = useState<ProviderConfig>(settings.simpleLlmProvider ?? { provider: 'ollama', model: 'llama3.2', baseUrl: 'http://localhost:11434' });
   const [conductorTaskTimeoutMinutes, setConductorTaskTimeoutMinutes] = useState(
     settings.conductorTaskTimeoutMinutes
   );
@@ -258,6 +260,8 @@ export const SettingsView: React.FC = () => {
 
   useEffect(() => {
     setLlmProviders(settings.llmProviders);
+    setLlmProviderMode(settings.llmProviderMode ?? 'advanced');
+    if (settings.simpleLlmProvider) setSimpleLlmProvider(settings.simpleLlmProvider);
     setConductorTaskTimeoutMinutes(settings.conductorTaskTimeoutMinutes);
     setConductorInteractionMode(settings.conductorInteractionMode ?? 'auto');
     setTerminalConfig(settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG);
@@ -267,7 +271,7 @@ export const SettingsView: React.FC = () => {
   }, [settings, useCustomPath]);
 
   const handleSaveIntegrations = () => {
-    updateSettings({ llmProviders, conductorTaskTimeoutMinutes, conductorInteractionMode });
+    updateSettings({ llmProviders, llmProviderMode, simpleLlmProvider, conductorTaskTimeoutMinutes, conductorInteractionMode });
   };
 
   // Confirm delete dialog
@@ -522,14 +526,41 @@ export const SettingsView: React.FC = () => {
               OpenAI, DeepSeek, Together.ai, Anthropic, and Gemini.
             </p>
 
-            {(Object.keys(USE_CASE_LABELS) as Array<keyof UseCaseProviders>).map(key => (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              {(['simple', 'advanced'] as const).map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setLlmProviderMode(mode)}
+                  className={css`
+                    padding: 6px 16px; border-radius: 4px; font-size: 13px; cursor: pointer;
+                    border: 1px solid ${llmProviderMode === mode ? '#7b68ee' : 'var(--border-color)'};
+                    background: ${llmProviderMode === mode ? '#7b68ee22' : 'transparent'};
+                    color: ${llmProviderMode === mode ? '#7b68ee' : 'var(--text-secondary)'};
+                    &:hover { border-color: #7b68ee; }
+                  `}
+                >
+                  {mode === 'simple' ? 'Simple Mode (Global)' : 'Advanced Mode (Per Use-Case)'}
+                </button>
+              ))}
+            </div>
+
+            {llmProviderMode === 'simple' ? (
               <ProviderConfigEditor
-                key={key}
-                label={USE_CASE_LABELS[key]}
-                value={llmProviders[key]}
-                onChange={cfg => setLlmProviders(prev => ({ ...prev, [key]: cfg }))}
+                label="Global Provider Settings (Applies to all use cases)"
+                value={simpleLlmProvider}
+                onChange={setSimpleLlmProvider}
               />
-            ))}
+            ) : (
+              (Object.keys(USE_CASE_LABELS) as Array<keyof UseCaseProviders>).map(key => (
+                <ProviderConfigEditor
+                  key={key}
+                  label={USE_CASE_LABELS[key]}
+                  value={llmProviders[key]}
+                  onChange={cfg => setLlmProviders(prev => ({ ...prev, [key]: cfg }))}
+                />
+              ))
+            )}
 
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, paddingTop: 8, flexWrap: 'wrap' }}>
               <div>
