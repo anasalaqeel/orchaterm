@@ -252,7 +252,7 @@ export const SettingsView: React.FC = () => {
   const [terminalConfig, setTerminalConfig] = useState<TerminalConfig>(
     settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG
   );
-  const [_newBinding, _setNewBinding] = useState<TerminalKeybinding>({
+  const [newBinding, setNewBinding] = useState<TerminalKeybinding>({
     key: '', action: 'clear', text: '',
   });
 
@@ -720,7 +720,7 @@ export const SettingsView: React.FC = () => {
                     onClick={() => {
                       const path = (useCustomPath ? customShellPath : defaultShell).trim();
                       if (!path) { showToast('Shell path is required', 'error'); return; }
-                      updateSettings({ shellPath: path });
+                      updateSettings({ shellPath: path, terminalConfig });
                       showToast('Terminal settings saved', 'success');
                     }}
                   >
@@ -944,6 +944,121 @@ export const SettingsView: React.FC = () => {
                 Option key acts as Meta (macOS) — enables Option+B/F word-jump shortcuts
               </span>
             </label>
+          </div>
+
+          {/* ── Keybindings ─────────────────────────────────────────────────── */}
+          <div className={styles.integrationsCard}>
+            <h3 className={styles.cardTitle}>
+              <span style={{ fontSize: 16 }}>⌨</span>
+              <span>Keybindings</span>
+            </h3>
+            <p className={styles.cardDescription}>
+              Map key combos to terminal actions. Format: <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>ctrl+k</code>, <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>ctrl+shift+t</code>, <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>alt+b</code>. Modifiers: ctrl, alt, shift, meta.
+            </p>
+
+            {terminalConfig.keybindings.length > 0 && (
+              <table className={css`width:100%;font-size:12px;border-collapse:collapse;`}>
+                <thead>
+                  <tr className={css`color:var(--text-secondary);font-weight:700;text-transform:uppercase;font-size:10px;border-bottom:1px solid var(--border-color);`}>
+                    <th className={css`text-align:left;padding:6px 8px;`}>Key</th>
+                    <th className={css`text-align:left;padding:6px 8px;`}>Action</th>
+                    <th className={css`text-align:left;padding:6px 8px;`}>Text</th>
+                    <th className={css`padding:6px 8px;width:32px;`} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {terminalConfig.keybindings.map((binding, idx) => (
+                    <tr key={idx} className={css`border-bottom:1px solid var(--border-color);`}>
+                      <td className={css`padding:6px 8px;font-family:var(--font-family-mono);color:var(--color-brand);`}>
+                        {binding.key}
+                      </td>
+                      <td className={css`padding:6px 8px;color:var(--text-primary);`}>{binding.action}</td>
+                      <td className={css`padding:6px 8px;font-family:var(--font-family-mono);color:var(--text-secondary);font-size:11px;`}>
+                        {binding.text || '—'}
+                      </td>
+                      <td className={css`padding:6px 8px;`}>
+                        <button
+                          type="button"
+                          onClick={() => setTerminalConfig(c => ({
+                            ...c,
+                            keybindings: c.keybindings.filter((_, i) => i !== idx),
+                          }))}
+                          className={css`background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:14px;&:hover{color:var(--color-error);}`}
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {/* Add new binding */}
+            <div className={css`display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;`}>
+              <div className={css`display:flex;flex-direction:column;gap:4px;min-width:110px;`}>
+                <label className={styles.formLabel}>Key Combo</label>
+                <input
+                  type="text"
+                  className={styles.integrationInput}
+                  value={newBinding.key}
+                  onChange={e => setNewBinding(b => ({ ...b, key: e.target.value.toLowerCase() }))}
+                  placeholder="ctrl+k"
+                  spellCheck={false}
+                />
+              </div>
+
+              <div className={css`display:flex;flex-direction:column;gap:4px;`}>
+                <label className={styles.formLabel}>Action</label>
+                <select
+                  className={styles.integrationInput}
+                  value={newBinding.action}
+                  onChange={e => setNewBinding(b => ({
+                    ...b,
+                    action: e.target.value as TerminalKeybinding['action'],
+                  }))}
+                >
+                  <option value="clear">clear</option>
+                  <option value="scroll-top">scroll-top</option>
+                  <option value="scroll-bottom">scroll-bottom</option>
+                  <option value="send-text">send-text</option>
+                </select>
+              </div>
+
+              {newBinding.action === 'send-text' && (
+                <div className={css`display:flex;flex-direction:column;gap:4px;flex:1;min-width:120px;`}>
+                  <label className={styles.formLabel}>Text / Sequence</label>
+                  <input
+                    type="text"
+                    className={styles.integrationInput}
+                    value={newBinding.text ?? ''}
+                    onChange={e => setNewBinding(b => ({ ...b, text: e.target.value }))}
+                    placeholder="e.g. clear\n"
+                    spellCheck={false}
+                  />
+                </div>
+              )}
+
+              <button
+                type="button"
+                disabled={!newBinding.key.trim()}
+                onClick={() => {
+                  setTerminalConfig(c => ({
+                    ...c,
+                    keybindings: [...c.keybindings, { ...newBinding, key: newBinding.key.trim() }],
+                  }));
+                  setNewBinding({ key: '', action: 'clear', text: '' });
+                }}
+                className={css`
+                  padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
+                  cursor:pointer;border:1px solid var(--color-brand);color:var(--color-brand);background:transparent;
+                  &:hover:not(:disabled){background:rgba(123,104,238,0.1);}
+                  &:disabled{opacity:0.4;cursor:not-allowed;}
+                `}
+              >
+                + Add
+              </button>
+            </div>
           </div>
         </div>
       )}
