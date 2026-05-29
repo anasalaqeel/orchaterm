@@ -83,15 +83,63 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
   const [modelsLoading, setModelsLoading] = React.useState(false);
   const [testStatus, setTestStatus] = React.useState<'idle' | 'ok' | 'fail'>('idle');
 
+  const [savedConfigs, setSavedConfigs] = React.useState<Record<string, ProviderConfig>>(() => {
+    try {
+      const saved = localStorage.getItem(`preset_configs_${label}`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  });
+
   const currentPreset = PROVIDER_PRESETS.find(
     p => p.config.provider === value.provider && p.config.baseUrl === value.baseUrl,
-  );
+  ) ?? PROVIDER_PRESETS[PROVIDER_PRESETS.length - 1];
 
   const handlePresetChange = (presetLabel: string) => {
     const preset = PROVIDER_PRESETS.find(p => p.label === presetLabel);
     if (!preset) return;
-    onChange({ ...value, ...preset.config });
+
+    const saved = savedConfigs[presetLabel];
+    if (saved) {
+      onChange(saved);
+    } else {
+      const defaultModel =
+        preset.config.provider === 'ollama'
+          ? 'llama3.2'
+          : preset.config.provider === 'gemini'
+          ? 'gemini-1.5-flash'
+          : preset.config.provider === 'anthropic'
+          ? 'claude-3-5-sonnet-20241022'
+          : '';
+      onChange({
+        ...value,
+        ...preset.config,
+        model: defaultModel,
+      });
+    }
   };
+
+  React.useEffect(() => {
+    const preset = PROVIDER_PRESETS.find(
+      p => p.config.provider === value.provider && p.config.baseUrl === value.baseUrl,
+    ) ?? PROVIDER_PRESETS[PROVIDER_PRESETS.length - 1];
+
+    setSavedConfigs(prev => {
+      const currentSaved = prev[preset.label];
+      if (
+        currentSaved &&
+        currentSaved.provider === value.provider &&
+        currentSaved.baseUrl === value.baseUrl &&
+        currentSaved.apiKey === value.apiKey &&
+        currentSaved.model === value.model
+      ) {
+        return prev;
+      }
+      const next = { ...prev, [preset.label]: value };
+      localStorage.setItem(`preset_configs_${label}`, JSON.stringify(next));
+      return next;
+    });
+  }, [value, label]);
 
   const needsApiKey = value.provider !== 'ollama' && value.baseUrl !== 'http://localhost:1234';
   const needsBaseUrl = value.provider === 'ollama' || value.provider === 'openai-compatible';
