@@ -4,6 +4,7 @@ import { useDashboard } from '../../context/DashboardContext';
 import { Search, CornerDownLeft } from 'lucide-react';
 import { css, cx } from '@emotion/css';
 import { registerShortcut } from '../../services/keyboardManager';
+import { Input } from './Input';
 
 export const QuickSwitcher: React.FC = () => {
   const { workspaces, activeWorkspaceId, setActiveWorkspaceId, setViewMode, showToast } = useDashboard();
@@ -84,7 +85,7 @@ export const QuickSwitcher: React.FC = () => {
         {/* Search Input Bar */}
         <div className={styles.searchBar}>
           <Search className={styles.searchIcon} />
-          <input
+          <Input
             ref={inputRef}
             type="text"
             placeholder="Search workspaces... (Arrow keys to navigate, Enter to switch)"

@@ -9,6 +9,7 @@ import { validatePlanJSON, PLAN_START, PLAN_END } from '../../services/sentinelP
 import { writePtyChunked } from '../../utils/ptyUtils';
 import { TaskCard } from './TaskCard';
 import { Select } from '../ui/Select';
+import { Input } from '../ui';
 import {
   Plus, PlayCircle, Save, Wand2, Target,
   Loader2, CheckCircle2, XCircle, Copy, Check, X,
@@ -301,7 +302,7 @@ export const PlanBuilder: React.FC<PlanBuilderProps> = ({
           <Target className={styles.sectionIcon} />
           <span className={styles.sectionTitle}>Plan Goal</span>
         </div>
-        <input
+        <Input
           className={styles.goalInput}
           placeholder='Describe the overall goal of this orchestration plan…'
           value={plan.goal}

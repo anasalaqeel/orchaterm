@@ -6,7 +6,7 @@ import { useDashboard } from '../context/DashboardContext';
 import { Workspace } from '../types';
 import { DEFAULT_TERMINAL_CONFIG, TERMINAL_THEME_PRESETS } from '../utils/terminalThemes';
 import type { TerminalConfig, TerminalKeybinding } from '../types';
-import { ConfirmDialog, Select } from '../components/ui';
+import { ConfirmDialog, Input, Select } from '../components/ui';
 import { createProvider } from '../services/llm';
 import type { ProviderConfig, UseCaseProviders } from '../services/llm/types';
 import {
@@ -19,8 +19,6 @@ import {
   RefreshCw,
   Network,
   Terminal,
-  Eye,
-  EyeOff,
 } from 'lucide-react';
 
 // ── Terminal tab helpers ────────────────────────────────────────────────────
@@ -84,7 +82,6 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
   const [models, setModels] = React.useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = React.useState(false);
   const [testStatus, setTestStatus] = React.useState<'idle' | 'ok' | 'fail'>('idle');
-  const [showApiKey, setShowApiKey] = React.useState(false);
 
   const currentPreset = PROVIDER_PRESETS.find(
     p => p.config.provider === value.provider && p.config.baseUrl === value.baseUrl,
@@ -151,7 +148,7 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
       {needsBaseUrl && (
         <div>
           <label className={editorStyles.fieldLabel}>Base URL</label>
-          <input
+          <Input
             type="text"
             className={providerInputStyle}
             value={value.baseUrl ?? ''}
@@ -164,33 +161,13 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
       {needsApiKey && (
         <div>
           <label className={editorStyles.fieldLabel}>API Key</label>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <input
-              type={showApiKey ? 'text' : 'password'}
-              className={providerInputStyle}
-              style={{ paddingRight: '2rem' }}
-              value={value.apiKey ?? ''}
-              onChange={e => onChange({ ...value, apiKey: e.target.value })}
-              placeholder="sk-..."
-            />
-            <button
-              type="button"
-              onClick={() => setShowApiKey(v => !v)}
-              style={{
-                position: 'absolute',
-                right: '0.5rem',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-                display: 'flex',
-                color: 'inherit',
-                opacity: 0.5,
-              }}
-            >
-              {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
-            </button>
-          </div>
+          <Input
+            type="password"
+            className={providerInputStyle}
+            value={value.apiKey ?? ''}
+            onChange={e => onChange({ ...value, apiKey: e.target.value })}
+            placeholder="sk-..."
+          />
         </div>
       )}
 
@@ -206,7 +183,7 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
           ) : (
             <div>
               <label className={editorStyles.fieldLabel}>Model</label>
-              <input
+              <Input
                 type="text"
                 className={providerInputStyle}
                 value={value.model}
@@ -673,7 +650,7 @@ export const SettingsView: React.FC = () => {
               </div>
               <div>
                 <label className={styles.formLabel}>Task Timeout (minutes, 0 = off)</label>
-                <input
+                <Input
                   type="number" min={0} max={480}
                   className={styles.integrationInput}
                   value={conductorTaskTimeoutMinutes}
@@ -796,7 +773,7 @@ export const SettingsView: React.FC = () => {
                 ) : (
                   <div>
                     <label className={styles.formLabel}>Custom Shell Path</label>
-                    <input
+                    <Input
                       type="text"
                       className={styles.integrationInput}
                       value={customShellPath}
@@ -922,7 +899,7 @@ export const SettingsView: React.FC = () => {
                         }))}
                         className={css`width:28px;height:26px;border:none;background:transparent;cursor:pointer;padding:0;flex-shrink:0;`}
                       />
-                      <input
+                      <Input
                         type="text"
                         value={val}
                         spellCheck={false}
@@ -947,7 +924,7 @@ export const SettingsView: React.FC = () => {
 
             <div>
               <label className={styles.formLabel}>Font Family</label>
-              <input
+              <Input
                 type="text"
                 spellCheck={false}
                 className={styles.integrationInput}
@@ -963,7 +940,7 @@ export const SettingsView: React.FC = () => {
             <div className={css`display:grid;grid-template-columns:repeat(3,1fr);gap:12px;`}>
               <div>
                 <label className={styles.formLabel}>Size (px)</label>
-                <input
+                <Input
                   type="number" min={8} max={32}
                   className={styles.integrationInput}
                   value={terminalConfig.fontSize}
@@ -972,7 +949,7 @@ export const SettingsView: React.FC = () => {
               </div>
               <div>
                 <label className={styles.formLabel}>Line Height</label>
-                <input
+                <Input
                   type="number" min={0.8} max={2.0} step={0.1}
                   className={styles.integrationInput}
                   value={terminalConfig.lineHeight}
@@ -981,7 +958,7 @@ export const SettingsView: React.FC = () => {
               </div>
               <div>
                 <label className={styles.formLabel}>Letter Spacing (px)</label>
-                <input
+                <Input
                   type="number" min={-2} max={10} step={0.5}
                   className={styles.integrationInput}
                   value={terminalConfig.letterSpacing}
@@ -1039,7 +1016,7 @@ export const SettingsView: React.FC = () => {
 
             <div style={{ maxWidth: 200 }}>
               <label className={styles.formLabel}>Scrollback Lines</label>
-              <input
+              <Input
                 type="number" min={100} max={100000}
                 className={styles.integrationInput}
                 value={terminalConfig.scrollback}
@@ -1111,7 +1088,7 @@ export const SettingsView: React.FC = () => {
             <div className={css`display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;`}>
               <div className={css`display:flex;flex-direction:column;gap:4px;min-width:110px;`}>
                 <label className={styles.formLabel}>Key Combo</label>
-                <input
+                <Input
                   type="text"
                   className={styles.integrationInput}
                   value={newBinding.key}
@@ -1141,7 +1118,7 @@ export const SettingsView: React.FC = () => {
               {newBinding.action === 'send-text' && (
                 <div className={css`display:flex;flex-direction:column;gap:4px;flex:1;min-width:120px;`}>
                   <label className={styles.formLabel}>Text / Sequence</label>
-                  <input
+                  <Input
                     type="text"
                     className={styles.integrationInput}
                     value={newBinding.text ?? ''}
@@ -1215,7 +1192,7 @@ export const SettingsView: React.FC = () => {
             <form onSubmit={handleUpdateWorkspaceSubmit} className={styles.formContainer}>
               <div>
                 <label className={styles.formLabel}>Workspace Name</label>
-                <input
+                <Input
                   type="text"
                   value={projName}
                   onChange={(e) => setProjName(e.target.value)}
@@ -1226,7 +1203,7 @@ export const SettingsView: React.FC = () => {
 
               <div>
                 <label className={styles.formLabel}>Local Directory Path</label>
-                <input
+                <Input
                   type="text"
                   value={projPath}
                   onChange={(e) => setProjPath(e.target.value)}

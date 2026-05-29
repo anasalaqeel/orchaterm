@@ -6,6 +6,7 @@ import {
   ChevronDown, ChevronUp, Trash2, GripVertical, Terminal,
 } from 'lucide-react';
 import { Select } from '../ui/Select';
+import { Input } from '../ui';
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
 
@@ -70,7 +71,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
         />
 
         {editable ? (
-          <input
+          <Input
             className={styles.titleInput}
             value={task.title}
             placeholder='Task title…'
