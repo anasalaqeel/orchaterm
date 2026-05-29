@@ -276,17 +276,27 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     useEffect(() => {
       const term = termRef.current;
       if (!term) return;
-      term.options.theme        = terminalConfig.theme;
-      term.options.fontSize     = terminalConfig.fontSize;
-      term.options.fontFamily   = terminalConfig.fontFamily;
-      term.options.lineHeight   = terminalConfig.lineHeight;
-      term.options.letterSpacing = terminalConfig.letterSpacing;
-      term.options.cursorStyle  = terminalConfig.cursorStyle;
-      term.options.cursorBlink  = terminalConfig.cursorBlink;
-      term.options.scrollback   = terminalConfig.scrollback;
+
+      // Non-layout options — safe to apply synchronously.
+      term.options.theme           = terminalConfig.theme;
+      term.options.cursorStyle     = terminalConfig.cursorStyle;
+      term.options.cursorBlink     = terminalConfig.cursorBlink;
+      term.options.scrollback      = terminalConfig.scrollback;
       term.options.macOptionIsMeta = terminalConfig.macOptionIsMeta;
-      // Font metric changes require a refit so cell dimensions recalculate.
-      if (fitAddonRef.current) safeFit(fitAddonRef.current);
+
+      // Font options change cell metrics — clamp to valid range so intermediate
+      // typed values (e.g. typing "14" passes through "1") never corrupt layout.
+      term.options.fontSize     = Math.max(8, Math.min(32, terminalConfig.fontSize));
+      term.options.fontFamily   = terminalConfig.fontFamily;
+      term.options.lineHeight   = Math.max(0.8, Math.min(2.0, terminalConfig.lineHeight));
+      term.options.letterSpacing = Math.max(-2, Math.min(10, terminalConfig.letterSpacing));
+
+      // Defer fit to the next paint so xterm has time to recalculate character
+      // metrics before the fit addon measures the container.
+      const id = requestAnimationFrame(() => {
+        if (fitAddonRef.current) safeFit(fitAddonRef.current);
+      });
+      return () => cancelAnimationFrame(id);
     }, [terminalConfig]);
 
     useEffect(() => {
