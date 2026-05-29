@@ -90,7 +90,8 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
   const handlePresetChange = (presetLabel: string) => {
     const preset = PROVIDER_PRESETS.find(p => p.label === presetLabel);
     if (!preset) return;
-    onChange({ ...value, ...preset.config });
+    const providerChanged = preset.config.provider !== value.provider;
+    onChange({ ...value, ...preset.config, model: providerChanged ? '' : value.model });
   };
 
   const needsApiKey = value.provider !== 'ollama' && value.baseUrl !== 'http://localhost:1234';
@@ -102,6 +103,9 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
       const provider = createProvider(value);
       const list = await provider.listModels();
       setModels(list);
+      if (list.length > 0 && value.model && !list.includes(value.model)) {
+        onChange({ ...value, model: list[0] });
+      }
     } catch { setModels([]); }
     finally { setModelsLoading(false); }
   };

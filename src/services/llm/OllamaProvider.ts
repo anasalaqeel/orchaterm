@@ -33,7 +33,9 @@ export class OllamaProvider implements LLMProvider {
   stream(messages: ChatMessage[], systemPrompt: string, callbacks: StreamCallbacks): () => void {
     const { onToken, onDone, onError } = callbacks;
     const controller = new AbortController();
-    const allMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+    const allMessages = systemPrompt
+      ? [{ role: 'system', content: systemPrompt }, ...messages]
+      : messages;
 
     (async () => {
       try {
@@ -73,29 +75,21 @@ export class OllamaProvider implements LLMProvider {
 
   async listModels(): Promise<string[]> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/tags`);
-      if (!res.ok) {
-        console.error(`Ollama listModels status error: ${res.status} ${res.statusText}`);
-        return [];
-      }
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`${this.baseUrl}/api/tags`, { signal: controller.signal });
+      if (!res.ok) return [];
       const data = await res.json();
       return (data.models ?? []).map((m: { name: string }) => m.name);
-    } catch (err) {
-      console.error('Ollama listModels fetch error:', err);
-      return [];
-    }
+    } catch { return []; }
   }
 
   async checkOnline(): Promise<boolean> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/tags`);
-      if (!res.ok) {
-        console.error(`Ollama checkOnline status error: ${res.status} ${res.statusText}`);
-      }
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(`${this.baseUrl}/api/tags`, { signal: controller.signal });
       return res.ok;
-    } catch (err) {
-      console.error('Ollama checkOnline fetch error:', err);
-      return false;
-    }
+    } catch { return false; }
   }
 }

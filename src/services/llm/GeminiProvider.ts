@@ -8,7 +8,7 @@ export class GeminiProvider implements LLMProvider {
 
   constructor(config: ProviderConfig) {
     this.baseUrl = (config.baseUrl || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
-    this.model = config.model || 'gemini-1.5-flash';
+    this.model = config.model || 'gemini-2.0-flash';
     this.apiKey = config.apiKey ?? '';
   }
 
@@ -76,7 +76,8 @@ export class GeminiProvider implements LLMProvider {
               const obj = JSON.parse(t.slice(6));
               const text = obj.candidates?.[0]?.content?.parts?.[0]?.text;
               if (text) onToken(text);
-              if (obj.candidates?.[0]?.finishReason === 'STOP') { onDone(); return; }
+              const finishReason = obj.candidates?.[0]?.finishReason;
+              if (finishReason && finishReason !== 'FINISH_REASON_UNSPECIFIED') { onDone(); return; }
             } catch { /* skip */ }
           }
         }

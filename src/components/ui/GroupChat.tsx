@@ -19,7 +19,7 @@ import { css, cx } from '@emotion/css';
 import {
   Send, Bot, User, WifiOff, RefreshCw, Users,
   ChevronDown, BookmarkPlus, Download, X as XIcon, SlidersHorizontal, Check,
-  MessageSquare, Network, Info,
+  MessageSquare, Network, Info, Copy,
 } from 'lucide-react';
 import { WorkspacePanel } from './WorkspacePanel';
 import { Select } from './Select';
@@ -208,10 +208,13 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   } = useDashboard();
 
   const getProviderLabel = () => {
-    const provider = settings.llmProviders?.chat?.provider;
+    const effectiveChatCfg = settings.llmProviderMode === 'simple'
+      ? settings.simpleLlmProvider
+      : settings.llmProviders?.chat;
+    const provider = effectiveChatCfg?.provider;
     if (provider === 'ollama') return 'Ollama';
     if (provider === 'openai-compatible') {
-      const baseUrl = settings.llmProviders?.chat?.baseUrl || '';
+      const baseUrl = effectiveChatCfg?.baseUrl || '';
       if (baseUrl.includes('deepseek')) return 'DeepSeek';
       if (baseUrl.includes('together')) return 'Together.ai';
       if (baseUrl.includes('localhost:1234') || baseUrl.includes('lm-studio')) return 'LM Studio';
@@ -716,6 +719,12 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
         cancelRef.current = cancel;
       }
+    }).catch((err: Error) => {
+      setGeneratingPlan(false);
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(), role: 'system',
+        content: `⚠ Request failed: ${err.message}`,
+      }]);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input, streaming, generatingPlan, inputMode, settings, workspace, activeSpace, groupSessions, apiHistory, workspaceId, llmProviders]);
@@ -781,7 +790,10 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
   // ── Guards ────────────────────────────────────────────────────────────────
 
-  const modelMissing = !settings.llmProviders?.chat?.model;
+  const effectiveChatModel = settings.llmProviderMode === 'simple'
+    ? settings.simpleLlmProvider?.model
+    : settings.llmProviders?.chat?.model;
+  const modelMissing = !effectiveChatModel;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -1282,6 +1294,14 @@ const MessageRow: React.FC<{
   onSaveToVault: () => void;
 }> = ({ msg, onSaveToVault }) => {
   const [hovered, setHovered] = useState(false);
+  const [copied, setCopied]   = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(msg.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
 
   if (msg.role === 'conductor') {
     const icons: Record<string, string> = {
@@ -1363,8 +1383,15 @@ const MessageRow: React.FC<{
         style={msg.sessionColor
           ? { borderLeftColor: msg.sessionColor, backgroundColor: msg.sessionColor + '0d' }
           : undefined}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
         {msg.content}
+        {hovered && (
+          <button className={s.actionBtn} onClick={handleCopy} title="Copy" style={{ position: 'absolute', top: -8, right: -8 }}>
+            {copied ? <Check size={11} /> : <Copy size={11} />}
+          </button>
+        )}
       </div>
     );
   }
@@ -1379,10 +1406,17 @@ const MessageRow: React.FC<{
       <div className={cx(s.bubble, msg.role === 'user' ? s.bubbleUser : s.bubbleAssistant)}>
         <div className={s.msgText}>{renderMarkdown(msg.content)}</div>
         {msg.streaming && <span className={s.cursor} />}
-        {msg.role === 'assistant' && !msg.streaming && hovered && (
-          <button className={s.vaultBtn} onClick={onSaveToVault} title="Save to Prompt Vault">
-            <BookmarkPlus size={11} />
-          </button>
+        {!msg.streaming && hovered && (
+          <div className={cx(s.msgActions, msg.role === 'user' && s.msgActionsUser)}>
+            <button className={s.actionBtn} onClick={handleCopy} title="Copy">
+              {copied ? <Check size={11} /> : <Copy size={11} />}
+            </button>
+            {msg.role === 'assistant' && (
+              <button className={s.actionBtn} onClick={onSaveToVault} title="Save to Prompt Vault">
+                <BookmarkPlus size={11} />
+              </button>
+            )}
+          </div>
         )}
       </div>
       {msg.role === 'user' && <div className={cx(s.avatar, s.avatarUser)}><User size={12} /></div>}
@@ -1683,8 +1717,12 @@ const s = {
     animation: blink2 0.8s step-end infinite;
     @keyframes blink2 { 0%,100%{opacity:1} 50%{opacity:0} }
   `,
-  vaultBtn: css`
+  msgActions: css`
     position: absolute; top: -8px; right: -8px;
+    display: flex; flex-direction: row-reverse; gap: 3px;
+  `,
+  msgActionsUser: css`right: auto; left: -8px; flex-direction: row;`,
+  actionBtn: css`
     width: 20px; height: 20px; border-radius: 50%;
     background: var(--bg-secondary); border: 1px solid var(--border-color);
     color: var(--text-tertiary); cursor: pointer;
@@ -1703,7 +1741,7 @@ const s = {
   systemRow: css`
     font-size: 11px; color: var(--text-secondary); padding: 5px 10px;
     border-left: 2px solid var(--border-color); border-radius: 3px;
-    background: var(--bg-tertiary); line-height: 1.4;
+    background: var(--bg-tertiary); line-height: 1.4; position: relative;
   `,
   scrollBtn: css`
     position: absolute; bottom: 70px; right: 14px;
