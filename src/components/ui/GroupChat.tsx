@@ -744,7 +744,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       }]);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, streaming, generatingPlan, inputMode, settings, workspace, activeSpace, groupSessions, apiHistory, workspaceId, llmProviders]);
+  }, [input, streaming, classifying, generatingPlan, inputMode, settings, workspace, activeSpace, groupSessions, apiHistory, workspaceId, llmProviders]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }

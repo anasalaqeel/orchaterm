@@ -64,6 +64,8 @@ export interface AppSettings {
   simpleLlmProvider?: ProviderConfig;
   /** Per-use-case LLM provider configuration used when llmProviderMode is 'advanced'. */
   llmProviders: UseCaseProviders;
+  /** API keys keyed by `provider:baseUrl` — persists keys across provider switches. */
+  providerApiKeys?: Record<string, string>;
   terminalConfig?: TerminalConfig;
   // ── Legacy fields kept for one-time migration on first load ──────────────
   /** @deprecated Use llmProviders.relay.baseUrl instead. */

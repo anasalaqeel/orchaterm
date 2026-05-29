@@ -91,24 +91,32 @@ export class GeminiProvider implements LLMProvider {
   }
 
   async listModels(): Promise<string[]> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
     try {
-      const controller = new AbortController();
-      setTimeout(() => controller.abort(), 3000);
       const res = await fetch(`${this.baseUrl}/v1beta/models?key=${this.apiKey}`, { signal: controller.signal });
-      if (!res.ok) return [];
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(`Gemini ${res.status}: ${(err as any)?.error?.message ?? res.statusText}`);
+      }
       const data = await res.json();
       return (data.models ?? [])
         .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
         .map((m: any) => (m.name as string).replace('models/', ''));
-    } catch { return []; }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw new Error('Request timed out');
+      throw err;
+    } finally { clearTimeout(timer); }
   }
 
   async checkOnline(): Promise<boolean> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
     try {
-      const controller = new AbortController();
-      setTimeout(() => controller.abort(), 2000);
       const res = await fetch(`${this.baseUrl}/v1beta/models?key=${this.apiKey}`, { signal: controller.signal });
+      // Gemini returns 400 for missing/invalid key but server is reachable
       return res.ok || res.status === 400;
     } catch { return false; }
+    finally { clearTimeout(timer); }
   }
 }

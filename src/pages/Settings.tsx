@@ -76,11 +76,17 @@ interface ProviderConfigEditorProps {
   label: string;
   value: ProviderConfig;
   onChange: (cfg: ProviderConfig) => void;
+  providerApiKeys: Record<string, string>;
+  onKeyChange: (providerKey: string, apiKey: string) => void;
 }
 
-const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, value, onChange }) => {
+const providerKey = (cfg: Pick<ProviderConfig, 'provider' | 'baseUrl'>) =>
+  `${cfg.provider}:${cfg.baseUrl ?? ''}`;
+
+const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, value, onChange, providerApiKeys, onKeyChange }) => {
   const [models, setModels] = React.useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = React.useState(false);
+  const [modelsError, setModelsError] = React.useState<string | null>(null);
   const [testStatus, setTestStatus] = React.useState<'idle' | 'ok' | 'fail'>('idle');
 
   const currentPreset = PROVIDER_PRESETS.find(
@@ -90,8 +96,10 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
   const handlePresetChange = (presetLabel: string) => {
     const preset = PROVIDER_PRESETS.find(p => p.label === presetLabel);
     if (!preset) return;
+    onKeyChange(providerKey(value), value.apiKey ?? '');
     const providerChanged = preset.config.provider !== value.provider;
-    onChange({ ...value, ...preset.config, model: providerChanged ? '' : value.model });
+    const restoredKey = providerApiKeys[providerKey(preset.config)] ?? '';
+    onChange({ ...value, ...preset.config, apiKey: restoredKey, model: providerChanged ? '' : value.model });
   };
 
   const needsApiKey = value.provider !== 'ollama' && value.baseUrl !== 'http://localhost:1234';
@@ -99,18 +107,25 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
 
   const fetchModels = async () => {
     setModelsLoading(true);
+    setModelsError(null);
     try {
       const provider = createProvider(value);
       const list = await provider.listModels();
       setModels(list);
-      if (list.length > 0 && value.model && !list.includes(value.model)) {
+      if (list.length > 0 && !list.includes(value.model)) {
         onChange({ ...value, model: list[0] });
       }
-    } catch { setModels([]); }
+    } catch (err: any) {
+      setModels([]);
+      setModelsError(err?.message ?? 'Failed to fetch models');
+    }
     finally { setModelsLoading(false); }
   };
 
-  React.useEffect(() => { fetchModels(); }, [value.provider, value.baseUrl, value.apiKey]);
+  React.useEffect(() => {
+    if (needsApiKey && !value.apiKey) return;
+    fetchModels();
+  }, [value.provider, value.baseUrl, value.apiKey]);
 
   const handleRefreshModels = fetchModels;
 
@@ -169,47 +184,66 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
             type="password"
             className={providerInputStyle}
             value={value.apiKey ?? ''}
-            onChange={e => onChange({ ...value, apiKey: e.target.value })}
+            onChange={e => {
+              onKeyChange(providerKey(value), e.target.value);
+              onChange({ ...value, apiKey: e.target.value });
+            }}
             placeholder="sk-..."
           />
         </div>
       )}
 
-      <div className={editorStyles.modelRow}>
-        <div style={{ flex: 1 }}>
-          {models.length > 0 ? (
-            <Select
-              label="Model"
-              value={value.model}
-              onChange={m => onChange({ ...value, model: m })}
-              options={models.map(m => ({ value: m, name: m }))}
-            />
-          ) : (
-            <div>
-              <label className={editorStyles.fieldLabel}>Model</label>
-              <Input
-                type="text"
-                className={providerInputStyle}
-                value={value.model}
-                onChange={e => onChange({ ...value, model: e.target.value })}
-                placeholder="e.g. llama3.2"
-              />
+      {needsApiKey && !value.apiKey ? (
+        <div>
+          <label className={editorStyles.fieldLabel}>Model</label>
+          <div className={css`font-size:11px;color:var(--text-secondary);padding:8px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:var(--border-radius-sm);`}>
+            Enter an API key above to load available models.
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className={editorStyles.modelRow}>
+            <div style={{ flex: 1 }}>
+              {models.length > 0 ? (
+                <Select
+                  label="Model"
+                  value={value.model}
+                  onChange={m => onChange({ ...value, model: m })}
+                  options={models.map(m => ({ value: m, name: m }))}
+                />
+              ) : (
+                <div>
+                  <label className={editorStyles.fieldLabel}>Model</label>
+                  <Input
+                    type="text"
+                    className={providerInputStyle}
+                    value={value.model}
+                    onChange={e => onChange({ ...value, model: e.target.value })}
+                    placeholder="e.g. llama3.2"
+                  />
+                </div>
+              )}
+            </div>
+            <button type="button" className={editorStyles.iconBtn} onClick={handleRefreshModels} disabled={modelsLoading} title="Fetch model list">
+              <RefreshCw className={cx(css`width:14px;height:14px;`, modelsLoading && css`animation:spin 1s linear infinite;@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}`)} />
+            </button>
+            <button
+              type="button"
+              className={editorStyles.iconBtn}
+              onClick={handleTest}
+              title="Test connection"
+              style={{ color: testStatus === 'ok' ? 'var(--color-success)' : testStatus === 'fail' ? 'var(--color-error)' : undefined }}
+            >
+              {testStatus === 'idle' ? '⚡' : testStatus === 'ok' ? '✓' : '✗'}
+            </button>
+          </div>
+          {modelsError && (
+            <div className={css`font-size:11px;color:var(--color-error);margin-top:4px;`}>
+              ⚠ {modelsError}
             </div>
           )}
-        </div>
-        <button type="button" className={editorStyles.iconBtn} onClick={handleRefreshModels} disabled={modelsLoading} title="Fetch model list">
-          <RefreshCw className={cx(css`width:14px;height:14px;`, modelsLoading && css`animation:spin 1s linear infinite;@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}`)} />
-        </button>
-        <button
-          type="button"
-          className={editorStyles.iconBtn}
-          onClick={handleTest}
-          title="Test connection"
-          style={{ color: testStatus === 'ok' ? 'var(--color-success)' : testStatus === 'fail' ? 'var(--color-error)' : undefined }}
-        >
-          {testStatus === 'idle' ? '⚡' : testStatus === 'ok' ? '✓' : '✗'}
-        </button>
-      </div>
+        </>
+      )}
     </div>
   );
 };
@@ -240,6 +274,7 @@ export const SettingsView: React.FC = () => {
   const [llmProviders, setLlmProviders] = useState<UseCaseProviders>(settings.llmProviders);
   const [llmProviderMode, setLlmProviderMode] = useState<'simple' | 'advanced'>(settings.llmProviderMode ?? 'advanced');
   const [simpleLlmProvider, setSimpleLlmProvider] = useState<ProviderConfig>(settings.simpleLlmProvider ?? { provider: 'ollama', model: 'llama3.2', baseUrl: 'http://localhost:11434' });
+  const [providerApiKeys, setProviderApiKeys] = useState<Record<string, string>>(settings.providerApiKeys ?? {});
   const [conductorTaskTimeoutMinutes, setConductorTaskTimeoutMinutes] = useState(
     settings.conductorTaskTimeoutMinutes
   );
@@ -268,6 +303,7 @@ export const SettingsView: React.FC = () => {
     setLlmProviders(settings.llmProviders);
     setLlmProviderMode(settings.llmProviderMode ?? 'advanced');
     if (settings.simpleLlmProvider) setSimpleLlmProvider(settings.simpleLlmProvider);
+    setProviderApiKeys(settings.providerApiKeys ?? {});
     setConductorTaskTimeoutMinutes(settings.conductorTaskTimeoutMinutes);
     setConductorInteractionMode(settings.conductorInteractionMode ?? 'auto');
     setTerminalConfig(settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG);
@@ -277,7 +313,7 @@ export const SettingsView: React.FC = () => {
   }, [settings, useCustomPath]);
 
   const handleSaveIntegrations = () => {
-    updateSettings({ llmProviders, llmProviderMode, simpleLlmProvider, conductorTaskTimeoutMinutes, conductorInteractionMode });
+    updateSettings({ llmProviders, llmProviderMode, simpleLlmProvider, providerApiKeys, conductorTaskTimeoutMinutes, conductorInteractionMode });
   };
 
   // Confirm delete dialog
@@ -601,6 +637,8 @@ export const SettingsView: React.FC = () => {
                     label="Global Provider Settings (Applies to all use cases)"
                     value={simpleLlmProvider}
                     onChange={setSimpleLlmProvider}
+                    providerApiKeys={providerApiKeys}
+                    onKeyChange={(k, v) => setProviderApiKeys(prev => ({ ...prev, [k]: v }))}
                   />
                 </motion.div>
               ) : (
@@ -617,6 +655,8 @@ export const SettingsView: React.FC = () => {
                       label={USE_CASE_LABELS[key]}
                       value={llmProviders[key]}
                       onChange={cfg => setLlmProviders(prev => ({ ...prev, [key]: cfg }))}
+                      providerApiKeys={providerApiKeys}
+                      onKeyChange={(k, v) => setProviderApiKeys(prev => ({ ...prev, [k]: v }))}
                     />
                   ))}
                 </motion.div>

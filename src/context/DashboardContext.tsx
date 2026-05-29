@@ -121,6 +121,7 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
       },
       llmProviderMode: raw.llmProviderMode ?? 'advanced',
       simpleLlmProvider: raw.simpleLlmProvider ?? (raw.llmProviders.relay ?? { ...DEFAULT_OLLAMA_CONFIG }),
+      providerApiKeys: raw.providerApiKeys ?? {},
       terminalConfig: { ...DEFAULT_TERMINAL_CONFIG, ...(raw.terminalConfig ?? {}) },
     };
   }
@@ -143,6 +144,7 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
     },
     llmProviderMode: raw.llmProviderMode ?? 'advanced',
     simpleLlmProvider: raw.simpleLlmProvider ?? { ...legacyConfig },
+    providerApiKeys: raw.providerApiKeys ?? {},
     terminalConfig: { ...DEFAULT_TERMINAL_CONFIG, ...(raw.terminalConfig ?? {}) },
   };
 }
@@ -195,6 +197,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     },
     llmProviderMode: 'advanced',
     simpleLlmProvider: { ...DEFAULT_OLLAMA_CONFIG },
+    providerApiKeys: {},
     terminalConfig: DEFAULT_TERMINAL_CONFIG,
   });
   const [plans, setPlans]                       = useState<OrchestratorPlan[]>([]);

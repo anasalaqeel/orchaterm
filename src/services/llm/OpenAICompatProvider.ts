@@ -93,22 +93,29 @@ export class OpenAICompatProvider implements LLMProvider {
   }
 
   async listModels(): Promise<string[]> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
     try {
-      const controller = new AbortController();
-      setTimeout(() => controller.abort(), 3000);
       const res = await fetch(`${this.baseUrl}/v1/models`, { headers: this.headers, signal: controller.signal });
-      if (!res.ok) return [];
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(`API ${res.status}: ${(err as any)?.error?.message ?? res.statusText}`);
+      }
       const data = await res.json();
       return (data.data ?? []).map((m: { id: string }) => m.id).sort();
-    } catch { return []; }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw new Error('Request timed out');
+      throw err;
+    } finally { clearTimeout(timer); }
   }
 
   async checkOnline(): Promise<boolean> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
     try {
-      const controller = new AbortController();
-      setTimeout(() => controller.abort(), 2000);
       const res = await fetch(`${this.baseUrl}/v1/models`, { headers: this.headers, signal: controller.signal });
       return res.ok;
     } catch { return false; }
+    finally { clearTimeout(timer); }
   }
 }
