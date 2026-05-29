@@ -5,7 +5,7 @@ use std::thread;
 fn main() {
     println!("=== PTY DIAGNOSTIC TEST ===");
     let pty_system = native_pty_system();
-    
+
     println!("1. Opening PTY pair (80x24)...");
     let pair = match pty_system.openpty(PtySize {
         rows: 24,
@@ -19,7 +19,7 @@ fn main() {
             return;
         }
     };
-    
+
     println!("2. Spawning powershell.exe...");
     let cmd = CommandBuilder::new("cmd.exe");
     let mut child = match pair.slave.spawn_command(cmd) {
@@ -30,7 +30,7 @@ fn main() {
         }
     };
     drop(pair.slave);
-    
+
     println!("3. Cloning reader and taking writer...");
     let mut reader = match pair.master.try_clone_reader() {
         Ok(r) => r,
@@ -46,7 +46,7 @@ fn main() {
             return;
         }
     };
-    
+
     println!("4. Starting background reader thread...");
     thread::spawn(move || {
         println!("[Reader Thread] Spawned and running...");
