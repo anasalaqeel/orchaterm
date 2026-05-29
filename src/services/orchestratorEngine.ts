@@ -157,7 +157,7 @@ export class OrchestratorEngine {
         bufferWatcher.unwatch(task.assignedSessionId);
       }
     }
-    this.mutatePlan({ status: 'failed' });
+    this.mutatePlan({ status: 'stopped' });
     this.log('info', 'Orchestration stopped by user');
     this.emitState();
     this.plan = null;
