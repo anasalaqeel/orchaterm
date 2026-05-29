@@ -493,6 +493,24 @@ fn save_store(app: AppHandle, file: String, data: String) -> Result<(), String> 
 #[tauri::command]
 fn write_file_path(path: String, content: String) -> Result<(), String> {
     let p = std::path::Path::new(&path);
+
+    // Only allow writing markdown files (checkpoints are always .md)
+    match p.extension().and_then(|e| e.to_str()) {
+        Some("md") => {}
+        _ => return Err("write_file_path: only .md files are allowed".to_string()),
+    }
+
+    // Reject writes to obvious system directories
+    let path_lower = path.to_lowercase().replace('\\', "/");
+    let blocked = [
+        "/etc/", "/bin/", "/usr/bin/", "/usr/sbin/", "/sbin/",
+        "/system/", "/windows/system32/", "/program files/",
+        "/program files (x86)/",
+    ];
+    if blocked.iter().any(|prefix| path_lower.starts_with(prefix)) {
+        return Err("write_file_path: writes to system directories are not allowed".to_string());
+    }
+
     if let Some(parent) = p.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Cannot create directory: {e}"))?;
