@@ -291,6 +291,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       term.options.lineHeight   = Math.max(0.8, Math.min(2.0, terminalConfig.lineHeight));
       term.options.letterSpacing = Math.max(-2, Math.min(10, terminalConfig.letterSpacing));
 
+      // Clear the glyph texture atlas so xterm rebuilds it at the new font size.
+      // Without this, cached bitmaps from the old size get reused and look wrong.
+      (term as any).clearTextureAtlas?.();
+
       // Defer fit to the next paint so xterm has time to recalculate character
       // metrics before the fit addon measures the container.
       const id = requestAnimationFrame(() => {
