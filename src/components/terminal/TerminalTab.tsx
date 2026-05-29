@@ -12,6 +12,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { css } from '@emotion/css';
 import { terminalGainedFocus, terminalLostFocus } from '../../services/terminalFocus';
+import { useDashboard } from '../../context/DashboardContext';
+import { DEFAULT_TERMINAL_CONFIG, buildCombo } from '../../utils/terminalThemes';
 
 // ── Public ref handle exposed to TerminalContainer ─────────────────────────
 export interface TerminalTabHandle {
@@ -49,6 +51,9 @@ function safeFit(addon: FitAddon): { cols: number; rows: number } | null {
 
 export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
   ({ sessionId, workspacePath, shell, shellArgs }, ref) => {
+    const { settings } = useDashboard();
+    const terminalConfig = settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG;
+
     const containerRef = useRef<HTMLDivElement>(null);
     const termRef = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
@@ -140,42 +145,16 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
       // ─ xterm instance ────────────────────────────────────────────────
       const term = new Terminal({
-        cursorBlink: true,
-        cursorStyle: 'block',
-        scrollback: 5000,
-        // On macOS, Option should act as Meta so bash word-jump shortcuts
-        // (Option+B, Option+F, etc.) work correctly.
-        macOptionIsMeta: true,
+        cursorBlink: terminalConfig.cursorBlink,
+        cursorStyle: terminalConfig.cursorStyle,
+        scrollback: terminalConfig.scrollback,
+        macOptionIsMeta: terminalConfig.macOptionIsMeta,
         macOptionClickForcesSelection: false,
-        theme: {
-          background: '#0C0C0C',
-          foreground: '#d4d4d4',
-          cursor: '#7B68EE',
-          cursorAccent: '#0C0C0C',
-          selectionBackground: 'rgba(158, 255, 255, 0.25)',
-          selectionForeground: '#ffffff',
-          black: '#1a1a1a',
-          brightBlack: '#4a4a4a',
-          red: '#ff6262',
-          brightRed: '#ff8080',
-          green: '#3ad900',
-          brightGreen: '#57ff1a',
-          yellow: '#ffc56f',
-          brightYellow: '#ffd699',
-          blue: '#4db8ff',
-          brightBlue: '#80ccff',
-          magenta: '#ff76ff',
-          brightMagenta: '#ffaaff',
-          cyan: '#9ed9ff',
-          brightCyan: '#c2e9ff',
-          white: '#d4d4d4',
-          brightWhite: '#ffffff',
-        },
-        fontFamily:
-          "'Fira Code', 'Cascadia Code', Consolas, Monaco, 'Courier New', monospace",
-        fontSize: 13,
-        lineHeight: 1.4,
-        letterSpacing: 0,
+        theme: terminalConfig.theme,
+        fontFamily: terminalConfig.fontFamily,
+        fontSize: terminalConfig.fontSize,
+        lineHeight: terminalConfig.lineHeight,
+        letterSpacing: terminalConfig.letterSpacing,
         allowProposedApi: true,
       });
 
@@ -288,6 +267,49 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         );
       };
       }, [sessionId, workspacePath, shell, shellArgs]);
+
+    // Apply config changes live to existing terminal instances.
+    useEffect(() => {
+      const term = termRef.current;
+      if (!term) return;
+      term.options.theme        = terminalConfig.theme;
+      term.options.fontSize     = terminalConfig.fontSize;
+      term.options.fontFamily   = terminalConfig.fontFamily;
+      term.options.lineHeight   = terminalConfig.lineHeight;
+      term.options.letterSpacing = terminalConfig.letterSpacing;
+      term.options.cursorStyle  = terminalConfig.cursorStyle;
+      term.options.cursorBlink  = terminalConfig.cursorBlink;
+      term.options.scrollback   = terminalConfig.scrollback;
+      term.options.macOptionIsMeta = terminalConfig.macOptionIsMeta;
+      // Font metric changes require a refit so cell dimensions recalculate.
+      if (fitAddonRef.current) safeFit(fitAddonRef.current);
+    }, [terminalConfig]);
+
+    useEffect(() => {
+      const term = termRef.current;
+      if (!term) return;
+      term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+        if (e.type !== 'keydown') return true;
+        const combo = buildCombo(e);
+        const binding = terminalConfig.keybindings.find(b => b.key === combo);
+        if (!binding) return true;
+        switch (binding.action) {
+          case 'clear':
+            term.clear();
+            break;
+          case 'scroll-top':
+            term.scrollToTop();
+            break;
+          case 'scroll-bottom':
+            term.scrollToBottom();
+            break;
+          case 'send-text':
+            invoke('write_pty', { sessionId, data: binding.text ?? '' }).catch(() => {});
+            break;
+        }
+        return false;
+      });
+    }, [terminalConfig.keybindings, sessionId]);
 
     return (
       <div className={styles.wrapper}>
