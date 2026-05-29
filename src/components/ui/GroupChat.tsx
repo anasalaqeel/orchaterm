@@ -19,7 +19,7 @@ import { css, cx } from '@emotion/css';
 import {
   Send, Bot, User, WifiOff, RefreshCw, Users,
   ChevronDown, BookmarkPlus, Download, X as XIcon, SlidersHorizontal, Check,
-  MessageSquare, Network, Info, Copy,
+  MessageSquare, Network, Info, Copy, Square,
 } from 'lucide-react';
 import { WorkspacePanel } from './WorkspacePanel';
 import { Select } from './Select';
@@ -258,7 +258,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
   // ── Plan mode state ───────────────────────────────────────────────────────
   const [pendingPlan,    setPendingPlan]    = useState<PendingPlan | null>(null);
-  const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [classifying,    setClassifying]    = useState(false); // intent classification phase
+  const [generatingPlan, setGeneratingPlan] = useState(false); // actual plan generation phase
   const [livePlan,       setLivePlan]       = useState<OrchestratorPlan | null>(null);
 
   // ── Input mode (chat vs manual pipeline builder) ──────────────────────────
@@ -288,6 +289,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   // Tracks streaming content so onDone never needs to read state
   const streamingContentRef = useRef('');
   const cancelRef           = useRef<(() => void) | null>(null);
+  const planAbortRef        = useRef<AbortController | null>(null);
   const bottomRef           = useRef<HTMLDivElement>(null);
   const textareaRef         = useRef<HTMLTextAreaElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -609,7 +611,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
   const handleSend = useCallback((overrideText?: string) => {
     const text = (overrideText ?? input).trim();
-    if (!text || streaming || generatingPlan) return;
+    if (!text || streaming || classifying || generatingPlan) return;
     if (inputMode !== 'chat') return; // pipeline mode uses handleRunBuildPlan instead
 
     setInput('');
@@ -617,17 +619,24 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
     // ── Intent Classification & Autonomous Routing ──────────────────────────
     setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content: text }]);
-    setGeneratingPlan(true); // Show thinking state while classifying
+    setClassifying(true);
+
+    const planAbort = new AbortController();
+    planAbortRef.current = planAbort;
 
     const { system: intentSystem, userContent: intentContent } = buildIntentClassifyPrompt(text);
     llmProviders.planGen.complete([{ role: 'user', content: intentContent }], intentSystem).then(res => {
-      const intent = res.toLowerCase().trim().includes('plan') ? 'plan' : 'chat';
+      if (planAbort.signal.aborted) return;
+      const intent = /\bplan\b/.test(res.toLowerCase().trim()) ? 'plan' : 'chat';
       if (intent === 'plan') {
+        setClassifying(false);
+        setGeneratingPlan(true);
         // Plan generation mode
         const { system: planSystem, userContent: planContent } = buildPlanGenPrompt(
           text, groupSessions.map(s => ({ title: s.title })),
         );
         llmProviders.planGen.complete([{ role: 'user', content: planContent }], planSystem).then(planRes => {
+          if (planAbort.signal.aborted) return;
           const { goal: extractedGoal, tasks: rawTasks } = parsePlanGenResponse(planRes, text);
           const idMap = new Map<string, string>();
           rawTasks.forEach(t => idMap.set(t.title, crypto.randomUUID()));
@@ -651,14 +660,19 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
           setPendingPlan({ goal: extractedGoal, tasks });
         }).catch((err: Error) => {
+          if (planAbort.signal.aborted) return;
           setMessages(prev => [...prev, {
             id: crypto.randomUUID(), role: 'system',
             content: `⚠ Plan generation failed: ${err.message}`,
           }]);
-        }).finally(() => setGeneratingPlan(false));
+        }).finally(() => {
+          planAbortRef.current = null;
+          setGeneratingPlan(false);
+        });
       } else {
-        // Chat mode
-        setGeneratingPlan(false);
+        // Chat mode — classification done, route straight to streaming
+        setClassifying(false);
+        planAbortRef.current = null;
         streamingContentRef.current = '';
 
         const assistantId                  = crypto.randomUUID();
@@ -720,7 +734,10 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
         cancelRef.current = cancel;
       }
     }).catch((err: Error) => {
+      planAbortRef.current = null;
+      setClassifying(false);
       setGeneratingPlan(false);
+      if ((err as any)?.name === 'AbortError') return;
       setMessages(prev => [...prev, {
         id: crypto.randomUUID(), role: 'system',
         content: `⚠ Request failed: ${err.message}`,
@@ -744,6 +761,13 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     cancelRef.current = null;
     setStreaming(false);
     setMessages(prev => prev.map(m => m.streaming ? { ...m, streaming: false } : m));
+  };
+
+  const handleCancelPlan = () => {
+    planAbortRef.current?.abort();
+    planAbortRef.current = null;
+    setClassifying(false);
+    setGeneratingPlan(false);
   };
 
   // ── Save to Prompt Vault ──────────────────────────────────────────────────
@@ -949,13 +973,13 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             />
           ))
         )}
-        {/* Plan generating indicator */}
-        {generatingPlan && (
+        {/* Thinking / plan generating indicator */}
+        {(classifying || generatingPlan) && (
           <div className={s.planThinking}>
             <span className={s.planThinkingDot} />
             <span className={s.planThinkingDot} style={{ animationDelay: '0.2s' }} />
             <span className={s.planThinkingDot} style={{ animationDelay: '0.4s' }} />
-            <span className={s.planThinkingLabel}>Generating plan…</span>
+            <span className={s.planThinkingLabel}>{generatingPlan ? 'Generating plan…' : 'Thinking…'}</span>
           </div>
         )}
 
@@ -1183,6 +1207,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             placeholder={
               modelMissing
                 ? `Configure a ${providerLabel} model in Settings first…`
+                : classifying
+                ? 'Thinking…'
                 : generatingPlan
                 ? 'Generating plan…'
                 : streaming
@@ -1191,11 +1217,13 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
                 ? `${providerLabel} offline — check connection`
                 : 'Ask anything or describe a goal — ↵ send, Shift+↵ newline'
             }
-            disabled={modelMissing || providerOnline === false || generatingPlan}
+            disabled={modelMissing || providerOnline === false || classifying || generatingPlan}
             rows={1}
           />
-          {streaming ? (
-            <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleStop} title="Stop">■</button>
+          {classifying || generatingPlan ? (
+            <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleCancelPlan} title="Cancel"><Square size={12} fill="currentColor" strokeWidth={0} /></button>
+          ) : streaming ? (
+            <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleStop} title="Stop"><Square size={12} fill="currentColor" strokeWidth={0} /></button>
           ) : (
             <button
               className={s.sendBtn}
@@ -1774,7 +1802,12 @@ const s = {
     &:hover:not(:disabled) { filter: brightness(1.10); }
     &:disabled { opacity: 0.35; cursor: not-allowed; }
   `,
-  stopBtn: css`background: var(--color-error) !important; color: #fff !important; &:hover { filter: brightness(1.1); }`,
+  stopBtn: css`
+    background: transparent !important;
+    border: 1px solid var(--color-error) !important;
+    color: var(--color-error) !important;
+    &:hover { background: rgba(var(--color-error-rgb), 0.12) !important; filter: none; }
+  `,
 
   // ── Conductor event row ──────────────────────────────────────────────────
   conductorRow: css`
