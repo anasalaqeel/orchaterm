@@ -5,6 +5,7 @@ import {
   useCallback,
   useImperativeHandle,
   forwardRef,
+  useMemo,
 } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
@@ -52,7 +53,10 @@ function safeFit(addon: FitAddon): { cols: number; rows: number } | null {
 export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
   ({ sessionId, workspacePath, shell, shellArgs }, ref) => {
     const { settings } = useDashboard();
-    const terminalConfig = settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG;
+    const terminalConfig = useMemo(
+      () => settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG,
+      [settings.terminalConfig]
+    );
 
     const containerRef = useRef<HTMLDivElement>(null);
     const termRef = useRef<Terminal | null>(null);
