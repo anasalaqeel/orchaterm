@@ -119,6 +119,8 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
         chat:       raw.llmProviders.chat       ?? { ...DEFAULT_OLLAMA_CONFIG },
         routing:    raw.llmProviders.routing    ?? { ...DEFAULT_OLLAMA_CONFIG },
       },
+      llmProviderMode: raw.llmProviderMode ?? 'advanced',
+      simpleLlmProvider: raw.simpleLlmProvider ?? (raw.llmProviders.relay ?? { ...DEFAULT_OLLAMA_CONFIG }),
       terminalConfig: raw.terminalConfig ?? DEFAULT_TERMINAL_CONFIG,
     };
   }
@@ -139,8 +141,23 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
       chat:       { ...legacyConfig },
       routing:    { ...legacyConfig },
     },
+    llmProviderMode: raw.llmProviderMode ?? 'advanced',
+    simpleLlmProvider: raw.simpleLlmProvider ?? { ...legacyConfig },
     terminalConfig: raw.terminalConfig ?? DEFAULT_TERMINAL_CONFIG,
   };
+}
+
+function getEffectiveProviders(settings: AppSettings): UseCaseProviders {
+  if (settings.llmProviderMode === 'simple' && settings.simpleLlmProvider) {
+    return {
+      relay:      { ...settings.simpleLlmProvider },
+      planGen:    { ...settings.simpleLlmProvider },
+      autoAnswer: { ...settings.simpleLlmProvider },
+      chat:       { ...settings.simpleLlmProvider },
+      routing:    { ...settings.simpleLlmProvider },
+    };
+  }
+  return settings.llmProviders;
 }
 
 function makeProviders(cfg: UseCaseProviders) {
@@ -176,6 +193,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       chat:       { ...DEFAULT_OLLAMA_CONFIG },
       routing:    { ...DEFAULT_OLLAMA_CONFIG },
     },
+    llmProviderMode: 'advanced',
+    simpleLlmProvider: { ...DEFAULT_OLLAMA_CONFIG },
     terminalConfig: DEFAULT_TERMINAL_CONFIG,
   });
   const [plans, setPlans]                       = useState<OrchestratorPlan[]>([]);
@@ -270,7 +289,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // ── Sync LLM providers to engines when settings change ───────────────────────
   useEffect(() => {
     if (!isLoaded) return;
-    const p = makeProviders(settings.llmProviders);
+    const effectiveCfg = getEffectiveProviders(settings);
+    const p = makeProviders(effectiveCfg);
     setLlmProviders(p);
 
     orchestratorEngine.updateConfig({
@@ -283,7 +303,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     autonomousOrchestrator.updateConfig({ routingProvider: p.routing });
     needsBroker.updateConfig({ provider: p.planGen });
-  }, [settings.llmProviders, settings.conductorTaskTimeoutMinutes, isLoaded]);
+  }, [settings.llmProviders, settings.llmProviderMode, settings.simpleLlmProvider, settings.conductorTaskTimeoutMinutes, isLoaded]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ id: crypto.randomUUID(), message, type });

@@ -1,6 +1,6 @@
 // ── Workspace & domain types ──────────────────────────────────────────────────
 import type { TerminalConfig } from './terminal.types';
-import type { UseCaseProviders } from '../services/llm/types';
+import type { UseCaseProviders, ProviderConfig } from '../services/llm/types';
 
 export interface Workspace {
   id: string;
@@ -58,7 +58,11 @@ export interface AppSettings {
   conductorTaskTimeoutMinutes: number;
   /** 'auto' = LLM answers agent prompts automatically. 'manual' = user must INJECT answers. */
   conductorInteractionMode: 'auto' | 'manual';
-  /** Per-use-case LLM provider configuration. */
+  /** Mode for LLM providers configuration: 'simple' uses one provider for everything, 'advanced' allows per-use-case config. */
+  llmProviderMode?: 'simple' | 'advanced';
+  /** The single provider configuration used when llmProviderMode is 'simple'. */
+  simpleLlmProvider?: ProviderConfig;
+  /** Per-use-case LLM provider configuration used when llmProviderMode is 'advanced'. */
   llmProviders: UseCaseProviders;
   terminalConfig?: TerminalConfig;
   // ── Legacy fields kept for one-time migration on first load ──────────────
