@@ -206,6 +206,22 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     activeSpaceId, settings, addSavedPrompt, showToast, addPlan, llmProviders,
   } = useDashboard();
 
+  const getProviderLabel = () => {
+    const provider = settings.llmProviders?.chat?.provider;
+    if (provider === 'ollama') return 'Ollama';
+    if (provider === 'openai-compatible') {
+      const baseUrl = settings.llmProviders?.chat?.baseUrl || '';
+      if (baseUrl.includes('deepseek')) return 'DeepSeek';
+      if (baseUrl.includes('together')) return 'Together.ai';
+      if (baseUrl.includes('localhost:1234') || baseUrl.includes('lm-studio')) return 'LM Studio';
+      return 'OpenAI-compat';
+    }
+    if (provider === 'anthropic') return 'Anthropic';
+    if (provider === 'gemini') return 'Gemini';
+    return 'LLM';
+  };
+  const providerLabel = getProviderLabel();
+
   const workspace     = workspaces.find(w => w.id === workspaceId);
   const activeSpace   = spaces.find(g => g.id === activeSpaceId);
   const allSessions   = terminalSessions.filter(s => s.workspaceId === workspaceId);
@@ -217,14 +233,14 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   const storageKey    = chatStorageKey(workspaceId, activeSpaceId ?? null);
   const storageKeyRef = useRef(storageKey);
 
-  // ── Ollama status ─────────────────────────────────────────────────────────
-  const [ollamaOnline, setOllamaOnline] = useState<boolean | null>(null);
-  const [checking, setChecking]         = useState(false);
+  // ── Provider status ─────────────────────────────────────────────────────────
+  const [providerOnline, setProviderOnline] = useState<boolean | null>(null);
+  const [checking, setChecking]             = useState(false);
 
   const checkOnline = useCallback(async () => {
     setChecking(true);
     const ok = await llmProviders.chat.checkOnline();
-    setOllamaOnline(ok);
+    setProviderOnline(ok);
     setChecking(false);
   }, [llmProviders.chat]);
 
@@ -648,7 +664,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
         const newHistory: ChatMessage[] = [...apiHistory, { role: 'user', content: text }];
         setApiHistory(newHistory);
         setStreaming(true);
-        setOllamaOnline(true); // optimistic
+        setProviderOnline(true); // optimistic
 
         const systemPrompt = buildSystemPrompt(
           workspace?.name ?? workspaceId,
@@ -688,7 +704,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             },
             onError: (err) => {
               setStreaming(false);
-              setOllamaOnline(false);
+              setProviderOnline(false);
               setMessages(prev =>
                 prev.map(m => m.id === assistantId ? { ...m, content: `Error: ${err}`, streaming: false } : m),
               );
@@ -740,7 +756,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     const today = new Date().toISOString().slice(0, 10);
     const lines = messages.map(m => {
       if (m.role === 'user')          return `**You** (${today}):\n${m.content}\n`;
-      if (m.role === 'assistant')     return `**Ollama** (${today}):\n${m.content}\n`;
+      if (m.role === 'assistant')     return `**${providerLabel}** (${today}):\n${m.content}\n`;
       if (m.role === 'agent-summary') return `*[${m.sessionTitle}]:* ${m.content}\n`;
       if (m.role === 'system')        return `*${m.content}*\n`;
       return '';
@@ -822,20 +838,20 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
               <XIcon size={12} />
             </button>
           )}
-          {/* Ollama status */}
-          {ollamaOnline === false && (
+          {/* Provider status */}
+          {providerOnline === false && (
             <span className={s.offlineBadge}><WifiOff size={10} /> Offline</span>
           )}
-          {ollamaOnline === true && (
+          {providerOnline === true && (
             <span className={s.onlineBadge}>
-              <span className={s.onlineDot} /> Ollama
+              <span className={s.onlineDot} /> {providerLabel}
             </span>
           )}
           <button
             className={s.refreshBtn}
             onClick={checkOnline}
             disabled={checking}
-            title="Check Ollama connection"
+            title={`Check ${providerLabel} connection`}
           >
             <RefreshCw size={11} className={cx(checking && s.spin)} />
           </button>
@@ -858,7 +874,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
           ⚠ No chat model configured — go to <strong>Settings → LLM Providers</strong> to configure one.
         </div>
       )}
-      {ollamaOnline === false && !modelMissing && (
+      {providerOnline === false && !modelMissing && (
         <div className={s.warningBanner}>
           ⚠ Chat provider is offline. Check your LLM provider settings.
         </div>
@@ -902,7 +918,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
                       key={suggestion}
                       className={s.suggestionBtn}
                       onClick={() => handleSend(suggestion)}
-                      disabled={modelMissing || ollamaOnline === false}
+                      disabled={modelMissing || providerOnline === false}
                     >
                       {suggestion}
                     </button>
@@ -1153,16 +1169,16 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             onKeyDown={handleKeyDown}
             placeholder={
               modelMissing
-                ? 'Configure an Ollama model in Settings first…'
+                ? `Configure a ${providerLabel} model in Settings first…`
                 : generatingPlan
                 ? 'Generating plan…'
                 : streaming
-                ? 'Ollama is responding…'
-                : ollamaOnline === false
-                ? 'Ollama offline — start it to chat'
+                ? `${providerLabel} is responding…`
+                : providerOnline === false
+                ? `${providerLabel} offline — check connection`
                 : 'Ask anything or describe a goal — ↵ send, Shift+↵ newline'
             }
-            disabled={modelMissing || ollamaOnline === false || generatingPlan}
+            disabled={modelMissing || providerOnline === false || generatingPlan}
             rows={1}
           />
           {streaming ? (
@@ -1171,7 +1187,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             <button
               className={s.sendBtn}
               onClick={() => handleSend()}
-              disabled={!input.trim() || modelMissing || ollamaOnline === false || generatingPlan}
+              disabled={!input.trim() || modelMissing || providerOnline === false || generatingPlan}
               title="Send (Enter)"
             >
               <Send size={13} />
