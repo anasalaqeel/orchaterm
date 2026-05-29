@@ -716,7 +716,7 @@ export const SettingsView: React.FC = () => {
                     })
                   }
                   options={[
-                    { value: 'auto',      name: 'Auto — inject immediately into target session' },
+                    { value: 'auto',      name: 'Auto — inject immediately (falls back to modal if no target set)' },
                     { value: 'semi',      name: 'Semi-automatic — show modal to confirm injection' },
                     { value: 'file-only', name: 'File only — save checkpoint, no injection' },
                   ]}
