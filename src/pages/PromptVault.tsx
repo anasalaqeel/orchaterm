@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useDashboard } from '../context/DashboardContext';
-import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { Select } from '../components/ui/Select';
+import { ConfirmDialog, Input, Select } from '../components/ui';
 import { SavedPrompt } from '../types';
 import {
   Search,
@@ -202,7 +201,7 @@ export const PromptVaultView: React.FC = () => {
           <label className={styles.filterLabel}>Search Prompts</label>
           <div className={styles.searchWrapper}>
             <Search className={styles.iconSm} />
-            <input
+            <Input
               type="text"
               placeholder="Search by keywords or tags..."
               value={search}
@@ -344,7 +343,7 @@ export const PromptVaultView: React.FC = () => {
             <form onSubmit={handleAddSubmit} className={styles.modalForm}>
               <div>
                 <label className={styles.fieldLabel}>Title</label>
-                <input
+                <Input
                   type="text"
                   placeholder="e.g. Refactor API, TypeScript boilerplate instructions"
                   value={title}
@@ -368,7 +367,7 @@ export const PromptVaultView: React.FC = () => {
 
               <div>
                 <label className={styles.fieldLabel}>Tags (comma-separated)</label>
-                <input
+                <Input
                   type="text"
                   placeholder="e.g. system, config, react, tailwind"
                   value={tagInput}
@@ -432,7 +431,7 @@ export const PromptVaultView: React.FC = () => {
             <form onSubmit={handleEditSubmit} className={styles.modalForm}>
               <div>
                 <label className={styles.fieldLabel}>Title</label>
-                <input
+                <Input
                   type="text"
                   placeholder="Title"
                   value={title}
@@ -456,7 +455,7 @@ export const PromptVaultView: React.FC = () => {
 
               <div>
                 <label className={styles.fieldLabel}>Tags (comma-separated)</label>
-                <input
+                <Input
                   type="text"
                   placeholder="system, config"
                   value={tagInput}
