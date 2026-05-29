@@ -19,6 +19,8 @@ import {
   RefreshCw,
   Network,
   Terminal,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 // ── Terminal tab helpers ────────────────────────────────────────────────────
@@ -82,6 +84,7 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
   const [models, setModels] = React.useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = React.useState(false);
   const [testStatus, setTestStatus] = React.useState<'idle' | 'ok' | 'fail'>('idle');
+  const [showApiKey, setShowApiKey] = React.useState(false);
 
   const currentPreset = PROVIDER_PRESETS.find(
     p => p.config.provider === value.provider && p.config.baseUrl === value.baseUrl,
@@ -161,13 +164,33 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
       {needsApiKey && (
         <div>
           <label className={editorStyles.fieldLabel}>API Key</label>
-          <input
-            type="password"
-            className={providerInputStyle}
-            value={value.apiKey ?? ''}
-            onChange={e => onChange({ ...value, apiKey: e.target.value })}
-            placeholder="sk-..."
-          />
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <input
+              type={showApiKey ? 'text' : 'password'}
+              className={providerInputStyle}
+              style={{ paddingRight: '2rem' }}
+              value={value.apiKey ?? ''}
+              onChange={e => onChange({ ...value, apiKey: e.target.value })}
+              placeholder="sk-..."
+            />
+            <button
+              type="button"
+              onClick={() => setShowApiKey(v => !v)}
+              style={{
+                position: 'absolute',
+                right: '0.5rem',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+                display: 'flex',
+                color: 'inherit',
+                opacity: 0.5,
+              }}
+            >
+              {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+          </div>
         </div>
       )}
 
