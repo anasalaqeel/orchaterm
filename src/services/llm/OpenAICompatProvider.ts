@@ -1,4 +1,5 @@
 import { LLMProvider, ProviderConfig, ChatMessage, StreamCallbacks } from './types';
+import { customFetch as fetch } from './fetch';
 
 export class OpenAICompatProvider implements LLMProvider {
   private baseUrl: string;
