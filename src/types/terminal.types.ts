@@ -21,3 +21,49 @@ export interface TerminalSession {
    */
   interruptPolicy: InterruptPolicy;
 }
+
+export interface TerminalTheme {
+  background: string;
+  foreground: string;
+  cursor: string;
+  cursorAccent: string;
+  selectionBackground: string;
+  selectionForeground: string;
+  black: string;
+  brightBlack: string;
+  red: string;
+  brightRed: string;
+  green: string;
+  brightGreen: string;
+  yellow: string;
+  brightYellow: string;
+  blue: string;
+  brightBlue: string;
+  magenta: string;
+  brightMagenta: string;
+  cyan: string;
+  brightCyan: string;
+  white: string;
+  brightWhite: string;
+}
+
+export interface TerminalKeybinding {
+  /** Combo string e.g. "ctrl+k", "ctrl+shift+t". Lowercase, modifiers first. */
+  key: string;
+  action: 'clear' | 'scroll-top' | 'scroll-bottom' | 'send-text';
+  /** Only used when action === 'send-text'. */
+  text?: string;
+}
+
+export interface TerminalConfig {
+  theme: TerminalTheme;
+  fontFamily: string;
+  fontSize: number;
+  lineHeight: number;
+  letterSpacing: number;
+  cursorStyle: 'block' | 'underline' | 'bar';
+  cursorBlink: boolean;
+  scrollback: number;
+  macOptionIsMeta: boolean;
+  keybindings: TerminalKeybinding[];
+}

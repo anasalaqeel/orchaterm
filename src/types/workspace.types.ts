@@ -1,4 +1,5 @@
 // ── Workspace & domain types ──────────────────────────────────────────────────
+import type { TerminalConfig } from './terminal.types';
 import type { UseCaseProviders } from '../services/llm/types';
 
 export interface Workspace {
@@ -59,6 +60,7 @@ export interface AppSettings {
   conductorInteractionMode: 'auto' | 'manual';
   /** Per-use-case LLM provider configuration. */
   llmProviders: UseCaseProviders;
+  terminalConfig?: TerminalConfig;
   // ── Legacy fields kept for one-time migration on first load ──────────────
   /** @deprecated Use llmProviders.relay.baseUrl instead. */
   ollamaHost?: string;
