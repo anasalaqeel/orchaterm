@@ -118,7 +118,7 @@ export class SessionContinuationService {
 
     if (label === 'LIMIT_HIT' || label === 'STOPPED') {
       entry.consecutiveStopCount++;
-      if (entry.consecutiveStopCount >= 2) {
+      if (entry.consecutiveStopCount >= 2 && !entry.checkpointInProgress) {
         entry.consecutiveStopCount = 0;
         await this.doCheckpoint(entry, 'auto-detection', label);
       }

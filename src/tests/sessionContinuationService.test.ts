@@ -161,4 +161,32 @@ describe('SessionContinuationService', () => {
     );
     expect(snapshot).not.toBeNull();
   });
+
+  it('triggers checkpoint via idle corroboration when consecutiveStopCount > 0', async () => {
+    const summaryCallbacks: Array<(chunk: string) => void> = [];
+    let idleCallback: (() => void) | undefined;
+
+    const { bufferWatcher } = await import('../services/bufferWatcher');
+    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(
+      async (_id, onChunk) => { summaryCallbacks.push(onChunk); return () => {}; }
+    );
+    vi.mocked(bufferWatcher.watchForIdle).mockImplementation(
+      async (_id, onIdle) => { idleCallback = onIdle; return () => {}; }
+    );
+    mockProvider.complete.mockResolvedValue('LIMIT_HIT');
+
+    const { generateCheckpoint } = await import('../services/checkpointGenerator');
+
+    await service.startMonitoring(defaultMeta, defaultConfig, mockProvider, mockProvider);
+
+    // First LIMIT_HIT delta — raises consecutiveStopCount to 1 (not 2, so no checkpoint yet)
+    if (summaryCallbacks[0]) await summaryCallbacks[0]('first delta');
+    expect(generateCheckpoint).not.toHaveBeenCalled();
+
+    // Idle shell fires — consecutiveStopCount is 1 (> 0), so trigger immediately
+    if (idleCallback) idleCallback();
+    // Give the async doCheckpoint a tick to resolve
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(generateCheckpoint).toHaveBeenCalledTimes(1);
+  });
 });
