@@ -3,6 +3,8 @@ import { css, cx } from '@emotion/css';
 import { invoke } from '@tauri-apps/api/core';
 import { useDashboard } from '../context/DashboardContext';
 import { Workspace } from '../types';
+import { DEFAULT_TERMINAL_CONFIG, TERMINAL_THEME_PRESETS } from '../utils/terminalThemes';
+import type { TerminalConfig, TerminalKeybinding } from '../types';
 import { ConfirmDialog, Select } from '../components/ui';
 import { createProvider } from '../services/llm';
 import type { ProviderConfig, UseCaseProviders } from '../services/llm/types';
@@ -247,10 +249,18 @@ export const SettingsView: React.FC = () => {
   const [customShellPath, setCustomShellPath] = useState('');
   const shellsFetchedRef = React.useRef(false);
 
+  const [terminalConfig, setTerminalConfig] = useState<TerminalConfig>(
+    settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG
+  );
+  const [_newBinding, _setNewBinding] = useState<TerminalKeybinding>({
+    key: '', action: 'clear', text: '',
+  });
+
   useEffect(() => {
     setLlmProviders(settings.llmProviders);
     setConductorTaskTimeoutMinutes(settings.conductorTaskTimeoutMinutes);
     setConductorInteractionMode(settings.conductorInteractionMode ?? 'auto');
+    setTerminalConfig(settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG);
     if (!useCustomPath) {
       setDefaultShell(settings.shellPath || '');
     }
@@ -719,6 +729,100 @@ export const SettingsView: React.FC = () => {
                 </div>
               </>
             )}
+          </div>
+
+          {/* ── Colors & Theme ──────────────────────────────────────────────────── */}
+          <div className={styles.integrationsCard}>
+            <h3 className={styles.cardTitle}>
+              <span style={{ fontSize: 18, lineHeight: 1 }}>🎨</span>
+              <span>Colors & Theme</span>
+            </h3>
+            <p className={styles.cardDescription}>
+              Pick a preset or customize all 22 terminal colors individually.
+            </p>
+
+            {/* Preset cards */}
+            <div className={css`display:flex;flex-wrap:wrap;gap:8px;`}>
+              {TERMINAL_THEME_PRESETS.map(preset => (
+                <button
+                  key={preset.name}
+                  type="button"
+                  onClick={() => setTerminalConfig(c => ({ ...c, theme: preset.theme }))}
+                  className={css`
+                    padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;
+                    border:1px solid ${terminalConfig.theme.background === preset.theme.background
+                      ? 'var(--color-brand)' : 'var(--border-color)'};
+                    background:${preset.theme.background};
+                    color:${preset.theme.foreground};
+                    transition:border-color 0.15s;
+                    &:hover{border-color:var(--color-brand);}
+                  `}
+                >
+                  {preset.name}
+                </button>
+              ))}
+            </div>
+
+            {/* Color grid — color picker + hex/rgba text input per slot */}
+            <div className={css`
+              display:grid;grid-template-columns:repeat(2,1fr);gap:10px;
+              @media(min-width:560px){grid-template-columns:repeat(3,1fr);}
+            `}>
+              {(
+                [
+                  ['Background',     'background'],
+                  ['Foreground',     'foreground'],
+                  ['Cursor',         'cursor'],
+                  ['Cursor Accent',  'cursorAccent'],
+                  ['Selection BG',   'selectionBackground'],
+                  ['Selection FG',   'selectionForeground'],
+                  ['Black',          'black'],
+                  ['Bright Black',   'brightBlack'],
+                  ['Red',            'red'],
+                  ['Bright Red',     'brightRed'],
+                  ['Green',          'green'],
+                  ['Bright Green',   'brightGreen'],
+                  ['Yellow',         'yellow'],
+                  ['Bright Yellow',  'brightYellow'],
+                  ['Blue',           'blue'],
+                  ['Bright Blue',    'brightBlue'],
+                  ['Magenta',        'magenta'],
+                  ['Bright Magenta', 'brightMagenta'],
+                  ['Cyan',           'cyan'],
+                  ['Bright Cyan',    'brightCyan'],
+                  ['White',          'white'],
+                  ['Bright White',   'brightWhite'],
+                ] as [string, keyof TerminalConfig['theme']][]
+              ).map(([label, key]) => {
+                const val = terminalConfig.theme[key];
+                const isRgba = val.startsWith('rgba');
+                return (
+                  <div key={key} className={css`display:flex;flex-direction:column;gap:3px;`}>
+                    <label className={styles.formLabel}>{label}</label>
+                    <div className={css`display:flex;align-items:center;gap:5px;`}>
+                      <input
+                        type="color"
+                        title={isRgba ? 'rgba — edit text field for alpha' : undefined}
+                        value={isRgba ? '#000000' : val}
+                        onChange={e => setTerminalConfig(c => ({
+                          ...c, theme: { ...c.theme, [key]: e.target.value },
+                        }))}
+                        className={css`width:28px;height:26px;border:none;background:transparent;cursor:pointer;padding:0;flex-shrink:0;`}
+                      />
+                      <input
+                        type="text"
+                        value={val}
+                        spellCheck={false}
+                        onChange={e => setTerminalConfig(c => ({
+                          ...c, theme: { ...c.theme, [key]: e.target.value },
+                        }))}
+                        className={styles.integrationInput}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
