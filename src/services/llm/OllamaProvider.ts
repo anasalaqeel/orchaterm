@@ -74,22 +74,24 @@ export class OllamaProvider implements LLMProvider {
   }
 
   async listModels(): Promise<string[]> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
     try {
-      const controller = new AbortController();
-      setTimeout(() => controller.abort(), 3000);
       const res = await fetch(`${this.baseUrl}/api/tags`, { signal: controller.signal });
       if (!res.ok) return [];
       const data = await res.json();
       return (data.models ?? []).map((m: { name: string }) => m.name);
     } catch { return []; }
+    finally { clearTimeout(timer); }
   }
 
   async checkOnline(): Promise<boolean> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
     try {
-      const controller = new AbortController();
-      setTimeout(() => controller.abort(), 2000);
       const res = await fetch(`${this.baseUrl}/api/tags`, { signal: controller.signal });
       return res.ok;
     } catch { return false; }
+    finally { clearTimeout(timer); }
   }
 }
