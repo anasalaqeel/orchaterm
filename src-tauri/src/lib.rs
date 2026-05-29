@@ -490,6 +490,17 @@ fn save_store(app: AppHandle, file: String, data: String) -> Result<(), String> 
     Ok(())
 }
 
+#[tauri::command]
+fn write_file_path(path: String, content: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Cannot create directory: {e}"))?;
+    }
+    std::fs::write(p, &content).map_err(|e| format!("Write failed: {e}"))?;
+    Ok(())
+}
+
 // ── App Entry ──────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -508,7 +519,8 @@ pub fn run() {
             resize_pty,
             kill_pty,
             load_store,
-            save_store
+            save_store,
+            write_file_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
