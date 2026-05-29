@@ -255,6 +255,10 @@ const providerInputStyle = css`
   &:focus{border-color:var(--color-brand);box-shadow:0 0 0 1px var(--color-brand);}
 `;
 
+const fieldLabelStyle = css`
+  font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;
+`;
+
 export const SettingsView: React.FC = () => {
   const {
     workspaces,
@@ -721,7 +725,7 @@ export const SettingsView: React.FC = () => {
 
               {/* Mode selector */}
               <div className={css`margin-bottom: 16px;`}>
-                <label className={editorStyles.fieldLabel}>Resume mode</label>
+                <label className={fieldLabelStyle}>Resume mode</label>
                 <Select
                   value={settings.continuation?.mode ?? 'semi'}
                   onChange={v =>
@@ -742,7 +746,7 @@ export const SettingsView: React.FC = () => {
 
               {/* Snapshot interval */}
               <div className={css`margin-bottom: 16px;`}>
-                <label className={editorStyles.fieldLabel}>Periodic snapshot interval (chars)</label>
+                <label className={fieldLabelStyle}>Periodic snapshot interval (chars)</label>
                 <Input
                   type="number"
                   className={providerInputStyle}
