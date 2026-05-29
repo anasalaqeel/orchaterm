@@ -1,0 +1,13 @@
+<svg width="340" height="60" viewBox="0 0 340 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icon 44x44 -->
+  <rect x="0" y="0" width="44" height="44" rx="8" fill="#ffffff" stroke="#e0e0f0" stroke-width="1.5"/>
+  <g transform="scale(0.2973)">
+    <polyline points="22,40 56,74 22,108" fill="none" stroke="#5b5bd6" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="78" y1="50" x2="126" y2="36" stroke="#5b5bd6" stroke-width="8" stroke-linecap="round"/>
+    <line x1="78" y1="74" x2="130" y2="74" stroke="#5b5bd6" stroke-width="8" stroke-linecap="round"/>
+    <line x1="78" y1="98" x2="126" y2="112" stroke="#5b5bd6" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <!-- Wordmark text -->
+  <text x="56" y="30" font-family="Inter, sans-serif" font-size="28" font-weight="700" fill="#1e1e4a">Orcha<tspan fill="#5b5bd6" font-weight="400">term</tspan></text>
+  <text x="57" y="46" font-family="Inter, sans-serif" font-size="9" fill="#9090b8" letter-spacing="3">TERMINAL EMULATOR</text>
+</svg>

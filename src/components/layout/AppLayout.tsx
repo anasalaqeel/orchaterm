@@ -6,8 +6,8 @@ import { Sidebar } from './Sidebar';
 import { DashboardView } from '../../pages/Overview';
 import { QuickSwitcher } from '../ui/QuickSwitcher';
 import { Toast } from '../ui/Toast';
-import logoDark from '../../assets/logo-icon-dark-theme.svg';
-import logoLight from '../../assets/logo-icon-light-theme.svg';
+import logoDark from '../../assets/logos/icon-large-dark.svg';
+import logoLight from '../../assets/logos/icon-large-light.svg';
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 
