@@ -26,7 +26,7 @@ export class OpenAICompatProvider implements LLMProvider {
     const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: this.headers,
-      body: JSON.stringify({ model: this.model, messages: allMessages }),
+      body: JSON.stringify({ model: this.model, messages: allMessages, stream: false }),
     });
 
     if (!response.ok) {

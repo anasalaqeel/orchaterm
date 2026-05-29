@@ -121,7 +121,7 @@ export const ConductorView: React.FC = () => {
       setLiveTasks([...tasks]);
       setEngineRunning(plan.status === 'running');
 
-      if (plan.status === 'done' || plan.status === 'failed') {
+      if (plan.status === 'done' || plan.status === 'failed' || plan.status === 'stopped') {
         updatePlan(plan.id, { status: plan.status, completedAt: plan.completedAt });
       }
       if (plan.status === 'done') {
@@ -129,6 +129,8 @@ export const ConductorView: React.FC = () => {
         showToast(`✅ Orchestration complete — ${n} task${n !== 1 ? 's' : ''} finished`, 'success');
       } else if (plan.status === 'failed') {
         showToast('❌ Orchestration failed — check the Conductor log for details', 'error');
+      } else if (plan.status === 'stopped') {
+        showToast('⏹ Orchestration stopped', 'info');
       }
     });
 
@@ -221,8 +223,9 @@ export const ConductorView: React.FC = () => {
 
   // ── Derived plan lists ────────────────────────────────────────────────────────
 
-  const historyPlans = plans.filter(p => p.status === 'done' || p.status === 'failed');
-  const draftPlans   = plans.filter(p => p.status !== 'done' && p.status !== 'failed');
+  const isTerminal   = (st: OrchestratorPlan['status']) => st === 'done' || st === 'failed' || st === 'stopped';
+  const historyPlans = plans.filter(p => isTerminal(p.status));
+  const draftPlans   = plans.filter(p => !isTerminal(p.status));
 
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -445,6 +448,7 @@ const STATUS_COLORS: Record<string, string> = {
   paused:   '#f59e0b',
   done:     '#10b981',
   failed:   '#ef4444',
+  stopped:  '#94a3b8',
 };
 
 // ── PlanRow ───────────────────────────────────────────────────────────────────

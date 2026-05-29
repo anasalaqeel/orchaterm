@@ -43,7 +43,7 @@ describe('AnthropicProvider.listModels', () => {
     const provider = new AnthropicProvider({ provider: 'anthropic', model: 'claude-sonnet-4-6' });
     const models = await provider.listModels();
     expect(models).toContain('claude-sonnet-4-6');
-    expect(models).toContain('claude-opus-4-7');
+    expect(models).toContain('claude-opus-4-8');
     expect(mockFetch).not.toHaveBeenCalled();
   });
 });

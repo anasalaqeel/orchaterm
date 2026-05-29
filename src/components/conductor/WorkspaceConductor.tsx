@@ -105,6 +105,7 @@ const STATUS_COLORS: Record<string, string> = {
   paused:   '#f59e0b',
   done:     '#10b981',
   failed:   '#ef4444',
+  stopped:  '#94a3b8',
 };
 
 // ── WorkspaceConductor ─────────────────────────────────────────────────────────
@@ -143,7 +144,7 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
     ? workspaceSessions.filter(s => activeSpace.sessionIds.includes(s.id))
     : workspaceSessions;
 
-  const historyPlans      = workspacePlans.filter(p => p.status === 'done'  || p.status === 'failed');
+  const historyPlans      = workspacePlans.filter(p => p.status === 'done'  || p.status === 'failed' || p.status === 'stopped');
 
   // Keep activePlanId pointing at a valid plan for this workspace.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -168,7 +169,7 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
       setLiveTasks([...plan.tasks]);
       setEngineRunning(plan.status === 'running');
 
-      if (plan.status === 'done' || plan.status === 'failed') {
+      if (plan.status === 'done' || plan.status === 'failed' || plan.status === 'stopped') {
         updatePlan(plan.id, { status: plan.status, completedAt: plan.completedAt });
       }
       if (plan.status === 'done') {
@@ -176,6 +177,8 @@ export const WorkspaceConductor: React.FC<WorkspaceConductorProps> = ({ workspac
         showToast(`✅ Orchestration complete — ${n} task${n !== 1 ? 's' : ''} finished`, 'success');
       } else if (plan.status === 'failed') {
         showToast('❌ Orchestration failed — check the Conductor log for details', 'error');
+      } else if (plan.status === 'stopped') {
+        showToast('⏹ Orchestration stopped', 'info');
       }
     });
 

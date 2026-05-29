@@ -36,7 +36,8 @@ export type OrchestratorPlanStatus =
   | 'running'  // at least one task is running
   | 'paused'   // user paused mid-run
   | 'done'     // all tasks done
-  | 'failed';  // a task failed and blocked all remaining tasks
+  | 'failed'   // a task failed and blocked all remaining tasks
+  | 'stopped'; // user manually stopped the run (not an error)
 
 export interface OrchestratorPlan {
   id: string;

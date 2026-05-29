@@ -1154,11 +1154,13 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             <span style={{color:
               livePlan.status==='running' ? 'var(--color-brand)' :
               livePlan.status==='done'    ? 'var(--color-success)' :
-              livePlan.status==='failed'  ? 'var(--color-error)' : 'var(--color-warning)'
+              livePlan.status==='failed'  ? 'var(--color-error)' :
+              livePlan.status==='stopped' ? 'var(--text-tertiary)' : 'var(--color-warning)'
             }}>
               {livePlan.status==='running' ? '⚡' :
                livePlan.status==='done'    ? '✓'  :
-               livePlan.status==='failed'  ? '✗'  : '⏸'}
+               livePlan.status==='failed'  ? '✗'  :
+               livePlan.status==='stopped' ? '⏹'  : '⏸'}
             </span>
             <span className={css`flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`}>
               {livePlan.goal}
@@ -1190,7 +1192,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
                   &:hover{background:rgba(var(--color-error-rgb),0.12);}`}
               >■</button>
             )}
-            {(livePlan.status === 'done' || livePlan.status === 'failed') && (
+            {(livePlan.status === 'done' || livePlan.status === 'failed' || livePlan.status === 'stopped') && (
               <button
                 title="Dismiss"
                 onClick={() => setLivePlan(null)}

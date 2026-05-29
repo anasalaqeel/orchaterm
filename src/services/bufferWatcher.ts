@@ -21,9 +21,10 @@ import { parseSentinel, parsePlanBlock, validatePlanJSON, parseNeedsBlock, strip
 
 // ── Shell "back-to-prompt" detection regex ────────────────────────────────────
 // Fires after 2s idle when a terminal session returns to a shell prompt.
-// Intentionally broad — covers bash ($), zsh (%), fish (❯), root (#), etc.
+// Covers bash ($), zsh/tcsh (%), zsh-arrow (❯), root (#), cmd/PowerShell (>).
+// Kept in sync with PROMPT_PATTERNS in utils/interruptPolicy.ts.
 // Only fires in 'idle' / 'summary' modes so conductor-managed sessions are skipped.
-const SHELL_PROMPT_REGEX = /[\$%❯►▶#]\s*(?:\r?\n)*$/;
+const SHELL_PROMPT_REGEX = /[$%#>❯]\s*$/;
 
 // ── Interactive prompt detection regex ─────────────────────────────────────────
 // Compiled once at module load — used by checkInteractivePrompt on every idle tick.

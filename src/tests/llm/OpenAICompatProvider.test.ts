@@ -60,9 +60,9 @@ describe('OpenAICompatProvider.listModels', () => {
     expect(await provider.listModels()).toEqual(['gpt-4o', 'gpt-4o-mini']);
   });
 
-  it('returns [] on error', async () => {
+  it('rejects on error so the UI can surface the reason', async () => {
     mockFetch.mockRejectedValue(new Error('timeout'));
     const provider = new OpenAICompatProvider({ provider: 'openai-compatible', model: 'gpt-4o' });
-    expect(await provider.listModels()).toEqual([]);
+    await expect(provider.listModels()).rejects.toThrow('timeout');
   });
 });

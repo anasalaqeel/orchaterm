@@ -59,10 +59,9 @@ describe('GeminiProvider.listModels', () => {
     expect(models).toEqual(['gemini-1.5-flash']);   // embedding filtered out
   });
 
-  it('returns [] on error', async () => {
+  it('rejects on error so the UI can surface the reason', async () => {
     mockFetch.mockRejectedValue(new Error('timeout'));
     const provider = new GeminiProvider({ provider: 'gemini', model: 'gemini-1.5-flash', apiKey: 'k' });
-    const result = await provider.listModels();
-    expect(result).toEqual([]);
+    await expect(provider.listModels()).rejects.toThrow('timeout');
   });
 });

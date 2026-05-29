@@ -5,7 +5,7 @@ const PROMPT_PATTERNS: RegExp[] = [
   /\$\s*$/,   // bash/sh: ends with "$" + optional space
   />\s*$/,    // PowerShell/cmd: ends with ">" + optional space
   /❯\s*$/,   // zsh/oh-my-zsh: ends with "❯" + optional space
-  /%%\s*$/,  // tcsh
+  /%\s*$/,   // tcsh/zsh: ends with "%" + optional space
   /#\s*$/,   // root shell
 ];
 
