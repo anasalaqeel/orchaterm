@@ -824,6 +824,127 @@ export const SettingsView: React.FC = () => {
               })}
             </div>
           </div>
+
+          {/* ── Font ──────────────────────────────────────────────────────── */}
+          <div className={styles.integrationsCard}>
+            <h3 className={styles.cardTitle}>
+              <span style={{ fontSize: 16, fontFamily: 'monospace', fontWeight: 700 }}>Aa</span>
+              <span>Font</span>
+            </h3>
+
+            <div>
+              <label className={styles.formLabel}>Font Family</label>
+              <input
+                type="text"
+                spellCheck={false}
+                className={styles.integrationInput}
+                value={terminalConfig.fontFamily}
+                onChange={e => setTerminalConfig(c => ({ ...c, fontFamily: e.target.value }))}
+                placeholder="'Fira Code', 'Cascadia Code', monospace"
+              />
+              <p className={css`font-size:10px;color:var(--text-tertiary);margin-top:4px;`}>
+                Comma-separated list. First font found on the system is used.
+              </p>
+            </div>
+
+            <div className={css`display:grid;grid-template-columns:repeat(3,1fr);gap:12px;`}>
+              <div>
+                <label className={styles.formLabel}>Size (px)</label>
+                <input
+                  type="number" min={8} max={32}
+                  className={styles.integrationInput}
+                  value={terminalConfig.fontSize}
+                  onChange={e => setTerminalConfig(c => ({ ...c, fontSize: Number(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <label className={styles.formLabel}>Line Height</label>
+                <input
+                  type="number" min={0.8} max={2.0} step={0.1}
+                  className={styles.integrationInput}
+                  value={terminalConfig.lineHeight}
+                  onChange={e => setTerminalConfig(c => ({ ...c, lineHeight: Number(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <label className={styles.formLabel}>Letter Spacing (px)</label>
+                <input
+                  type="number" min={-2} max={10} step={0.5}
+                  className={styles.integrationInput}
+                  value={terminalConfig.letterSpacing}
+                  onChange={e => setTerminalConfig(c => ({ ...c, letterSpacing: Number(e.target.value) }))}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Cursor ─────────────────────────────────────────────────────── */}
+          <div className={styles.integrationsCard}>
+            <h3 className={styles.cardTitle}>
+              <span style={{ fontFamily: 'monospace', fontSize: 16, fontWeight: 700 }}>|</span>
+              <span>Cursor</span>
+            </h3>
+
+            <div>
+              <label className={styles.formLabel}>Style</label>
+              <div className={css`display:flex;gap:8px;`}>
+                {(['block', 'underline', 'bar'] as const).map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setTerminalConfig(c => ({ ...c, cursorStyle: s }))}
+                    className={css`
+                      padding:6px 16px;border-radius:4px;font-size:12px;cursor:pointer;
+                      border:1px solid ${terminalConfig.cursorStyle === s ? 'var(--color-brand)' : 'var(--border-color)'};
+                      background:${terminalConfig.cursorStyle === s ? 'rgba(123,104,238,0.15)' : 'transparent'};
+                      color:${terminalConfig.cursorStyle === s ? 'var(--color-brand)' : 'var(--text-secondary)'};
+                      &:hover{border-color:var(--color-brand);}
+                    `}
+                  >
+                    {s === 'block' ? '█ Block' : s === 'underline' ? '▁ Underline' : '| Bar'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className={css`display:flex;align-items:center;gap:8px;cursor:pointer;`}>
+              <input
+                type="checkbox"
+                checked={terminalConfig.cursorBlink}
+                onChange={e => setTerminalConfig(c => ({ ...c, cursorBlink: e.target.checked }))}
+              />
+              <span className={styles.formLabel} style={{ margin: 0 }}>Cursor blink</span>
+            </label>
+          </div>
+
+          {/* ── Behavior ────────────────────────────────────────────────────── */}
+          <div className={styles.integrationsCard}>
+            <h3 className={styles.cardTitle}>
+              <span style={{ fontSize: 16 }}>⚙</span>
+              <span>Behavior</span>
+            </h3>
+
+            <div style={{ maxWidth: 200 }}>
+              <label className={styles.formLabel}>Scrollback Lines</label>
+              <input
+                type="number" min={100} max={100000}
+                className={styles.integrationInput}
+                value={terminalConfig.scrollback}
+                onChange={e => setTerminalConfig(c => ({ ...c, scrollback: Number(e.target.value) }))}
+              />
+            </div>
+
+            <label className={css`display:flex;align-items:center;gap:8px;cursor:pointer;`}>
+              <input
+                type="checkbox"
+                checked={terminalConfig.macOptionIsMeta}
+                onChange={e => setTerminalConfig(c => ({ ...c, macOptionIsMeta: e.target.checked }))}
+              />
+              <span className={styles.formLabel} style={{ margin: 0 }}>
+                Option key acts as Meta (macOS) — enables Option+B/F word-jump shortcuts
+              </span>
+            </label>
+          </div>
         </div>
       )}
 
