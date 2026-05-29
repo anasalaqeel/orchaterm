@@ -665,6 +665,90 @@ export const SettingsView: React.FC = () => {
 
 
 
+            {/* ── Session Continuation ───────────────────────────────────────────────── */}
+            <div className={css`margin-top: 32px;`}>
+              <h3 className={css`
+                font-size: 13px;
+                font-weight: 600;
+                color: var(--text-secondary);
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                margin-bottom: 16px;
+              `}>
+                Session Continuation
+              </h3>
+
+              {/* Enable toggle */}
+              <div className={css`display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;`}>
+                <div>
+                  <div className={css`font-size: 13px; color: var(--text-primary);`}>Enable session continuation</div>
+                  <div className={css`font-size: 12px; color: var(--text-tertiary); margin-top: 2px;`}>
+                    Detect when agents hit token limits and generate resume checkpoints
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.continuation?.enabled ?? false}
+                  onChange={e =>
+                    updateSettings({
+                      continuation: {
+                        ...(settings.continuation ?? { targetSessionId: null, mode: 'semi', snapshotIntervalChars: 4000 }),
+                        enabled: e.target.checked,
+                      },
+                    })
+                  }
+                />
+              </div>
+
+              {/* Mode selector */}
+              <div className={css`margin-bottom: 16px;`}>
+                <label className={css`font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 6px;`}>
+                  Resume mode
+                </label>
+                <Select
+                  value={settings.continuation?.mode ?? 'semi'}
+                  onChange={v =>
+                    updateSettings({
+                      continuation: {
+                        ...(settings.continuation ?? { enabled: false, targetSessionId: null, snapshotIntervalChars: 4000 }),
+                        mode: v as 'auto' | 'semi' | 'file-only',
+                      },
+                    })
+                  }
+                  options={[
+                    { value: 'auto',      name: 'Auto — inject immediately into target session' },
+                    { value: 'semi',      name: 'Semi-automatic — show modal to confirm injection' },
+                    { value: 'file-only', name: 'File only — save checkpoint, no injection' },
+                  ]}
+                />
+              </div>
+
+              {/* Snapshot interval */}
+              <div className={css`margin-bottom: 16px;`}>
+                <label className={css`font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 6px;`}>
+                  Periodic snapshot interval (chars)
+                </label>
+                <Input
+                  type="number"
+                  value={String(settings.continuation?.snapshotIntervalChars ?? 4000)}
+                  onChange={e => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v) && v >= 500) {
+                      updateSettings({
+                        continuation: {
+                          ...(settings.continuation ?? { enabled: false, targetSessionId: null, mode: 'semi' }),
+                          snapshotIntervalChars: v,
+                        },
+                      });
+                    }
+                  }}
+                />
+                <div className={css`font-size: 11px; color: var(--text-tertiary); margin-top: 4px;`}>
+                  A progress snapshot is written every N new buffer characters. Minimum: 500.
+                </div>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, paddingTop: 8, flexWrap: 'wrap' }}>
               <div>
                 <label className={styles.formLabel}>Agent Interaction</label>
