@@ -721,9 +721,7 @@ export const SettingsView: React.FC = () => {
 
               {/* Mode selector */}
               <div className={css`margin-bottom: 16px;`}>
-                <label className={css`font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 6px;`}>
-                  Resume mode
-                </label>
+                <label className={editorStyles.fieldLabel}>Resume mode</label>
                 <Select
                   value={settings.continuation?.mode ?? 'semi'}
                   onChange={v =>
@@ -744,12 +742,12 @@ export const SettingsView: React.FC = () => {
 
               {/* Snapshot interval */}
               <div className={css`margin-bottom: 16px;`}>
-                <label className={css`font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 6px;`}>
-                  Periodic snapshot interval (chars)
-                </label>
+                <label className={editorStyles.fieldLabel}>Periodic snapshot interval (chars)</label>
                 <Input
                   type="number"
+                  className={providerInputStyle}
                   value={String(settings.continuation?.snapshotIntervalChars ?? 4000)}
+                  min={500}
                   onChange={e => {
                     const v = parseInt(e.target.value, 10);
                     if (!isNaN(v) && v >= 500) {
