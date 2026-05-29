@@ -1,6 +1,7 @@
 // ── Workspace & domain types ──────────────────────────────────────────────────
 import type { TerminalConfig } from './terminal.types';
 import type { UseCaseProviders, ProviderConfig } from '../services/llm/types';
+import type { ContinuationConfig } from './continuation.types';
 
 export interface Workspace {
   id: string;
@@ -67,6 +68,7 @@ export interface AppSettings {
   /** API keys keyed by `provider:baseUrl` — persists keys across provider switches. */
   providerApiKeys?: Record<string, string>;
   terminalConfig?: TerminalConfig;
+  continuation?: ContinuationConfig;
   // ── Legacy fields kept for one-time migration on first load ──────────────
   /** @deprecated Use llmProviders.relay.baseUrl instead. */
   ollamaHost?: string;
