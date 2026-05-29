@@ -158,7 +158,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         fontFamily: terminalConfig.fontFamily,
         fontSize: terminalConfig.fontSize,
         lineHeight: terminalConfig.lineHeight,
-        letterSpacing: terminalConfig.letterSpacing,
+        letterSpacing: Number.isFinite(terminalConfig.letterSpacing) ? terminalConfig.letterSpacing : 0,
         allowProposedApi: true,
       });
 
@@ -226,11 +226,25 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       // change to the PTY — no resize_pty call needed here.
       let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 
+      let resizeRaf1: number, resizeRaf2: number;
       const resizeObserver = new ResizeObserver(() => {
         if (resizeTimer !== null) clearTimeout(resizeTimer);
+        cancelAnimationFrame(resizeRaf1);
+        cancelAnimationFrame(resizeRaf2);
         resizeTimer = setTimeout(() => {
-          if (!fitAddonRef.current) return;
-          safeFit(fitAddonRef.current); // triggers onResize → resize_pty if spawned
+          if (!fitAddonRef.current || !termRef.current) return;
+          // charSizeService.measure() reads measureElement.offsetWidth (DOM span
+          // with 32 "W"s). While the terminal is display:none, offsetWidth=0 so
+          // measure() silently no-ops and _charSizeService.width stays stale.
+          // Calling it here — after the container is visible again — gives xterm
+          // fresh char metrics so proposeDimensions() calculates correct cols/rows.
+          (termRef.current as any)._core?._charSizeService?.measure();
+          safeFit(fitAddonRef.current);
+          resizeRaf1 = requestAnimationFrame(() => {
+            resizeRaf2 = requestAnimationFrame(() => {
+              if (fitAddonRef.current) safeFit(fitAddonRef.current);
+            });
+          });
         }, 100);
       });
 
@@ -254,6 +268,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         isSpawnedRef.current = false;
         cancelled = true;
         cancelAnimationFrame(rafId);
+        cancelAnimationFrame(resizeRaf1);
+        cancelAnimationFrame(resizeRaf2);
         if (resizeTimer !== null) clearTimeout(resizeTimer);
         resizeObserver.disconnect();
         term.textarea?.removeEventListener('focus', onFocusIn);
@@ -289,18 +305,25 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       term.options.fontSize     = Math.max(8, Math.min(32, terminalConfig.fontSize));
       term.options.fontFamily   = terminalConfig.fontFamily;
       term.options.lineHeight   = Math.max(0.8, Math.min(2.0, terminalConfig.lineHeight));
-      term.options.letterSpacing = Math.max(-2, Math.min(10, terminalConfig.letterSpacing));
+      const ls = terminalConfig.letterSpacing;
+      term.options.letterSpacing = Math.max(-2, Math.min(10, Number.isFinite(ls) ? ls : 0));
 
       // Clear the glyph texture atlas so xterm rebuilds it at the new font size.
       // Without this, cached bitmaps from the old size get reused and look wrong.
       (term as any).clearTextureAtlas?.();
 
-      // Defer fit to the next paint so xterm has time to recalculate character
-      // metrics before the fit addon measures the container.
-      const id = requestAnimationFrame(() => {
-        if (fitAddonRef.current) safeFit(fitAddonRef.current);
+      // Force re-measure then fit. Setting term.options.fontSize while
+      // display:none silently leaves charSizeService.width stale (offsetWidth=0).
+      // Calling measure() here handles the visible case; the ResizeObserver
+      // path handles the hidden→visible transition.
+      let id2: number;
+      const id1 = requestAnimationFrame(() => {
+        (term as any)._core?._charSizeService?.measure();
+        id2 = requestAnimationFrame(() => {
+          if (fitAddonRef.current) safeFit(fitAddonRef.current);
+        });
       });
-      return () => cancelAnimationFrame(id);
+      return () => { cancelAnimationFrame(id1); cancelAnimationFrame(id2); };
     }, [terminalConfig]);
 
     useEffect(() => {
