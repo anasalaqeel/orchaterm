@@ -1,4 +1,5 @@
 import { LLMProvider, ProviderConfig, ChatMessage, StreamCallbacks } from './types';
+import { customFetch as fetch } from './fetch';
 
 export class OllamaProvider implements LLMProvider {
   private baseUrl: string;
@@ -73,16 +74,28 @@ export class OllamaProvider implements LLMProvider {
   async listModels(): Promise<string[]> {
     try {
       const res = await fetch(`${this.baseUrl}/api/tags`);
-      if (!res.ok) return [];
+      if (!res.ok) {
+        console.error(`Ollama listModels status error: ${res.status} ${res.statusText}`);
+        return [];
+      }
       const data = await res.json();
       return (data.models ?? []).map((m: { name: string }) => m.name);
-    } catch { return []; }
+    } catch (err) {
+      console.error('Ollama listModels fetch error:', err);
+      return [];
+    }
   }
 
   async checkOnline(): Promise<boolean> {
     try {
       const res = await fetch(`${this.baseUrl}/api/tags`);
+      if (!res.ok) {
+        console.error(`Ollama checkOnline status error: ${res.status} ${res.statusText}`);
+      }
       return res.ok;
-    } catch { return false; }
+    } catch (err) {
+      console.error('Ollama checkOnline fetch error:', err);
+      return false;
+    }
   }
 }

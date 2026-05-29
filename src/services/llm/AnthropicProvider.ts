@@ -1,4 +1,5 @@
 import { LLMProvider, ProviderConfig, ChatMessage, StreamCallbacks } from './types';
+import { customFetch as fetch } from './fetch';
 
 const ANTHROPIC_VERSION = '2023-06-01';
 const HARDCODED_MODELS = [
