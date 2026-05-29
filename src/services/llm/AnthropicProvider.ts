@@ -3,7 +3,7 @@ import { customFetch as fetch } from './fetch';
 
 const ANTHROPIC_VERSION = '2023-06-01';
 const HARDCODED_MODELS = [
-  'claude-opus-4-7',
+  'claude-opus-4-8',
   'claude-sonnet-4-6',
   'claude-haiku-4-5-20251001',
   'claude-3-5-sonnet-20241022',
@@ -33,7 +33,7 @@ export class AnthropicProvider implements LLMProvider {
   async complete(messages: ChatMessage[], systemPrompt?: string): Promise<string> {
     const body: Record<string, unknown> = {
       model: this.model,
-      max_tokens: 1024,
+      max_tokens: 4096,
       messages: messages.map(m => ({ role: m.role, content: m.content })),
     };
     if (systemPrompt) body.system = systemPrompt;
@@ -58,10 +58,10 @@ export class AnthropicProvider implements LLMProvider {
     const { onToken, onDone, onError } = callbacks;
     const controller = new AbortController();
     const body: Record<string, unknown> = {
-      model: this.model, max_tokens: 1024, stream: true,
+      model: this.model, max_tokens: 4096, stream: true,
       messages: messages.map(m => ({ role: m.role, content: m.content })),
-      system: systemPrompt,
     };
+    if (systemPrompt) body.system = systemPrompt;
 
     (async () => {
       try {
