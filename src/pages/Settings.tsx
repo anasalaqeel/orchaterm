@@ -686,17 +686,36 @@ export const SettingsView: React.FC = () => {
                     Detect when agents hit token limits and generate resume checkpoints
                   </div>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={settings.continuation?.enabled ?? false}
-                  onChange={e =>
+                <button
+                  type="button"
+                  onClick={() =>
                     updateSettings({
                       continuation: {
                         ...(settings.continuation ?? { targetSessionId: null, mode: 'semi', snapshotIntervalChars: 4000 }),
-                        enabled: e.target.checked,
+                        enabled: !(settings.continuation?.enabled ?? false),
                       },
                     })
                   }
+                  className={css`
+                    position: relative;
+                    width: 44px; height: 24px;
+                    border-radius: 12px;
+                    border: none; cursor: pointer;
+                    background: ${(settings.continuation?.enabled ?? false) ? 'var(--color-brand)' : 'var(--bg-tertiary)'};
+                    transition: background 0.2s;
+                    flex-shrink: 0;
+                    &::after {
+                      content: '';
+                      position: absolute;
+                      top: 3px;
+                      left: ${(settings.continuation?.enabled ?? false) ? '23px' : '3px'};
+                      width: 18px; height: 18px;
+                      border-radius: 50%;
+                      background: white;
+                      transition: left 0.2s;
+                      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+                    }
+                  `}
                 />
               </div>
 
