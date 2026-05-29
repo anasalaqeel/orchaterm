@@ -6,6 +6,7 @@ import { Sidebar } from './Sidebar';
 import { DashboardView } from '../../pages/Overview';
 import { QuickSwitcher } from '../ui/QuickSwitcher';
 import { Toast } from '../ui/Toast';
+import { ContinuationModal } from '../ui/ContinuationModal';
 import logoDark from '../../assets/logos/icon-large-dark.svg';
 import logoLight from '../../assets/logos/icon-large-light.svg';
 
@@ -47,7 +48,13 @@ function Loader() {
 // other routes via CSS. Every other page renders through <Outlet />.
 
 export function AppLayout() {
-  const { isLoaded } = useDashboard();
+  const {
+    isLoaded,
+    pendingInjectionSnapshot,
+    setPendingInjectionSnapshot,
+    terminalSessions,
+    settings,
+  } = useDashboard();
   const onDashboard  = useMatch('/');
 
   if (!isLoaded) return <Loader />;
@@ -68,6 +75,14 @@ export function AppLayout() {
 
       <QuickSwitcher />
       <Toast />
+      {pendingInjectionSnapshot && (
+        <ContinuationModal
+          snapshot={pendingInjectionSnapshot}
+          sessions={terminalSessions}
+          targetSessionId={settings.continuation?.targetSessionId ?? null}
+          onDismiss={() => setPendingInjectionSnapshot(null)}
+        />
+      )}
     </div>
   );
 }
