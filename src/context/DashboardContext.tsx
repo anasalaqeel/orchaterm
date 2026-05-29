@@ -296,17 +296,20 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const p = makeProviders(effectiveCfg);
     setLlmProviders(p);
 
+    // NOTE: sessionTitles is intentionally omitted here — the run paths
+    // (handleApproveAndRun / handleRunPlan) populate it with the live session
+    // map at launch. updateConfig is a partial merge, so we don't clobber it.
     orchestratorEngine.updateConfig({
       relayProvider:      p.relay,
       planGenProvider:    p.planGen,
       autoAnswerProvider: p.autoAnswer,
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
-      sessionTitles:      new Map(),
+      interactionMode:    settings.conductorInteractionMode,
     });
 
     autonomousOrchestrator.updateConfig({ routingProvider: p.routing });
     needsBroker.updateConfig({ provider: p.planGen });
-  }, [settings.llmProviders, settings.llmProviderMode, settings.simpleLlmProvider, settings.conductorTaskTimeoutMinutes, isLoaded]);
+  }, [settings.llmProviders, settings.llmProviderMode, settings.simpleLlmProvider, settings.conductorTaskTimeoutMinutes, settings.conductorInteractionMode, isLoaded]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ id: crypto.randomUUID(), message, type });

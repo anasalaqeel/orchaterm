@@ -29,7 +29,12 @@ export interface LLMProvider {
   complete(messages: ChatMessage[], systemPrompt?: string): Promise<string>;
   /** Streaming completion. Returns a cancel function. */
   stream(messages: ChatMessage[], systemPrompt: string, callbacks: StreamCallbacks): () => void;
-  /** Available model names, or [] if provider cannot list them. Never throws. */
+  /**
+   * Available model names. MAY reject with an Error describing why listing
+   * failed (e.g. bad API key, timeout) so callers can surface the reason to
+   * the user — callers must catch. Providers that cannot enumerate models
+   * (or choose to fail soft, e.g. Ollama) resolve [] instead.
+   */
   listModels(): Promise<string[]>;
   /** Liveness check. Always resolves true/false, never throws. */
   checkOnline(): Promise<boolean>;
