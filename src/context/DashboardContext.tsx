@@ -12,6 +12,7 @@ import type { UseCaseProviders } from '../services/llm/types';
 import { orchestratorEngine } from '../services/orchestratorEngine';
 import { autonomousOrchestrator } from '../services/autonomousOrchestrator';
 import { needsBroker } from '../services/needsBroker';
+import { DEFAULT_TERMINAL_CONFIG } from '../utils/terminalThemes';
 
 export interface ToastInfo {
   id: string;
@@ -118,6 +119,7 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
         chat:       raw.llmProviders.chat       ?? { ...DEFAULT_OLLAMA_CONFIG },
         routing:    raw.llmProviders.routing    ?? { ...DEFAULT_OLLAMA_CONFIG },
       },
+      terminalConfig: raw.terminalConfig ?? DEFAULT_TERMINAL_CONFIG,
     };
   }
 
@@ -137,6 +139,7 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
       chat:       { ...legacyConfig },
       routing:    { ...legacyConfig },
     },
+    terminalConfig: raw.terminalConfig ?? DEFAULT_TERMINAL_CONFIG,
   };
 }
 
@@ -173,6 +176,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       chat:       { ...DEFAULT_OLLAMA_CONFIG },
       routing:    { ...DEFAULT_OLLAMA_CONFIG },
     },
+    terminalConfig: DEFAULT_TERMINAL_CONFIG,
   });
   const [plans, setPlans]                       = useState<OrchestratorPlan[]>([]);
   const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
