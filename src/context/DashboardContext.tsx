@@ -121,7 +121,7 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
       },
       llmProviderMode: raw.llmProviderMode ?? 'advanced',
       simpleLlmProvider: raw.simpleLlmProvider ?? (raw.llmProviders.relay ?? { ...DEFAULT_OLLAMA_CONFIG }),
-      terminalConfig: raw.terminalConfig ?? DEFAULT_TERMINAL_CONFIG,
+      terminalConfig: { ...DEFAULT_TERMINAL_CONFIG, ...(raw.terminalConfig ?? {}) },
     };
   }
 
@@ -143,7 +143,7 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
     },
     llmProviderMode: raw.llmProviderMode ?? 'advanced',
     simpleLlmProvider: raw.simpleLlmProvider ?? { ...legacyConfig },
-    terminalConfig: raw.terminalConfig ?? DEFAULT_TERMINAL_CONFIG,
+    terminalConfig: { ...DEFAULT_TERMINAL_CONFIG, ...(raw.terminalConfig ?? {}) },
   };
 }
 
