@@ -26,7 +26,7 @@ export class OpenAICompatProvider implements LLMProvider {
     const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: this.headers,
-      body: JSON.stringify({ model: this.model, messages: allMessages, stream: false }),
+      body: JSON.stringify({ model: this.model, messages: allMessages }),
     });
 
     if (!response.ok) {
@@ -42,7 +42,9 @@ export class OpenAICompatProvider implements LLMProvider {
   stream(messages: ChatMessage[], systemPrompt: string, callbacks: StreamCallbacks): () => void {
     const { onToken, onDone, onError } = callbacks;
     const controller = new AbortController();
-    const allMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+    const allMessages = systemPrompt
+      ? [{ role: 'system', content: systemPrompt }, ...messages]
+      : messages;
 
     (async () => {
       try {
@@ -92,7 +94,9 @@ export class OpenAICompatProvider implements LLMProvider {
 
   async listModels(): Promise<string[]> {
     try {
-      const res = await fetch(`${this.baseUrl}/v1/models`, { headers: this.headers });
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`${this.baseUrl}/v1/models`, { headers: this.headers, signal: controller.signal });
       if (!res.ok) return [];
       const data = await res.json();
       return (data.data ?? []).map((m: { id: string }) => m.id).sort();
@@ -101,7 +105,9 @@ export class OpenAICompatProvider implements LLMProvider {
 
   async checkOnline(): Promise<boolean> {
     try {
-      const res = await fetch(`${this.baseUrl}/v1/models`, { headers: this.headers });
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(`${this.baseUrl}/v1/models`, { headers: this.headers, signal: controller.signal });
       return res.ok;
     } catch { return false; }
   }
