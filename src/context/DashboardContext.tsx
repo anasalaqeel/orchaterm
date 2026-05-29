@@ -12,6 +12,9 @@ import type { UseCaseProviders } from '../services/llm/types';
 import { orchestratorEngine } from '../services/orchestratorEngine';
 import { autonomousOrchestrator } from '../services/autonomousOrchestrator';
 import { needsBroker } from '../services/needsBroker';
+import { sessionContinuationService } from '../services/sessionContinuationService';
+import { writePtyChunked } from '../utils/ptyUtils';
+import type { DetectionEvent, CheckpointSnapshot } from '../types';
 import { DEFAULT_TERMINAL_CONFIG } from '../utils/terminalThemes';
 
 export interface ToastInfo {
@@ -95,6 +98,12 @@ export interface DashboardContextType {
   addTerminalSession: (session: TerminalSession) => void;
   removeTerminalSession: (sessionId: string) => void;
   updateTerminalSession: (sessionId: string, updates: Partial<TerminalSession>) => void;
+
+  // ── Session continuation ─────────────────────────────────────────────────────────────────────
+  lastCheckpoint: CheckpointSnapshot | null;
+  pendingInjectionSnapshot: CheckpointSnapshot | null;
+  setPendingInjectionSnapshot: (s: CheckpointSnapshot | null) => void;
+  captureSessionNow: (sessionId: string) => Promise<void>;
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
@@ -220,6 +229,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
   const [plans, setPlans]                       = useState<OrchestratorPlan[]>([]);
   const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
+  const [lastCheckpoint, setLastCheckpoint] = useState<CheckpointSnapshot | null>(null);
+  const [pendingInjectionSnapshot, setPendingInjectionSnapshot] = useState<CheckpointSnapshot | null>(null);
   const [llmProviders, setLlmProviders] = useState(() =>
     makeProviders({
       relay:      { ...DEFAULT_OLLAMA_CONFIG },
@@ -328,6 +339,36 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     autonomousOrchestrator.updateConfig({ routingProvider: p.routing });
     needsBroker.updateConfig({ provider: p.planGen });
   }, [settings.llmProviders, settings.llmProviderMode, settings.simpleLlmProvider, settings.conductorTaskTimeoutMinutes, settings.conductorInteractionMode, isLoaded]);
+
+  // ── Wire continuation service events to UI state ─────────────────────────────
+  useEffect(() => {
+    return sessionContinuationService.onEvent((event: DetectionEvent) => {
+      if (event.type !== 'checkpoint-written' || !event.snapshot) return;
+      setLastCheckpoint(event.snapshot);
+      const continuationCfg = settings.continuation;
+      if (!continuationCfg?.enabled) return;
+
+      if (continuationCfg.mode === 'file-only') {
+        showToast(`Checkpoint saved: ${event.snapshot.sessionTitle}`, 'info');
+        return;
+      }
+
+      const mode = continuationCfg.mode;
+      const targetId = continuationCfg.targetSessionId;
+
+      if (mode === 'auto' && targetId) {
+        const message =
+          'Continue working on the following task. A previous agent session stopped mid-way. ' +
+          `Here is the full context of what happened and what needs to happen next:\n\n` +
+          `Checkpoint file: ${event.snapshot.filePath}\n\n` +
+          `Please read the checkpoint file and continue from where the previous session stopped.`;
+        writePtyChunked(targetId, message + '\r').catch(() => {});
+        showToast(`Auto-resumed ${event.snapshot.sessionTitle} in target session`, 'success');
+      } else {
+        setPendingInjectionSnapshot(event.snapshot);
+      }
+    });
+  }, [settings.continuation]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ id: crypto.randomUUID(), message, type });
@@ -526,6 +567,14 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     );
   };
 
+  const captureSessionNow = async (sessionId: string): Promise<void> => {
+    const snapshot = await sessionContinuationService.captureNow(sessionId);
+    if (snapshot) {
+      setLastCheckpoint(snapshot);
+      setPendingInjectionSnapshot(snapshot);
+    }
+  };
+
   // ── Export / Import ───────────────────────────────────────────────────────────
   const exportSettings = (): string => {
     const data: AppData = {
@@ -594,6 +643,10 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       llmProviders,
       plans, addPlan, updatePlan, deletePlan,
       terminalSessions, addTerminalSession, removeTerminalSession, updateTerminalSession,
+      lastCheckpoint,
+      pendingInjectionSnapshot,
+      setPendingInjectionSnapshot,
+      captureSessionNow,
     }}>
       {children}
     </DashboardContext.Provider>
