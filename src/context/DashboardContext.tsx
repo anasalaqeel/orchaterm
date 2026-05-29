@@ -345,6 +345,10 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return sessionContinuationService.onEvent((event: DetectionEvent) => {
       if (event.type !== 'checkpoint-written' || !event.snapshot) return;
       setLastCheckpoint(event.snapshot);
+
+      // Periodic snapshots are silent breadcrumbs — never pop the modal
+      if (event.snapshot.triggeredBy === 'periodic') return;
+
       const continuationCfg = settings.continuation;
       if (!continuationCfg?.enabled) return;
 
@@ -369,6 +373,37 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     });
   }, [settings.continuation]);
+
+  // ── Start/stop session continuation monitoring ──────────────────────────────
+  useEffect(() => {
+    if (!settings.continuation?.enabled) {
+      // Stop all active monitoring when disabled
+      for (const session of terminalSessions) {
+        sessionContinuationService.stopMonitoring(session.id);
+      }
+      return;
+    }
+
+    // Find the active workspace path
+    const workspace = workspaces.find(w => w.id === activeWorkspaceId);
+    const workspacePath = workspace?.path ?? '';
+    if (!workspacePath) return;
+
+    for (const session of terminalSessions) {
+      if (!sessionContinuationService.isMonitoring(session.id)) {
+        void sessionContinuationService.startMonitoring(
+          {
+            id: session.id,
+            title: session.title,
+            workspacePath,
+          },
+          settings.continuation,
+          llmProviders.routing,
+          llmProviders.relay,
+        );
+      }
+    }
+  }, [terminalSessions, settings.continuation, activeWorkspaceId, workspaces, llmProviders.routing, llmProviders.relay]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ id: crypto.randomUUID(), message, type });
@@ -558,6 +593,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const removeTerminalSession = (sessionId: string) => {
+    sessionContinuationService.stopMonitoring(sessionId);
     setTerminalSessions(prev => prev.filter(s => s.id !== sessionId));
   };
 
