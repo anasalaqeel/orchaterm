@@ -101,7 +101,10 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
       const provider = createProvider(value);
       const list = await provider.listModels();
       setModels(list);
-    } catch { setModels([]); }
+    } catch (err) {
+      console.error(`fetchModels error for ${value.provider}:`, err);
+      setModels([]);
+    }
     finally { setModelsLoading(false); }
   };
 

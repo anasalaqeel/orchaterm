@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use portable_pty::{native_pty_system, CommandBuilder, Child, MasterPty, PtySize};
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -51,7 +51,6 @@ fn canonical_key(p: &Path) -> String {
         .to_lowercase()
 }
 
-
 #[tauri::command]
 fn get_available_shells() -> Vec<ShellInfo> {
     let simple = |name: &str, path: &str| ShellInfo {
@@ -69,31 +68,33 @@ fn get_available_shells() -> Vec<ShellInfo> {
         // Shells with well-known absolute paths (checked first so the stored
         // path is always the canonical absolute one, not a bare name).
         let abs: &[(&str, &str)] = &[
-            ("zsh",  "/bin/zsh"),
+            ("zsh", "/bin/zsh"),
             ("bash", "/bin/bash"),
-            ("sh",   "/bin/sh"),
+            ("sh", "/bin/sh"),
             ("dash", "/bin/dash"),
         ];
         for (label, abs_path) in abs {
             let p = Path::new(abs_path);
-            if !p.exists() { continue; }
+            if !p.exists() {
+                continue;
+            }
             let key = canonical_key(p);
-            if seen_keys.contains(&key) { continue; }
+            if seen_keys.contains(&key) {
+                continue;
+            }
             seen_keys.insert(key);
             shells.push(simple(label, abs_path));
         }
 
         // Shells that live in user-managed locations (Homebrew, etc.) and are
         // only reachable via PATH.
-        let by_name: &[(&str, &str)] = &[
-            ("fish", "fish"),
-            ("nu",   "nu"),
-            ("elvish", "elvish"),
-        ];
+        let by_name: &[(&str, &str)] = &[("fish", "fish"), ("nu", "nu"), ("elvish", "elvish")];
         for (label, exe) in by_name {
             if let Some(full_path) = resolve_in_path(exe) {
                 let key = canonical_key(&full_path);
-                if seen_keys.contains(&key) { continue; }
+                if seen_keys.contains(&key) {
+                    continue;
+                }
                 seen_keys.insert(key);
                 shells.push(simple(label, full_path.to_string_lossy().as_ref()));
             }
@@ -114,17 +115,21 @@ fn get_available_shells() -> Vec<ShellInfo> {
         // Do NOT include bash/zsh/fish here — on Windows bash is either
         // Git Bash (absolute path below) or WSL bash (synthetic entry).
         let named: &[(&str, &str)] = &[
-            ("PowerShell 7",   "pwsh"),
-            ("PowerShell",     "powershell"),
+            ("PowerShell 7", "pwsh"),
+            ("PowerShell", "powershell"),
             ("Command Prompt", "cmd"),
-            ("WSL",            "wsl"),
+            ("WSL", "wsl"),
         ];
         for (label, exe) in named {
             if let Some(full_path) = resolve_in_path(exe) {
                 let key = canonical_key(&full_path);
-                if seen_keys.contains(&key) { continue; }
+                if seen_keys.contains(&key) {
+                    continue;
+                }
                 seen_keys.insert(key);
-                if *exe == "wsl" { wsl_found = true; }
+                if *exe == "wsl" {
+                    wsl_found = true;
+                }
                 shells.push(simple(label, exe));
             }
         }
@@ -140,15 +145,19 @@ fn get_available_shells() -> Vec<ShellInfo> {
 
         // Git Bash / PowerShell 7 via known absolute paths.
         let abs: &[(&str, &str)] = &[
-            ("Git Bash",     r"C:\Program Files\Git\bin\bash.exe"),
-            ("Git Bash",     r"C:\Program Files (x86)\Git\bin\bash.exe"),
+            ("Git Bash", r"C:\Program Files\Git\bin\bash.exe"),
+            ("Git Bash", r"C:\Program Files (x86)\Git\bin\bash.exe"),
             ("PowerShell 7", r"C:\Program Files\PowerShell\7\pwsh.exe"),
         ];
         for (label, abs_path) in abs {
             let p = Path::new(abs_path);
-            if !p.exists() { continue; }
+            if !p.exists() {
+                continue;
+            }
             let key = canonical_key(p);
-            if seen_keys.contains(&key) { continue; }
+            if seen_keys.contains(&key) {
+                continue;
+            }
             seen_keys.insert(key);
             shells.push(simple(label, abs_path));
         }
@@ -190,7 +199,9 @@ fn clamp_dims(cols: u16, rows: u16) -> (u16, u16) {
 }
 
 /// Recover data from a potentially poisoned mutex.
-fn lock_sessions(state: &PtyState) -> Result<std::sync::MutexGuard<'_, HashMap<String, PtySession>>, String> {
+fn lock_sessions(
+    state: &PtyState,
+) -> Result<std::sync::MutexGuard<'_, HashMap<String, PtySession>>, String> {
     match state.lock() {
         Ok(guard) => Ok(guard),
         // If a previous holder panicked the data is still usable — recover it.
@@ -231,9 +242,13 @@ fn platform_default_shell() -> String {
 /// shell fails to spawn).
 fn platform_fallback_shell() -> &'static str {
     #[cfg(target_os = "windows")]
-    { "cmd" }
+    {
+        "cmd"
+    }
     #[cfg(not(target_os = "windows"))]
-    { "/bin/sh" }
+    {
+        "/bin/sh"
+    }
 }
 
 // ── Tauri Commands ─────────────────────────────────────────────────────────────
@@ -278,19 +293,29 @@ fn spawn_pty(
     cmd.cwd(&workspace_path);
     cmd.env("TERM", "xterm-256color");
 
-    let child = pair.slave.spawn_command(cmd).or_else(|_| {
-        let mut fallback = CommandBuilder::new(platform_fallback_shell());
-        fallback.cwd(&workspace_path);
-        fallback.env("TERM", "xterm-256color");
-        pair.slave.spawn_command(fallback)
-    }).map_err(|e| format!("Failed to spawn shell: {e}"))?;
+    let child = pair
+        .slave
+        .spawn_command(cmd)
+        .or_else(|_| {
+            let mut fallback = CommandBuilder::new(platform_fallback_shell());
+            fallback.cwd(&workspace_path);
+            fallback.env("TERM", "xterm-256color");
+            pair.slave.spawn_command(fallback)
+        })
+        .map_err(|e| format!("Failed to spawn shell: {e}"))?;
 
     // Drop the slave handle immediately — on Windows ConPTY this prevents
     // the reader from blocking indefinitely.
     drop(pair.slave);
 
-    let mut reader = pair.master.try_clone_reader().map_err(|e| format!("Failed to clone reader: {e}"))?;
-    let writer = pair.master.take_writer().map_err(|e| format!("Failed to take writer: {e}"))?;
+    let mut reader = pair
+        .master
+        .try_clone_reader()
+        .map_err(|e| format!("Failed to clone reader: {e}"))?;
+    let writer = pair
+        .master
+        .take_writer()
+        .map_err(|e| format!("Failed to take writer: {e}"))?;
 
     let shutdown = Arc::new(AtomicBool::new(false));
 
@@ -362,11 +387,7 @@ fn spawn_pty(
 }
 
 #[tauri::command]
-fn write_pty(
-    session_id: String,
-    data: String,
-    state: State<'_, PtyState>,
-) -> Result<(), String> {
+fn write_pty(session_id: String, data: String, state: State<'_, PtyState>) -> Result<(), String> {
     // Grab a clone of the Arc<Mutex<Writer>> so we can drop the sessions lock
     // before performing the (potentially blocking) write.
     let writer_arc = {
@@ -414,10 +435,7 @@ fn resize_pty(
 }
 
 #[tauri::command]
-fn kill_pty(
-    session_id: String,
-    state: State<'_, PtyState>,
-) -> Result<(), String> {
+fn kill_pty(session_id: String, state: State<'_, PtyState>) -> Result<(), String> {
     let mut sessions = lock_sessions(&state)?;
     if let Some(mut session) = sessions.remove(&session_id) {
         // Signal the reader thread to exit.
@@ -449,8 +467,7 @@ fn app_data_file(app: &AppHandle, name: &str) -> Result<std::path::PathBuf, Stri
         .path()
         .app_data_dir()
         .map_err(|e| format!("Cannot resolve app data dir: {e}"))?;
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| format!("Cannot create app data dir: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Cannot create app data dir: {e}"))?;
     Ok(dir.join(name))
 }
 
@@ -478,6 +495,7 @@ fn save_store(app: AppHandle, file: String, data: String) -> Result<(), String> 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_http::init())
         .manage(Mutex::new(HashMap::<String, PtySession>::new()))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
