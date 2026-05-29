@@ -27,6 +27,7 @@ export class AnthropicProvider implements LLMProvider {
       'Content-Type': 'application/json',
       'x-api-key': this.apiKey,
       'anthropic-version': ANTHROPIC_VERSION,
+      'anthropic-dangerous-direct-browser-access': 'true',
     };
   }
 
@@ -112,15 +113,17 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async checkOnline(): Promise<boolean> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
     try {
-      const controller = new AbortController();
-      setTimeout(() => controller.abort(), 2000);
       const res = await fetch(`${this.baseUrl}/v1/messages`, {
         method: 'POST', headers: this.headers,
         signal: controller.signal,
         body: JSON.stringify({ model: this.model, max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] }),
       });
+      // 4xx means server is reachable (bad key/request), 5xx means server error
       return res.status < 500;
     } catch { return false; }
+    finally { clearTimeout(timer); }
   }
 }
