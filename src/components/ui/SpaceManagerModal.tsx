@@ -10,6 +10,7 @@ import { css, cx } from '@emotion/css';
 import { X, Terminal } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
 import { Space } from '../../types';
+import { Input } from './Input';
 
 const COLOR_PRESETS = [
   '#7B68EE', '#10b981', '#3b82f6', '#8b5cf6',
@@ -78,7 +79,7 @@ export const SpaceManagerModal: React.FC<SpaceManagerModalProps> = ({
 
           <div className={s.field}>
             <label className={s.label}>Space Name</label>
-            <input
+            <Input
               className={s.input}
               value={name}
               onChange={e => setName(e.target.value)}

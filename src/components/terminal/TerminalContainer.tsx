@@ -7,6 +7,7 @@ import { Plus, X, Terminal, Edit2, Check, Palette, ChevronDown, Minimize2 } from
 import { css, cx } from "@emotion/css";
 import type { TerminalSession, InterruptPolicy } from "../../types";
 import { loadTerminalTabs, saveTerminalTabs } from "../../services/storage";
+import { Input } from '../ui';
 import { useSplitTree, findNodeById } from "../../hooks/useSplitTree";
 import { computeSplitLayout, type DividerRect } from "../../utils/splitLayout";
 
@@ -784,7 +785,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       />
                     </div>
                     {isEditing ? (
-                      <input
+                      <Input
                         type="text"
                         value={editingTitle}
                         onChange={(e) => setEditingTitle(e.target.value)}
@@ -886,7 +887,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   />
                 </div>
                 {isEditing ? (
-                  <input
+                  <Input
                     type="text"
                     value={editingTitle}
                     onChange={(e) => setEditingTitle(e.target.value)}

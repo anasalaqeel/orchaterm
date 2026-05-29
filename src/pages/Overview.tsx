@@ -5,6 +5,7 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useDashboard } from '../context/DashboardContext';
 import { TerminalContainer } from '../components/terminal/TerminalContainer';
 import { GroupChat } from '../components/ui/GroupChat';
+import { Input } from '../components/ui';
 import {
   Plus, ChevronRight, ChevronLeft, Edit2, ArrowLeft,
   Terminal, FolderOpen,
@@ -367,7 +368,7 @@ export const DashboardView: React.FC = () => {
                       <div className={s.taskBlock}>
                         {editingTaskId === proj.id ? (
                           <div className={s.taskEditRow}>
-                            <input
+                            <Input
                               type="text"
                               value={editTaskValue}
                               onChange={e => setEditTaskValue(e.target.value)}
@@ -435,12 +436,12 @@ export const DashboardView: React.FC = () => {
                     <form onSubmit={handleAddProjectSubmit} className={s.dialogForm}>
                       <div className={s.fieldGroup}>
                         <label className={s.fieldLabel}>Name</label>
-                        <input type="text" placeholder="e.g. My API" value={newProjName} onChange={e => setNewProjName(e.target.value)} className={s.fieldInput} required />
+                        <Input type="text" placeholder="e.g. My API" value={newProjName} onChange={e => setNewProjName(e.target.value)} className={s.fieldInput} required />
                       </div>
                       <div className={s.fieldGroup}>
                         <label className={s.fieldLabel}>Directory path</label>
                         <div className={s.pathInputRow}>
-                          <input type="text" placeholder="C:\Users\me\projects\my-app" value={newProjPath} onChange={e => setNewProjPath(e.target.value)} className={cx(s.fieldInput, s.pathInput)} required />
+                          <Input type="text" placeholder="C:\Users\me\projects\my-app" value={newProjPath} onChange={e => setNewProjPath(e.target.value)} className={cx(s.fieldInput, s.pathInput)} required />
                           <button type="button" className={s.browseBtn} onClick={handleBrowseDirectory} title="Browse for folder">
                             <FolderOpen size={14} /><span>Browse</span>
                           </button>

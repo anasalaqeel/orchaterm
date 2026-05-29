@@ -1,4 +1,6 @@
 export { ConfirmDialog }  from './ConfirmDialog';
+export { Input }          from './Input';
+export type { InputProps } from './Input';
 export { QuickSwitcher }  from './QuickSwitcher';
 export { Toast }          from './Toast';
 export { WorkspacePanel } from './WorkspacePanel';

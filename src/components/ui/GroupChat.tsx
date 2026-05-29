@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { WorkspacePanel } from './WorkspacePanel';
 import { Select } from './Select';
+import { Input } from './Input';
 import { useDashboard } from '../../context/DashboardContext';
 import { writePtyChunked } from '../../utils/ptyUtils';
 import {
@@ -1225,7 +1226,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
           {/* Add task */}
           <div className={s.pipelineAddRow}>
-            <input
+            <Input
+              type="text"
               className={s.pipelineTitleInput}
               placeholder="Task description…"
               value={buildTitle}

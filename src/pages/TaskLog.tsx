@@ -3,6 +3,7 @@ import { useDashboard } from '../context/DashboardContext';
 import { TaskLog } from '../types';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Select } from '../components/ui/Select';
+import { Input } from '../components/ui';
 import {
   History,
   Search,
@@ -138,7 +139,7 @@ export const TaskLogView: React.FC = () => {
           <label className={styles.filterLabel}>Keyword Search</label>
           <div className={styles.searchInputContainer}>
             <Search className={styles.searchIcon} />
-            <input
+            <Input
               type="text"
               placeholder="Search details..."
               value={searchQuery}
