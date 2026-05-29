@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { css, cx } from '@emotion/css';
+import { motion, AnimatePresence } from 'motion/react';
 import { invoke } from '@tauri-apps/api/core';
 import { useDashboard } from '../context/DashboardContext';
 import { Workspace } from '../types';
@@ -526,41 +527,98 @@ export const SettingsView: React.FC = () => {
               OpenAI, DeepSeek, Together.ai, Anthropic, and Gemini.
             </p>
 
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              {(['simple', 'advanced'] as const).map(mode => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setLlmProviderMode(mode)}
-                  className={css`
-                    padding: 6px 16px; border-radius: 4px; font-size: 13px; cursor: pointer;
-                    border: 1px solid ${llmProviderMode === mode ? '#7b68ee' : 'var(--border-color)'};
-                    background: ${llmProviderMode === mode ? '#7b68ee22' : 'transparent'};
-                    color: ${llmProviderMode === mode ? '#7b68ee' : 'var(--text-secondary)'};
-                    &:hover { border-color: #7b68ee; }
-                  `}
-                >
-                  {mode === 'simple' ? 'Simple Mode (Global)' : 'Advanced Mode (Per Use-Case)'}
-                </button>
-              ))}
+            <div className={css`
+              display: inline-flex;
+              width: fit-content;
+              align-self: flex-start;
+              background-color: var(--bg-tertiary);
+              padding: 4px;
+              border-radius: 8px;
+              gap: 4px;
+              margin-bottom: 16px;
+              border: 1px solid var(--border-color);
+              box-shadow: 0 1px 2px rgba(0,0,0,0.05) inset;
+            `}>
+              {(['simple', 'advanced'] as const).map(mode => {
+                const isActive = llmProviderMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setLlmProviderMode(mode)}
+                    className={css`
+                      position: relative;
+                      padding: 8px 20px;
+                      border-radius: 6px;
+                      font-size: 13px;
+                      font-weight: 500;
+                      cursor: pointer;
+                      border: none;
+                      background: transparent;
+                      color: ${isActive ? '#fff' : 'var(--text-secondary)'};
+                      transition: color 0.2s ease;
+                      z-index: 1;
+                      &:hover { color: ${isActive ? '#fff' : 'var(--text-primary)'}; }
+                    `}
+                  >
+                    {isActive && (
+                      <motion.div
+                        layoutId="llmModeToggleBg"
+                        className={css`
+                          position: absolute;
+                          inset: 0;
+                          background-color: #7b68ee;
+                          border-radius: 6px;
+                          z-index: -1;
+                          box-shadow: 0 1px 3px rgba(123,104,238,0.4);
+                        `}
+                        transition={{ type: 'spring', bounce: 0.15, duration: 0.5 }}
+                      />
+                    )}
+                    <span style={{ position: 'relative', zIndex: 2 }}>
+                      {mode === 'simple' ? '✨ Simple Mode (Global)' : '⚙️ Advanced Mode (Per Use-Case)'}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
-            {llmProviderMode === 'simple' ? (
-              <ProviderConfigEditor
-                label="Global Provider Settings (Applies to all use cases)"
-                value={simpleLlmProvider}
-                onChange={setSimpleLlmProvider}
-              />
-            ) : (
-              (Object.keys(USE_CASE_LABELS) as Array<keyof UseCaseProviders>).map(key => (
-                <ProviderConfigEditor
-                  key={key}
-                  label={USE_CASE_LABELS[key]}
-                  value={llmProviders[key]}
-                  onChange={cfg => setLlmProviders(prev => ({ ...prev, [key]: cfg }))}
-                />
-              ))
-            )}
+            <AnimatePresence mode="wait">
+              {llmProviderMode === 'simple' ? (
+                <motion.div
+                  key="simple"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <ProviderConfigEditor
+                    label="Global Provider Settings (Applies to all use cases)"
+                    value={simpleLlmProvider}
+                    onChange={setSimpleLlmProvider}
+                  />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="advanced"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {(Object.keys(USE_CASE_LABELS) as Array<keyof UseCaseProviders>).map(key => (
+                    <ProviderConfigEditor
+                      key={key}
+                      label={USE_CASE_LABELS[key]}
+                      value={llmProviders[key]}
+                      onChange={cfg => setLlmProviders(prev => ({ ...prev, [key]: cfg }))}
+                    />
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+
 
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, paddingTop: 8, flexWrap: 'wrap' }}>
               <div>
