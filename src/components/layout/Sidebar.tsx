@@ -5,9 +5,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useDashboard } from '../../context/DashboardContext';
 import {
   History, Sparkles, Settings,
-  Sun, Moon, Blocks, LayoutDashboard,
+  Sun, Moon, LayoutDashboard,
   Plus, Trash2, ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
+import logoDark from '../../assets/logo-icon-dark-theme.svg';
+import logoLight from '../../assets/logo-icon-light-theme.svg';
 
 const NAV_ITEMS = [
   { to: '/logs',     label: 'Task Log',     icon: History },
@@ -86,7 +88,7 @@ export function Sidebar() {
       {/* Brand */}
       <div className={cx(s.brand, layoutCollapsed && s.brandCollapsed)}>
         <div className={s.logo}>
-          <Blocks className={s.logoIcon} />
+          <img src={theme === 'dark' ? logoDark : logoLight} className={s.logoIcon} alt="Orchaterm" />
         </div>
         <AnimatePresence initial={false}>
           {!collapsed && (
@@ -98,7 +100,6 @@ export function Sidebar() {
               transition={{ duration: 0.18 }}
             >
               <h1 className={s.title}>Orchaterm</h1>
-              <span className={s.version}>β</span>
             </motion.div>
           )}
         </AnimatePresence>
@@ -355,13 +356,10 @@ const s = {
   `,
   logo: css`
     width: 30px; height: 30px;
-    border-radius: 9px;
-    background: var(--gradient-brand);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 2px 10px rgba(123, 104, 238, 0.35);
     flex-shrink: 0;
   `,
-  logoIcon: css`width: 16px; height: 16px; color: #fff;`,
+  logoIcon: css`width: 22px; height: 22px; object-fit: contain;`,
   title: css`
     font-size: 14px;
     font-weight: 800;

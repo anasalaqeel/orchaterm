@@ -6,11 +6,13 @@ import { Sidebar } from './Sidebar';
 import { DashboardView } from '../../pages/Overview';
 import { QuickSwitcher } from '../ui/QuickSwitcher';
 import { Toast } from '../ui/Toast';
-import { Blocks } from 'lucide-react';
+import logoDark from '../../assets/logo-icon-dark-theme.svg';
+import logoLight from '../../assets/logo-icon-light-theme.svg';
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 
 function Loader() {
+  const { theme } = useDashboard();
   return (
     <div className={s.loaderWrapper}>
       <motion.div
@@ -20,7 +22,7 @@ function Loader() {
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
       >
         <div className={s.loaderLogo}>
-          <Blocks size={22} style={{ color: '#fff' }} />
+          <img src={theme === 'dark' ? logoDark : logoLight} className={s.loaderLogoImg} alt="Orchaterm" />
         </div>
         <div className={s.loaderDots}>
           {[0, 1, 2].map(i => (
@@ -99,12 +101,9 @@ const s = {
     display: flex; flex-direction: column; align-items: center; gap: 18px;
   `,
   loaderLogo: css`
-    width: 52px; height: 52px;
-    border-radius: 16px;
-    background: var(--gradient-brand);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 8px 32px rgba(123, 104, 238, 0.35);
   `,
+  loaderLogoImg: css`width: 52px; height: 52px; object-fit: contain;`,
   loaderDots: css`
     display: flex; align-items: center; gap: 7px;
   `,
