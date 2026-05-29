@@ -8,8 +8,8 @@ import {
   Sun, Moon, LayoutDashboard,
   Plus, Trash2, ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
-import logoDark from '../../assets/logo-icon-dark-theme.svg';
-import logoLight from '../../assets/logo-icon-light-theme.svg';
+import logoDark from '../../assets/logos/icon-large-dark.svg';
+import logoLight from '../../assets/logos/icon-large-light.svg';
 
 const NAV_ITEMS = [
   { to: '/logs',     label: 'Task Log',     icon: History },
@@ -359,7 +359,7 @@ const s = {
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
   `,
-  logoIcon: css`width: 22px; height: 22px; object-fit: contain;`,
+  logoIcon: css`width: 30px; height: 30px; object-fit: contain;`,
   title: css`
     font-size: 14px;
     font-weight: 800;
@@ -367,16 +367,6 @@ const s = {
     color: var(--text-primary);
     white-space: nowrap;
   `,
-  version: css`
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--color-brand);
-    background: rgba(123, 104, 238, 0.14);
-    padding: 1px 6px;
-    border-radius: 99px;
-    white-space: nowrap;
-  `,
-
   /* Body */
   body: css`
     flex: 1;

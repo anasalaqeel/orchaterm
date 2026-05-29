@@ -1,0 +1,10 @@
+<svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="80" height="80" rx="15" fill="#1e1e30"/>
+  <rect width="80" height="80" rx="15" fill="none" stroke="#2e2e4a" stroke-width="1.5"/>
+  <g transform="scale(0.5405)">
+    <polyline points="22,40 56,74 22,108" fill="none" stroke="#7c7ce8" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="78" y1="50" x2="126" y2="36" stroke="#7c7ce8" stroke-width="8" stroke-linecap="round"/>
+    <line x1="78" y1="74" x2="130" y2="74" stroke="#7c7ce8" stroke-width="8" stroke-linecap="round"/>
+    <line x1="78" y1="98" x2="126" y2="112" stroke="#7c7ce8" stroke-width="8" stroke-linecap="round"/>
+  </g>
+</svg>
