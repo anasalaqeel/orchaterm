@@ -19,6 +19,12 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { OrchestratorTaskOutput, SessionBuffer, BufferWatchMode } from '../types';
 import { parseSentinel, parsePlanBlock, validatePlanJSON, parseNeedsBlock, stripAnsiCodes } from './sentinelParser';
 
+// ── Shell "back-to-prompt" detection regex ────────────────────────────────────
+// Fires after 2s idle when a terminal session returns to a shell prompt.
+// Intentionally broad — covers bash ($), zsh (%), fish (❯), root (#), etc.
+// Only fires in 'idle' / 'summary' modes so conductor-managed sessions are skipped.
+const SHELL_PROMPT_REGEX = /[\$%❯►▶#]\s*(?:\r?\n)*$/;
+
 // ── Interactive prompt detection regex ─────────────────────────────────────────
 // Compiled once at module load — used by checkInteractivePrompt on every idle tick.
 const INTERACTIVE_PROMPT_REGEX = new RegExp([
@@ -51,6 +57,9 @@ interface WatchEntry {
   onPlanError?: (err: string) => void;
   onNeedsRequest?: (request: import('../types').AgentNeedsRequest) => void;
   onInteractivePrompt?: (promptText: string) => void;
+  /** Fires once per 10 s when the terminal returns to a shell prompt (non-conductor sessions). */
+  onIdleShell?: () => void;
+  _lastIdleShellAt?: number;
   idleTimer?: ReturnType<typeof setTimeout>;
   /**
    * Epoch ms after which plan/sentinel detection should actually fire.
@@ -140,6 +149,7 @@ class BufferWatcher {
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
     entry.idleTimer = setTimeout(() => {
       this.checkInteractivePrompt(entry);
+      this.checkIdleShell(entry);
     }, 2000);
   }
 
@@ -160,6 +170,26 @@ class BufferWatcher {
       (entry as any)._lastPromptFiredAt = now;
       entry.onInteractivePrompt(tail.trim());
     }
+  }
+
+  // ── Internal: idle shell-prompt check ─────────────────────────────────────
+  // Fires onIdleShell when the terminal returns to a shell prompt after being
+  // idle for 2 s. Only active in 'idle' or 'summary' modes — conductor-managed
+  // sessions (sentinel / plan) are intentionally excluded.
+
+  private checkIdleShell(entry: WatchEntry): void {
+    if (!entry.onIdleShell) return;
+    if (entry.buffer.mode === 'sentinel' || entry.buffer.mode === 'plan') return;
+
+    const now = Date.now();
+    const lastFired = entry._lastIdleShellAt ?? 0;
+    if (now - lastFired < 10_000) return; // 10 s cooldown per session
+
+    const tail = stripAnsiCodes(entry.buffer.buffer.slice(-600));
+    if (!SHELL_PROMPT_REGEX.test(tail)) return;
+
+    entry._lastIdleShellAt = now;
+    entry.onIdleShell();
   }
 
   // ── Internal: sentinel check ───────────────────────────────────────────────
@@ -364,6 +394,28 @@ class BufferWatcher {
     entry.summaryDebounceTimer = undefined;
     entry.summaryLastLength    = undefined;
     if (entry.buffer.mode === 'summary') entry.buffer.mode = 'idle';
+  }
+
+  /**
+   * Register a callback that fires when a non-conductor terminal session returns
+   * to a shell prompt after being idle for 2 s (10 s cooldown per session).
+   * Returns an unsubscribe function.
+   *
+   * Skipped automatically for sessions in sentinel / plan mode so Conductor-
+   * managed tasks do not generate spurious "done" notifications.
+   */
+  async watchForIdle(
+    sessionId: string,
+    onIdle: () => void,
+  ): Promise<() => void> {
+    const entry = await this.ensureListening(sessionId);
+    entry.onIdleShell = onIdle;
+    entry._lastIdleShellAt = undefined; // reset cooldown on (re-)subscribe
+    return () => {
+      if (entry.onIdleShell === onIdle) {
+        entry.onIdleShell = undefined;
+      }
+    };
   }
 
   /**
