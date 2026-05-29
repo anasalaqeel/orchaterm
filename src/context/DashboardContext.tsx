@@ -123,6 +123,12 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
       simpleLlmProvider: raw.simpleLlmProvider ?? (raw.llmProviders.relay ?? { ...DEFAULT_OLLAMA_CONFIG }),
       providerApiKeys: raw.providerApiKeys ?? {},
       terminalConfig: { ...DEFAULT_TERMINAL_CONFIG, ...(raw.terminalConfig ?? {}) },
+      continuation: raw.continuation ?? {
+        enabled: false,
+        targetSessionId: null,
+        mode: 'semi',
+        snapshotIntervalChars: 4000,
+      },
     };
   }
 
@@ -146,6 +152,12 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
     simpleLlmProvider: raw.simpleLlmProvider ?? { ...legacyConfig },
     providerApiKeys: raw.providerApiKeys ?? {},
     terminalConfig: { ...DEFAULT_TERMINAL_CONFIG, ...(raw.terminalConfig ?? {}) },
+    continuation: raw.continuation ?? {
+      enabled: false,
+      targetSessionId: null,
+      mode: 'semi',
+      snapshotIntervalChars: 4000,
+    },
   };
 }
 
@@ -199,6 +211,12 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     simpleLlmProvider: { ...DEFAULT_OLLAMA_CONFIG },
     providerApiKeys: {},
     terminalConfig: DEFAULT_TERMINAL_CONFIG,
+    continuation: {
+      enabled: false,
+      targetSessionId: null,
+      mode: 'semi',
+      snapshotIntervalChars: 4000,
+    },
   });
   const [plans, setPlans]                       = useState<OrchestratorPlan[]>([]);
   const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
