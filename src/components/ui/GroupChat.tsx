@@ -19,7 +19,7 @@ import { css, cx } from '@emotion/css';
 import {
   Send, Bot, User, WifiOff, RefreshCw, Users,
   ChevronDown, BookmarkPlus, Download, X as XIcon, SlidersHorizontal, Check,
-  MessageSquare, Network, Info, Copy, Square,
+  MessageSquare, Network, Info, Copy, Square, Sparkles,
 } from 'lucide-react';
 import { WorkspacePanel } from './WorkspacePanel';
 import { Select } from './Select';
@@ -215,8 +215,11 @@ function getSuggestions(sessionTitles: string[]): string[] {
 export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   const {
     workspaces, spaces, terminalSessions,
-    activeSpaceId, settings, addSavedPrompt, showToast, addPlan, llmProviders,
+    activeSpaceId, settings, updateSettings, addSavedPrompt, showToast, addPlan, llmProviders,
   } = useDashboard();
+
+  /** Master AI switch — when off, every LLM-triggering feature is disabled. */
+  const aiEnabled = settings.aiEnabled !== false;
 
   const getProviderLabel = () => {
     const effectiveChatCfg = settings.llmProviderMode === 'simple'
@@ -379,7 +382,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   }, [groupSessionIds]);
 
   useEffect(() => {
-    if (!liveFeedOn) return;
+    if (!aiEnabled || !liveFeedOn) return;
 
     const unsubscribers: (() => void)[] = [];
 
@@ -410,11 +413,11 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
     return () => { unsubscribers.forEach(fn => fn()); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveFeedOn, groupSessionIds, llmProviders.routing]);
+  }, [aiEnabled, liveFeedOn, groupSessionIds, llmProviders.routing]);
 
   // ── NeedsBroker wiring ────────────────────────────────────────────────────
   useEffect(() => {
-    if (!activeSpaceId) return;
+    if (!aiEnabled || !activeSpaceId) return;
 
     needsBroker.registerSpace(activeSpaceId, groupSessions.map(s => ({
       id:              s.id,
@@ -454,11 +457,11 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       if (activeSpaceId) needsBroker.unregisterSpace(activeSpaceId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSpaceId, groupSessionIds]);
+  }, [aiEnabled, activeSpaceId, groupSessionIds]);
 
   // ── Autonomous mode effect ────────────────────────────────────────────────
   useEffect(() => {
-    if (!autoModeOn || !activeSpaceId) return;
+    if (!aiEnabled || !autoModeOn || !activeSpaceId) return;
 
     autonomousOrchestrator.startSpace({
       spaceId:  activeSpaceId,
@@ -488,7 +491,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       autonomousOrchestrator.stopSpace(activeSpaceId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoModeOn, activeSpaceId, groupSessionIds]);
+  }, [aiEnabled, autoModeOn, activeSpaceId, groupSessionIds]);
 
   // ── Conductor engine log + state → chat feed ────────────────────────────
   // Engine is a singleton — subscribe once on mount, never re-subscribe.
@@ -522,7 +525,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   // ── Plan: confirm and start ───────────────────────────────────────────────
 
   const handleRunPlan = useCallback(() => {
-    if (!pendingPlan) return;
+    if (!aiEnabled || !pendingPlan) return;
 
     const currentPlan = orchestratorEngine.getCurrentPlan();
     if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
@@ -593,7 +596,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   }, []);
 
   const handleRunBuildPlan = useCallback(() => {
-    if (buildTasks.length === 0) return;
+    if (!aiEnabled || buildTasks.length === 0) return;
 
     const currentPlan = orchestratorEngine.getCurrentPlan();
     if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
@@ -646,6 +649,12 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     const text = (overrideText ?? input).trim();
     if (!text || streaming || classifying || generatingPlan) return;
     if (inputMode !== 'chat') return; // pipeline mode uses handleRunBuildPlan instead
+
+    if (!aiEnabled) {
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'system', content: '⚠ AI features are disabled. Enable them in Settings to chat.' }]);
+      setInput('');
+      return;
+    }
 
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -904,6 +913,17 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
         </div>
 
         <div className={s.headerRight}>
+          {/* AI master switch — mirrors Settings → AI Features */}
+          <button
+            className={cx(s.aiToggle, aiEnabled && s.aiToggleOn)}
+            onClick={() => updateSettings({ aiEnabled: !aiEnabled })}
+            title={aiEnabled
+              ? 'AI features ON — click to disable (use as a plain terminal)'
+              : 'AI features OFF — click to enable'}
+          >
+            <Sparkles size={11} />
+            <span>{aiEnabled ? 'AI On' : 'AI Off'}</span>
+          </button>
           {/* Export */}
           {messages.length > 0 && (
             <button className={s.headerIconBtn} onClick={handleExport} title="Export transcript (.md)">
@@ -945,6 +965,23 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
           )}
         </div>
       </div>
+
+      {/* Disabled overlay — AI features off. Header (with the AI toggle) sits above it. */}
+      {!aiEnabled && (
+        <div className={s.disabledOverlay}>
+          <div className={s.disabledScrim} />
+          <div className={s.disabledCard}>
+            <Sparkles size={20} className={s.disabledIcon} />
+            <p className={s.disabledTitle}>AI features are off</p>
+            <p className={s.disabledHint}>
+              Orchaterm is running as a plain terminal. No LLM calls are made.
+            </p>
+            <button className={s.disabledEnableBtn} onClick={() => updateSettings({ aiEnabled: true })}>
+              Enable AI
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Warning banners */}
       {modelMissing && (
@@ -1681,6 +1718,43 @@ const s = {
     display: flex; align-items: center; justify-content: space-between;
     padding: 10px 12px; border-bottom: 1px solid var(--border-color);
     background: var(--bg-secondary); flex-shrink: 0; gap: 8px;
+    /* Sit above the disabled overlay so the AI toggle stays usable when AI is off. */
+    position: relative; z-index: 30;
+  `,
+
+  /* ── Disabled overlay (AI features off) ── */
+  disabledOverlay: css`
+    position: absolute; inset: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  `,
+  disabledScrim: css`
+    position: absolute; inset: 0;
+    background: var(--bg-canvas);
+    opacity: 0.62;
+    backdrop-filter: grayscale(0.6);
+  `,
+  disabledCard: css`
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    gap: 8px; max-width: 260px;
+    padding: 20px 22px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-secondary);
+    box-shadow: var(--shadow-md);
+  `,
+  disabledIcon: css`color: var(--text-tertiary);`,
+  disabledTitle: css`font-size: 13px; font-weight: 700; color: var(--text-primary);`,
+  disabledHint: css`font-size: 12px; color: var(--text-tertiary); line-height: 1.5;`,
+  disabledEnableBtn: css`
+    margin-top: 4px;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 8px; border: none; cursor: pointer;
+    font-size: 12px; font-weight: 700;
+    background: var(--color-brand); color: white;
+    transition: filter 0.15s;
+    &:hover { filter: brightness(1.08); }
   `,
   headerLeft: css`display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; overflow: hidden;`,
   headerRight: css`display: flex; align-items: center; gap: 4px; flex-shrink: 0;`,
@@ -1706,6 +1780,22 @@ const s = {
   headerIconBtnAutoMode: css`
     color: var(--color-warning) !important;
     background: rgba(var(--color-warning-rgb), 0.1) !important;
+  `,
+  aiToggle: css`
+    display: flex; align-items: center; gap: 4px;
+    height: 24px; padding: 0 8px; border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: transparent; color: var(--text-tertiary);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.02em;
+    cursor: pointer; flex-shrink: 0;
+    transition: all 150ms ease;
+    &:hover { background: var(--bg-hover); color: var(--text-secondary); }
+  `,
+  aiToggleOn: css`
+    color: var(--color-brand);
+    border-color: rgba(var(--color-brand-rgb), 0.4);
+    background: rgba(var(--color-brand-rgb), 0.08);
+    &:hover { background: rgba(var(--color-brand-rgb), 0.14); color: var(--color-brand); }
   `,
   onlineBadge: css`display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: var(--color-success);`,
   onlineDot: css`

@@ -35,7 +35,8 @@ export function ConsoleSplit({ terminal, chat, active }: ConsoleSplitProps) {
     return isNaN(n) ? CHAT_DEFAULT : n;
   });
   const [chatCollapsed, setChatCollapsed] = useState<boolean>(
-    () => localStorage.getItem('orchaterm:chatCollapsed') === 'true',
+    // Collapsed by default for the workspace; only expanded if the user explicitly did so.
+    () => localStorage.getItem('orchaterm:chatCollapsed') !== 'false',
   );
   /** True only while the user is actively dragging the resize handle. */
   const [isResizing, setIsResizing] = useState(false);
