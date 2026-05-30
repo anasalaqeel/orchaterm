@@ -1,8 +1,23 @@
 import { bufferWatcher } from './bufferWatcher';
 import { buildDetectionPrompt } from './continuationPrompts';
 import { generateCheckpoint } from './checkpointGenerator';
+import { stripAnsiCodes } from './sentinelParser';
 import type { LLMProvider } from './llm';
 import type { CheckpointSnapshot, ContinuationConfig, DetectionEvent, DetectionLabel } from '../types';
+
+// ── Stop/limit pre-gate ───────────────────────────────────────────────────────
+// The detection LLM is only worth calling when the output plausibly shows an
+// agent hitting a usage/context limit (the high-value, resumable case). A bare
+// shell returning to its prompt matches the LLM's STOPPED definition ("shell
+// prompt appeared"), so without this gate every finished command on a normal
+// terminal false-fires a checkpoint. These markers don't appear in ordinary
+// command output, so normal shell use is skipped entirely (and we save an LLM
+// call per output delta on every monitored session).
+const STOP_MARKER_REGEX =
+  /usage limit|context (?:length|window)|context low|tokens? (?:used up|remaining|exhausted)|rate limit|quota (?:exceeded|reached)|limit reached|reached your (?:usage )?limit|out of (?:tokens|context)|maximum context|approaching (?:the )?limit|resets? at/i;
+
+/** How many trailing buffer chars to scan for limit markers. */
+const MARKER_SCAN_TAIL = 3000;
 
 interface SessionMeta {
   id: string;
@@ -90,12 +105,21 @@ export class SessionContinuationService {
     const entry = this.sessions.get(sessionId);
     if (!entry || entry.checkpointInProgress) return;
 
-    // Periodic snapshot
+    // Periodic snapshot (silent breadcrumb — never pops the modal)
     const buffer = bufferWatcher.getBuffer(sessionId);
     const charsSinceLast = buffer.length - entry.lastPeriodicSnapshotLength;
     if (charsSinceLast >= entry.config.snapshotIntervalChars) {
       entry.lastPeriodicSnapshotLength = buffer.length;
       void this.doCheckpoint(entry, 'periodic', 'PROGRESS');
+    }
+
+    // Pre-gate: only consult the detection LLM when the recent output shows an
+    // actual usage/context-limit marker. Without this, a returning shell prompt
+    // on a normal terminal reads as STOPPED and false-fires a checkpoint.
+    const recentTail = stripAnsiCodes(buffer.slice(-MARKER_SCAN_TAIL));
+    if (!STOP_MARKER_REGEX.test(recentTail)) {
+      entry.consecutiveStopCount = 0;
+      return;
     }
 
     // Detection
