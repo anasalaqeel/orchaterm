@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { css, cx } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useDashboard } from '../context/DashboardContext';
+import { useResizablePanel } from '../hooks';
 import { TerminalContainer } from '../components/terminal/TerminalContainer';
 import { GroupChat } from '../components/ui/GroupChat';
 import { Input } from '../components/ui';
@@ -54,81 +55,18 @@ export const DashboardView: React.FC = () => {
   const [editTaskValue, setEditTaskValue] = useState('');
 
   // ── Chat panel resize / collapse ──────────────────────────────────────────
-  const [chatWidth, setChatWidth] = useState<number>(() => {
-    const stored = localStorage.getItem('orchaterm:chatWidth');
-    if (!stored) return 360;
-    const n = parseInt(stored, 10);
-    return isNaN(n) ? 360 : n;
+  const {
+    collapsed: chatCollapsed,
+    dragging: chatDragging,
+    toggleCollapsed: toggleChatCollapsed,
+    onResizeStart: handleResizeStart,
+    containerRef: splitRef,
+  } = useResizablePanel({
+    storageKey: 'orchaterm:chatWidth',
+    defaultWidth: 360,
+    min: 260,
+    max: 700,
   });
-  const [chatCollapsed, setChatCollapsed] = useState<boolean>(() => {
-    return localStorage.getItem('orchaterm:chatCollapsed') === 'true';
-  });
-  const isResizingRef   = useRef(false);
-  const startXRef       = useRef(0);
-  const startWidthRef   = useRef(0);
-  const chatWidthRef    = useRef(chatWidth);
-  /** Cleanup fn stored so we can remove listeners if the component unmounts mid-drag. */
-  const dragCleanupRef  = useRef<(() => void) | null>(null);
-
-  // Keep the ref in sync with the latest chatWidth without mutating at render-top-level.
-  useLayoutEffect(() => {
-    chatWidthRef.current = chatWidth;
-  });
-
-  // Remove any lingering drag listeners when the component unmounts.
-  useEffect(() => {
-    return () => {
-      dragCleanupRef.current?.();
-      document.body.style.cursor     = '';
-      document.body.style.userSelect = '';
-    };
-  }, []);
-
-  const toggleChatCollapsed = useCallback(() => {
-    setChatCollapsed(prev => {
-      const next = !prev;
-      localStorage.setItem('orchaterm:chatCollapsed', String(next));
-      return next;
-    });
-  }, []);
-
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    if (chatCollapsed) return;
-
-    isResizingRef.current  = true;
-    startXRef.current      = e.clientX;
-    startWidthRef.current  = chatWidthRef.current;
-
-    document.body.style.cursor     = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!isResizingRef.current) return;
-      const delta    = startXRef.current - ev.clientX;          // drag left = wider chat
-      const newWidth = Math.max(260, Math.min(700, startWidthRef.current + delta));
-      setChatWidth(newWidth);
-      chatWidthRef.current = newWidth;
-    };
-
-    const cleanup = () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-      dragCleanupRef.current = null;
-    };
-
-    const onMouseUp = () => {
-      isResizingRef.current           = false;
-      document.body.style.cursor      = '';
-      document.body.style.userSelect  = '';
-      localStorage.setItem('orchaterm:chatWidth', String(chatWidthRef.current));
-      cleanup();
-    };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-    dragCleanupRef.current = cleanup;
-  }, [chatCollapsed]);
 
   // Open the New Workspace modal whenever the sidebar + button sets the flag.
   useEffect(() => {
@@ -229,8 +167,9 @@ export const DashboardView: React.FC = () => {
               </motion.button>
             </div>
 
-            {/* Split */}
-            <div className={s.consoleSplit}>
+            {/* Split — width driven by CSS vars (--panel-w / --panel-content-w) set by
+                useResizablePanel so dragging never re-renders this subtree. */}
+            <div ref={splitRef} className={cx(s.consoleSplit, chatDragging && s.dragging)}>
               <div className={s.consoleSplitLeft}>
                 <TerminalContainer
                   key={panelKey}
@@ -240,38 +179,25 @@ export const DashboardView: React.FC = () => {
                 />
               </div>
 
-              {/* Drag overlay — absolute, zero flex space; only needed when console is visible */}
+              {/* Drag handle — absolute, straddles the border, contributes zero flex space */}
               {showConsole && !chatCollapsed && (
                 <div
                   className={s.dragZone}
-                  style={{ right: chatWidth - 4 }}
-                  onMouseDown={handleResizeStart}
+                  onPointerDown={handleResizeStart}
                 />
               )}
 
-              {/* Chat panel — collapses width to 0. Inner wrapper holds fixed chatWidth so
-                  content doesn't squish during animation; outer motion.div clips it. */}
-              <AnimatePresence>
-                {!chatCollapsed && (
-                  <motion.div
-                    key="chat"
-                    className={s.consoleSplitRight}
-                    initial={{ width: 0, minWidth: 0 }}
-                    animate={{ width: chatWidth, minWidth: chatWidth }}
-                    exit={{ width: 0, minWidth: 0 }}
-                    transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-                  >
-                    <div style={{ width: chatWidth, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                      {showConsole && <GroupChat key={panelKey} workspaceId={activeProject.id} />}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {/* Chat panel — outer clips to --panel-w (0 when collapsed); inner stays at the
+                  expanded --panel-content-w so content never reflows during the collapse anim. */}
+              <div className={s.consoleSplitRight}>
+                <div className={s.consoleSplitRightInner}>
+                  {showConsole && <GroupChat key={panelKey} workspaceId={activeProject.id} />}
+                </div>
+              </div>
 
               {/* Collapse pill — absolutely positioned, never clips */}
               <button
                 className={s.collapseBtn}
-                style={{ right: chatCollapsed ? 0 : chatWidth }}
                 onClick={toggleChatCollapsed}
                 title={chatCollapsed ? 'Expand chat' : 'Collapse chat'}
               >
@@ -574,6 +500,14 @@ const s = {
   consoleSplit: css`
     flex: 1; display: flex; min-height: 0;
     position: relative; /* anchor for the floating collapse button */
+    /* Defaults; useResizablePanel overrides these per-element while live. */
+    --panel-w: 360px;
+    --panel-content-w: 360px;
+  `,
+  /* While dragging, kill all width/position transitions so the panel tracks the
+     cursor 1:1 instead of easing toward each frame's target. */
+  dragging: css`
+    & * { transition: none !important; }
   `,
   consoleSplitLeft: css`
     flex: 1; height: 100%; min-width: 0;
@@ -582,20 +516,30 @@ const s = {
   `,
   consoleSplitRight: css`
     flex-shrink: 0; height: 100%;
+    width: var(--panel-w);
     display: flex; flex-direction: column; overflow: hidden;
     border-left: 1px solid var(--border-color);
     background: var(--bg-primary);
+    transition: width 0.22s cubic-bezier(0.4,0,0.2,1);
+  `,
+  /* Fixed inner width so chat content never reflows while the outer clips to 0. */
+  consoleSplitRightInner: css`
+    width: var(--panel-content-w);
+    height: 100%;
+    display: flex; flex-direction: column;
   `,
 
-  /* Drag overlay — absolute, straddles the border, contributes zero flex space */
+  /* Drag handle — absolute, straddles the border, contributes zero flex space */
   dragZone: css`
     position: absolute;
     top: 0; bottom: 0;
+    right: calc(var(--panel-w) - 4px);
     width: 8px;
     cursor: col-resize;
     z-index: 5;
     background: transparent;
     transition: background 0.12s;
+    touch-action: none;
     &:hover { background: rgba(var(--color-brand-rgb), 0.15); }
   `,
 
@@ -603,6 +547,7 @@ const s = {
   collapseBtn: css`
     position: absolute;
     top: 50%; transform: translateY(-50%);
+    right: var(--panel-w);
     z-index: 10;
     width: 14px; height: 48px;
     border-radius: 4px;
