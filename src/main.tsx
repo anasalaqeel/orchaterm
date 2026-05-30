@@ -10,14 +10,11 @@ import { registerShortcut } from './services/keyboardManager';
 // ── Block WebView2/browser shortcuts when terminal is focused ─────────────────
 // context: 'terminal-only' → only fires when an xterm instance has focus.
 // keyboardManager calls e.preventDefault() before invoking the handler, which
-// blocks the browser's built-in action (DevTools, reload, etc.) while xterm
+// blocks the browser's built-in action (DevTools) while xterm
 // still receives the keystroke because preventDefault does not stop propagation.
 //
-// Shortcuts blocked when terminal is focused:
-//   F12, Ctrl+Shift+I/C/J  — DevTools (Windows/Linux)
-//   Cmd+Option+I            — DevTools (macOS)
-//   Ctrl/Cmd+R              — Page reload (would destroy all PTY sessions)
-//   Ctrl/Cmd+F/U/P          — Find / view-source / print (useless in terminal)
+// We only block DevTools here. Native shell shortcuts like Ctrl+R, Ctrl+C, Ctrl+U
+// are NOT blocked here, so xterm can natively process them and send them to the PTY.
 
 const noop = () => {};
 
@@ -31,12 +28,6 @@ const TERMINAL_BLOCKED: Array<{
   { key: 'j', ctrl: true, shift: true },
   // DevTools — macOS (Cmd+Option+I)
   { key: 'i', ctrl: true, alt: true },
-  // Page reload
-  { key: 'r', ctrl: true },
-  // Find in page / view-source / print
-  { key: 'f', ctrl: true },
-  { key: 'u', ctrl: true },
-  { key: 'p', ctrl: true },
 ];
 
 for (const def of TERMINAL_BLOCKED) {

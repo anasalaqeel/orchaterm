@@ -177,6 +177,27 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       term.textarea?.addEventListener('focus', onFocusIn);
       term.textarea?.addEventListener('blur',  onFocusOut);
 
+      // ─ Mouse shortcuts (Linux middle-click paste) ─────────────
+      const onMouseUp = (e: MouseEvent) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          const selection = term.getSelection();
+          if (selection) {
+            invoke('write_pty', { sessionId, data: selection }).catch(() => {});
+          } else if (navigator.clipboard) {
+            navigator.clipboard.readText().then(text => {
+              if (text) invoke('write_pty', { sessionId, data: text }).catch(() => {});
+            }).catch(() => {});
+          }
+        }
+      };
+      const onMouseDown = (e: MouseEvent) => {
+        if (e.button === 1) e.preventDefault(); // Prevent browser autoscroll
+      };
+      
+      term.element?.addEventListener('mouseup', onMouseUp);
+      term.element?.addEventListener('mousedown', onMouseDown);
+
       // ─ Forward keyboard input → PTY ──────────────────────────────────
       const dataDispose = term.onData((data) => {
         invoke('write_pty', { sessionId, data }).catch((err) =>
