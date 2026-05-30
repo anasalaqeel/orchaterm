@@ -263,8 +263,10 @@ class BufferWatcher {
   private checkSummary(entry: WatchEntry): void {
     if (entry.summarySubscribers.length === 0) return;
 
-    const MIN_NEW_CHARS = 60;
-    const DEBOUNCE_MS   = 800;
+    // Tuned to limit LLM call volume on summary subscribers (live feed,
+    // auto-relay, continuation detection): coalesce more output per call.
+    const MIN_NEW_CHARS = 120;
+    const DEBOUNCE_MS   = 1200;
 
     const currentLength = entry.buffer.buffer.length;
     const lastLength    = entry.summaryLastLength ?? 0;
