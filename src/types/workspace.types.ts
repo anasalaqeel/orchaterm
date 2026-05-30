@@ -68,6 +68,13 @@ export interface AppSettings {
   /** API keys keyed by `provider:baseUrl` — persists keys across provider switches. */
   providerApiKeys?: Record<string, string>;
   terminalConfig?: TerminalConfig;
+  /**
+   * Master switch for all AI/orchestration features (live feed, auto-relay,
+   * session continuation, chat send). When false the app is a plain terminal
+   * emulator and makes zero LLM calls regardless of the per-feature toggles.
+   * Defaults to true (read as `aiEnabled !== false`).
+   */
+  aiEnabled?: boolean;
   continuation?: ContinuationConfig;
   // ── Legacy fields kept for one-time migration on first load ──────────────
   /** @deprecated Use llmProviders.relay.baseUrl instead. */

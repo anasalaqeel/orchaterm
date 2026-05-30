@@ -332,8 +332,14 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
         if (e.type !== 'keydown') return true;
         const combo = buildCombo(e);
-        const binding = terminalConfig.keybindings.find(b => b.key === combo);
-        if (!binding) return true;
+        let binding = terminalConfig.keybindings.find(b => b.key === combo);
+        
+        if (!binding) {
+          if (combo === 'ctrl+shift+c') binding = { key: combo, action: 'copy' };
+          else if (combo === 'ctrl+shift+v') binding = { key: combo, action: 'paste' };
+          else return true;
+        }
+
         switch (binding.action) {
           case 'clear':
             term.clear();
@@ -346,6 +352,19 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
             break;
           case 'send-text':
             invoke('write_pty', { sessionId, data: binding.text ?? '' }).catch(() => {});
+            break;
+          case 'copy':
+            if (term.hasSelection() && navigator.clipboard) {
+              navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+              term.clearSelection();
+            }
+            break;
+          case 'paste':
+            if (navigator.clipboard) {
+              navigator.clipboard.readText().then(text => {
+                if (text) invoke('write_pty', { sessionId, data: text }).catch(() => {});
+              }).catch(() => {});
+            }
             break;
         }
         return false;

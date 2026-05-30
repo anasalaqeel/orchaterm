@@ -387,7 +387,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // ── Start/stop session continuation monitoring (scoped to agent sessions) ────
   useEffect(() => {
-    const enabled = settings.continuation?.enabled ?? false;
+    const enabled = settings.aiEnabled !== false && (settings.continuation?.enabled ?? false);
     const agentSet = new Set(agentSessionIds);
 
     // Stop monitoring anything that is no longer an active agent session
@@ -415,7 +415,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         );
       }
     }
-  }, [agentSessionIds, terminalSessions, settings.continuation, activeWorkspaceId, workspaces, llmProviders.routing, llmProviders.relay]);
+  }, [agentSessionIds, terminalSessions, settings.aiEnabled, settings.continuation, activeWorkspaceId, workspaces, llmProviders.routing, llmProviders.relay]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ id: crypto.randomUUID(), message, type });

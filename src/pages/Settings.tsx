@@ -286,6 +286,9 @@ export const SettingsView: React.FC = () => {
     settings.conductorInteractionMode ?? 'auto'
   );
 
+  /** When the AI master switch is off, AI-dependent settings render dimmed + inert. */
+  const aiDisabled = settings.aiEnabled === false;
+
   // Terminal settings state
   const [detectedShells, setDetectedShells] = useState<ShellInfo[]>([]);
   const [defaultShell, setDefaultShell]     = useState<string>(settings.shellPath || '');
@@ -561,8 +564,49 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* LLM Providers card */}
+          {/* AI master switch — primary control governing every AI feature below */}
           <div className={styles.integrationsCard}>
+            <div className={css`display: flex; align-items: center; justify-content: space-between; gap: 16px;`}>
+              <div>
+                <h3 className={cx(styles.cardTitle, css`margin-bottom: 6px;`)}>
+                  <span style={{ fontSize: 18, lineHeight: 1 }}>✨</span>
+                  <span>AI Features</span>
+                </h3>
+                <p className={cx(styles.cardDescription, css`margin: 0;`)}>
+                  Master switch for live feed, auto-relay, session continuation, and chat.
+                  Turn it off to use Orchaterm as a plain terminal — no LLM calls are made.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Toggle AI features"
+                onClick={() => updateSettings({ aiEnabled: !(settings.aiEnabled !== false) })}
+                className={css`
+                  position: relative;
+                  width: 44px; height: 24px;
+                  border-radius: 12px;
+                  border: none; cursor: pointer;
+                  flex-shrink: 0;
+                  background: ${(settings.aiEnabled !== false) ? 'var(--color-brand)' : 'var(--bg-tertiary)'};
+                  transition: background 0.2s;
+                  &::after {
+                    content: '';
+                    position: absolute;
+                    top: 3px;
+                    left: ${(settings.aiEnabled !== false) ? '23px' : '3px'};
+                    width: 18px; height: 18px;
+                    border-radius: 50%;
+                    background: white;
+                    transition: left 0.2s;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+                  }
+                `}
+              />
+            </div>
+          </div>
+
+          {/* LLM Providers card */}
+          <div className={cx(styles.integrationsCard, aiDisabled && styles.aiDisabledSection)}>
             <h3 className={styles.cardTitle}>
               <Network className={cx(styles.cardTitleIcon, styles.settingsIcon)} />
               <span>LLM Providers</span>
@@ -666,8 +710,6 @@ export const SettingsView: React.FC = () => {
                 </motion.div>
               )}
             </AnimatePresence>
-
-
 
             {/* ── Session Continuation ───────────────────────────────────────────────── */}
             <div className={css`margin-top: 32px;`}>
@@ -1261,6 +1303,8 @@ export const SettingsView: React.FC = () => {
                   <option value="scroll-top">scroll-top</option>
                   <option value="scroll-bottom">scroll-bottom</option>
                   <option value="send-text">send-text</option>
+                  <option value="copy">copy</option>
+                  <option value="paste">paste</option>
                 </select>
               </div>
 
@@ -1491,6 +1535,13 @@ const styles = {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
+  `,
+  aiDisabledSection: css`
+    opacity: 0.45;
+    pointer-events: none;
+    filter: grayscale(0.5);
+    user-select: none;
+    transition: opacity 0.2s, filter 0.2s;
   `,
   integrationsCard: css`
     padding: var(--spacing-lg);
