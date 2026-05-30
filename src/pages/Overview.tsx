@@ -1,14 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { css, cx } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useDashboard } from '../context/DashboardContext';
-import { useResizablePanel } from '../hooks';
-import { TerminalContainer } from '../components/terminal/TerminalContainer';
-import { GroupChat } from '../components/ui/GroupChat';
+import { WorkspaceConsole } from '../components/workspace/WorkspaceConsole';
 import { Input } from '../components/ui';
 import {
-  Plus, ChevronRight, ChevronLeft, Edit2, ArrowLeft,
+  Plus, ChevronRight, Edit2,
   Terminal, FolderOpen,
 } from 'lucide-react';
 
@@ -54,19 +52,7 @@ export const DashboardView: React.FC = () => {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editTaskValue, setEditTaskValue] = useState('');
 
-  // ── Chat panel resize / collapse ──────────────────────────────────────────
-  const {
-    collapsed: chatCollapsed,
-    dragging: chatDragging,
-    toggleCollapsed: toggleChatCollapsed,
-    onResizeStart: handleResizeStart,
-    containerRef: splitRef,
-  } = useResizablePanel({
-    storageKey: 'orchaterm:chatWidth',
-    defaultWidth: 360,
-    min: 260,
-    max: 700,
-  });
+  const handleBackToGrid = useCallback(() => setViewMode('grid'), [setViewMode]);
 
   // Open the New Workspace modal whenever the sidebar + button sets the flag.
   useEffect(() => {
@@ -76,7 +62,10 @@ export const DashboardView: React.FC = () => {
     }
   }, [newWorkspaceModalOpen, setNewWorkspaceModalOpen]);
 
-  const activeProject = workspaces.find(p => p.id === activeWorkspaceId) || workspaces[0];
+  const activeProject = useMemo(
+    () => workspaces.find(p => p.id === activeWorkspaceId) || workspaces[0],
+    [workspaces, activeWorkspaceId],
+  );
 
   const handleTaskSave = (projId: string) => {
     updateWorkspace(projId, { currentTask: editTaskValue });
@@ -109,15 +98,18 @@ export const DashboardView: React.FC = () => {
     setShowAddProj(false);
   };
 
-  /* ── Console view ── */
-  /* ── Derived ── */
+  /* ── Derived (memoized so the React.memo'd WorkspaceConsole boundary holds) ── */
   const showConsole = viewMode === 'console' && !!activeProject;
-  const activeSpace = activeProject && activeSpaceId
-    ? spaces.find(sp => sp.id === activeSpaceId && sp.workspaceId === activeProject.id)
-    : null;
-  const panelKey = activeProject
-    ? `${activeProject.id}::${activeSpaceId ?? 'workspace'}`
-    : 'empty';
+  const activeSpace = useMemo(
+    () => (activeProject && activeSpaceId
+      ? spaces.find(sp => sp.id === activeSpaceId && sp.workspaceId === activeProject.id) ?? null
+      : null),
+    [spaces, activeProject, activeSpaceId],
+  );
+  const panelKey = useMemo(
+    () => (activeProject ? `${activeProject.id}::${activeSpaceId ?? 'workspace'}` : 'empty'),
+    [activeProject, activeSpaceId],
+  );
 
   /*
    * Single return — console view is ALWAYS mounted so PTY sessions survive
@@ -127,87 +119,16 @@ export const DashboardView: React.FC = () => {
   return (
     <div className={s.pageRoot}>
 
-      {/* ── Console — always mounted, CSS-toggled ───────────────────────────── */}
-      <div className={showConsole ? s.consoleLayer : s.consoleLayerHidden}>
-        {activeProject && (
-          <div className={s.consoleRoot}>
-
-            {/* Console header */}
-            <div className={s.consoleHeader}>
-              <div className={s.consoleHeaderLeft}>
-                <span className={s.consoleDot} style={{ backgroundColor: activeProject.color }} />
-                <h2 className={s.consoleName}>{activeProject.name}</h2>
-                <span className={s.consolePath}>{activeProject.path}</span>
-
-                <AnimatePresence>
-                  {activeSpace && (
-                    <motion.div
-                      className={s.spacePill}
-                      initial={{ opacity: 0, scale: 0.85 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.85 }}
-                      style={{ borderColor: activeSpace.color + '40' }}
-                    >
-                      <span className={s.spacePillDot} style={{ backgroundColor: activeSpace.color }} />
-                      <span className={s.spacePillName} style={{ color: activeSpace.color }}>
-                        {activeSpace.name}
-                      </span>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              <motion.button
-                whileHover={{ x: -2 }}
-                onClick={() => setViewMode('grid')}
-                className={s.backBtn}
-              >
-                <ArrowLeft size={13} />
-                <span>Workspaces</span>
-              </motion.button>
-            </div>
-
-            {/* Split — width driven by CSS vars (--panel-w / --panel-content-w) set by
-                useResizablePanel so dragging never re-renders this subtree. */}
-            <div ref={splitRef} className={cx(s.consoleSplit, chatDragging && s.dragging)}>
-              <div className={s.consoleSplitLeft}>
-                <TerminalContainer
-                  key={panelKey}
-                  scopeKey={panelKey}
-                  workspaceId={activeProject.id}
-                  workspacePath={activeProject.path}
-                />
-              </div>
-
-              {/* Drag handle — absolute, straddles the border, contributes zero flex space */}
-              {showConsole && !chatCollapsed && (
-                <div
-                  className={s.dragZone}
-                  onPointerDown={handleResizeStart}
-                />
-              )}
-
-              {/* Chat panel — outer clips to --panel-w (0 when collapsed); inner stays at the
-                  expanded --panel-content-w so content never reflows during the collapse anim. */}
-              <div className={s.consoleSplitRight}>
-                <div className={s.consoleSplitRightInner}>
-                  {showConsole && <GroupChat key={panelKey} workspaceId={activeProject.id} />}
-                </div>
-              </div>
-
-              {/* Collapse pill — absolutely positioned, never clips */}
-              <button
-                className={s.collapseBtn}
-                onClick={toggleChatCollapsed}
-                title={chatCollapsed ? 'Expand chat' : 'Collapse chat'}
-              >
-                {chatCollapsed ? <ChevronLeft size={11} /> : <ChevronRight size={11} />}
-              </button>
-            </div>
-
-          </div>
-        )}
-      </div>
+      {/* ── Console — always mounted, CSS-toggled (keeps PTY sessions alive) ─── */}
+      {activeProject && (
+        <WorkspaceConsole
+          active={showConsole}
+          project={activeProject}
+          space={activeSpace}
+          panelKey={panelKey}
+          onBack={handleBackToGrid}
+        />
+      )}
 
       {/* ── Grid — absolute overlay, animates in/out over the console ───────── */}
       <AnimatePresence>
@@ -416,154 +337,6 @@ const s = {
     flex: 1; height: 100%; overflow: hidden;
     position: relative;          /* grid overlay anchors here */
     background: var(--bg-canvas);
-  `,
-
-  /* Console wrapper — CSS-toggled so TerminalContainer never unmounts */
-  consoleLayer: css`
-    display: flex; flex-direction: column;
-    flex: 1; min-height: 0; overflow: hidden;
-    animation: consoleFadeIn 0.22s ease forwards;
-    @keyframes consoleFadeIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to   { opacity: 1; transform: translateY(0);   }
-    }
-  `,
-  consoleLayerHidden: css`
-    display: none;
-  `,
-
-  /* ── Console mode ── */
-  consoleRoot: css`
-    display: flex; flex-direction: column;
-    flex: 1; min-height: 0; overflow: hidden;
-    background: var(--bg-canvas);
-  `,
-  consoleHeader: css`
-    padding: 10px 20px;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-    user-select: none;
-  `,
-  consoleHeaderLeft: css`
-    display: flex; align-items: center; gap: 8px;
-    min-width: 0; overflow: hidden;
-  `,
-  consoleDot: css`
-    width: 9px; height: 9px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    box-shadow: 0 0 8px var(--color-brand);
-  `,
-  consoleName: css`
-    font-size: 13px; font-weight: 700;
-    color: var(--text-primary);
-    white-space: nowrap;
-  `,
-  consolePath: css`
-    font-size: 10px;
-    color: var(--text-tertiary);
-    font-family: var(--font-family-mono);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  `,
-  spacePill: css`
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 2px 8px;
-    border-radius: 99px;
-    border: 1px solid;
-    background: rgba(255,255,255,0.04);
-    flex-shrink: 0;
-  `,
-  spacePillDot: css`
-    width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;
-  `,
-  spacePillName: css`
-    font-size: 10px; font-weight: 600; white-space: nowrap;
-  `,
-  backBtn: css`
-    display: flex; align-items: center; gap: 5px;
-    background: transparent;
-    color: var(--text-tertiary);
-    padding: 5px 10px;
-    border-radius: 8px;
-    font-size: 11px; font-weight: 600;
-    border: 1px solid var(--border-color);
-    cursor: pointer; flex-shrink: 0;
-    transition: all 0.15s;
-    &:hover { border-color: var(--border-color-hover); color: var(--text-primary); background: var(--bg-hover); }
-  `,
-  consoleSplit: css`
-    flex: 1; display: flex; min-height: 0;
-    position: relative; /* anchor for the floating collapse button */
-    /* Defaults; useResizablePanel overrides these per-element while live. */
-    --panel-w: 360px;
-    --panel-content-w: 360px;
-  `,
-  /* While dragging, kill all width/position transitions so the panel tracks the
-     cursor 1:1 instead of easing toward each frame's target. */
-  dragging: css`
-    & * { transition: none !important; }
-  `,
-  consoleSplitLeft: css`
-    flex: 1; height: 100%; min-width: 0;
-    display: flex; flex-direction: column; overflow: hidden;
-    background: var(--bg-canvas);
-  `,
-  consoleSplitRight: css`
-    flex-shrink: 0; height: 100%;
-    width: var(--panel-w);
-    display: flex; flex-direction: column; overflow: hidden;
-    border-left: 1px solid var(--border-color);
-    background: var(--bg-primary);
-    transition: width 0.22s cubic-bezier(0.4,0,0.2,1);
-  `,
-  /* Fixed inner width so chat content never reflows while the outer clips to 0. */
-  consoleSplitRightInner: css`
-    width: var(--panel-content-w);
-    height: 100%;
-    display: flex; flex-direction: column;
-  `,
-
-  /* Drag handle — absolute, straddles the border, contributes zero flex space */
-  dragZone: css`
-    position: absolute;
-    top: 0; bottom: 0;
-    right: calc(var(--panel-w) - 4px);
-    width: 8px;
-    cursor: col-resize;
-    z-index: 5;
-    background: transparent;
-    transition: background 0.12s;
-    touch-action: none;
-    &:hover { background: rgba(var(--color-brand-rgb), 0.15); }
-  `,
-
-  /* Floating pill — straddles the terminal/chat border, always visible */
-  collapseBtn: css`
-    position: absolute;
-    top: 50%; transform: translateY(-50%);
-    right: var(--panel-w);
-    z-index: 10;
-    width: 14px; height: 48px;
-    border-radius: 4px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    box-shadow: var(--shadow-sm);
-    transition: right 0.22s cubic-bezier(0.4,0,0.2,1), color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
-    &:hover {
-      color: var(--color-brand);
-      background: rgba(var(--color-brand-rgb), 0.08);
-      border-color: rgba(var(--color-brand-rgb), 0.4);
-      box-shadow: var(--shadow-brand);
-    }
   `,
 
   /* ── Grid view — absolute overlay so console stays mounted beneath ── */
@@ -920,8 +693,4 @@ const s = {
     transition: box-shadow 0.2s, filter 0.2s;
     &:hover { box-shadow: 0 6px 20px rgba(123, 104, 238, 0.40); filter: brightness(1.06); }
   `,
-
-  /* Shared */
-  iconSm: css`width: 16px; height: 16px;`,
-  iconXs: css`width: 14px; height: 14px;`,
 };
