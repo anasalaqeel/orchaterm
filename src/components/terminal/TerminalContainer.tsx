@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { TerminalTab, TerminalTabHandle } from "./TerminalTab";
 import { useDashboard } from "../../context/DashboardContext";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, X, Terminal, Edit2, Check, Palette, ChevronDown, Minimize2 } from "lucide-react";
+import { Plus, X, Terminal, Edit2, Check, ChevronDown, Minimize2 } from "lucide-react";
 import { css, cx } from "@emotion/css";
 import type { TerminalSession, InterruptPolicy } from "../../types";
 import { loadTerminalTabs, saveTerminalTabs } from "../../services/storage";
@@ -768,6 +768,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                     <div
                       className={styles.colorDotWrapper}
                       onClick={(e) => {
+                        if (!isActive) return;
                         e.stopPropagation();
                         if (isColorPickerOpen) {
                           setColorPickerOpenId(null);
@@ -781,7 +782,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       <span
                         className={cx(styles.colorDot, isActive && styles.colorDotActive)}
                         style={{ backgroundColor: session.color ?? (isActive ? "var(--color-brand)" : "var(--bg-tertiary)") }}
-                        title="Change tab color"
+                        title={isActive ? "Change tab color" : undefined}
                       />
                     </div>
                     {isEditing ? (
@@ -806,25 +807,9 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                     )}
                     <div className={cx(styles.tabActions, "tab-actions-btn-group")}>
                       {!isEditing && (
-                        <>
-                          <button onClick={(e) => { e.stopPropagation(); startRename(session.id, session.title, e); }} className={styles.tabActionBtn} title="Rename tab">
-                            <Edit2 className={styles.tinyIcon} />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (isColorPickerOpen) { setColorPickerOpenId(null); }
-                              else {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                setColorPickerPos({ top: rect.bottom + 8, left: rect.left - 4 });
-                                setColorPickerOpenId(session.id);
-                              }
-                            }}
-                            className={styles.tabActionBtn} title="Change tab color"
-                          >
-                            <Palette className={styles.tinyIcon} />
-                          </button>
-                        </>
+                        <button onClick={(e) => { e.stopPropagation(); startRename(session.id, session.title, e); }} className={styles.tabActionBtn} title="Rename tab">
+                          <Edit2 className={styles.tinyIcon} />
+                        </button>
                       )}
                       <button onClick={(e) => closeTab(session.id, e)} className={styles.closeTabBtn} title="Close tab">
                         <X className={styles.tinyIcon} />
@@ -870,6 +855,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 <div
                   className={styles.colorDotWrapper}
                   onClick={(e) => {
+                    if (!isActive) return;
                     e.stopPropagation();
                     if (isColorPickerOpen) {
                       setColorPickerOpenId(null);
@@ -883,7 +869,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   <span
                     className={cx(styles.colorDot, isActive && styles.colorDotActive)}
                     style={{ backgroundColor: session.color ?? (isActive ? "var(--color-brand)" : "var(--bg-tertiary)") }}
-                    title="Change tab color"
+                    title={isActive ? "Change tab color" : undefined}
                   />
                 </div>
                 {isEditing ? (
@@ -908,25 +894,9 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 )}
                 <div className={cx(styles.tabActions, "tab-actions-btn-group")}>
                   {!isEditing && (
-                    <>
-                      <button onClick={(e) => { e.stopPropagation(); startRename(session.id, session.title, e); }} className={styles.tabActionBtn} title="Rename tab">
-                        <Edit2 className={styles.tinyIcon} />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (isColorPickerOpen) { setColorPickerOpenId(null); }
-                          else {
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setColorPickerPos({ top: rect.bottom + 8, left: rect.left - 4 });
-                            setColorPickerOpenId(session.id);
-                          }
-                        }}
-                        className={styles.tabActionBtn} title="Change tab color"
-                      >
-                        <Palette className={styles.tinyIcon} />
-                      </button>
-                    </>
+                    <button onClick={(e) => { e.stopPropagation(); startRename(session.id, session.title, e); }} className={styles.tabActionBtn} title="Rename tab">
+                      <Edit2 className={styles.tinyIcon} />
+                    </button>
                   )}
                   <button onClick={(e) => closeTab(session.id, e)} className={styles.closeTabBtn} title="Close tab">
                     <X className={styles.tinyIcon} />
