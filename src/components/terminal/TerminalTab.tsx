@@ -336,7 +336,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         
         if (!binding) {
           if (combo === 'ctrl+shift+c') binding = { key: combo, action: 'copy' };
-          else if (combo === 'ctrl+shift+v') binding = { key: combo, action: 'paste' };
           else return true;
         }
 
