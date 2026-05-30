@@ -51,6 +51,7 @@ export class AutonomousOrchestrator {
 
   private activeSpaces = new Map<string, ActiveSpace>();
   private eventListeners: Array<(event: RoutingEvent) => void> = [];
+  private activeChangeListeners: Array<() => void> = [];
 
   updateConfig(config: { routingProvider: LLMProvider }): void {
     this.routingProvider = config.routingProvider;
@@ -62,6 +63,27 @@ export class AutonomousOrchestrator {
     return () => {
       this.eventListeners = this.eventListeners.filter(l => l !== cb);
     };
+  }
+
+  /**
+   * Subscribe to changes in the active-session set (a Space starting or
+   * stopping). Lets other systems (e.g. session continuation) scope themselves
+   * to the sessions actually running agents. Returns an unsubscribe fn.
+   */
+  onActiveChange(cb: () => void): () => void {
+    this.activeChangeListeners.push(cb);
+    return () => {
+      this.activeChangeListeners = this.activeChangeListeners.filter(l => l !== cb);
+    };
+  }
+
+  /** Every session id currently under autonomous orchestration, across all spaces. */
+  getActiveSessionIds(): string[] {
+    const ids: string[] = [];
+    for (const active of this.activeSpaces.values()) {
+      for (const session of active.config.sessions) ids.push(session.id);
+    }
+    return ids;
   }
 
   /** Start autonomous monitoring for a Space. */
@@ -81,6 +103,7 @@ export class AutonomousOrchestrator {
     }
 
     this.activeSpaces.set(spaceConfig.spaceId, { config: spaceConfig, unsubscribers });
+    this.emitActiveChange();
   }
 
   /** Stop autonomous monitoring for a Space and clean up all watchers. */
@@ -89,11 +112,16 @@ export class AutonomousOrchestrator {
     if (!active) return;
     for (const unsub of active.unsubscribers) unsub();
     this.activeSpaces.delete(spaceId);
+    this.emitActiveChange();
   }
 
   /** Returns true if autonomous mode is running for the given Space. */
   isRunning(spaceId: string): boolean {
     return this.activeSpaces.has(spaceId);
+  }
+
+  private emitActiveChange(): void {
+    for (const cb of this.activeChangeListeners) cb();
   }
 
   // ── Private ──────────────────────────────────────────────────────────────────

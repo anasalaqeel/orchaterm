@@ -231,6 +231,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
   const [lastCheckpoint, setLastCheckpoint] = useState<CheckpointSnapshot | null>(null);
   const [pendingInjectionSnapshot, setPendingInjectionSnapshot] = useState<CheckpointSnapshot | null>(null);
+  /** Sessions currently running agents under autonomous orchestration (the agent tabs). */
+  const [agentSessionIds, setAgentSessionIds] = useState<string[]>([]);
   const [llmProviders, setLlmProviders] = useState(() =>
     makeProviders({
       relay:      { ...DEFAULT_OLLAMA_CONFIG },
@@ -374,36 +376,46 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, [settings.continuation]);
 
-  // ── Start/stop session continuation monitoring ──────────────────────────────
+  // ── Track which sessions are running agents (autonomous orchestration) ───────
+  // Continuation only watches these — never bare interactive terminals, whose
+  // returning shell prompt the detector would otherwise misread as "stopped".
   useEffect(() => {
-    if (!settings.continuation?.enabled) {
-      // Stop all active monitoring when disabled
-      for (const session of terminalSessions) {
-        sessionContinuationService.stopMonitoring(session.id);
+    const sync = () => setAgentSessionIds(autonomousOrchestrator.getActiveSessionIds());
+    sync();
+    return autonomousOrchestrator.onActiveChange(sync);
+  }, []);
+
+  // ── Start/stop session continuation monitoring (scoped to agent sessions) ────
+  useEffect(() => {
+    const enabled = settings.continuation?.enabled ?? false;
+    const agentSet = new Set(agentSessionIds);
+
+    // Stop monitoring anything that is no longer an active agent session
+    // (covers the feature being disabled, a space stopping, or a tab closing).
+    for (const id of sessionContinuationService.getMonitoredSessionIds()) {
+      if (!enabled || !agentSet.has(id)) {
+        sessionContinuationService.stopMonitoring(id);
       }
-      return;
     }
 
-    // Find the active workspace path
+    if (!enabled) return;
+
     const workspace = workspaces.find(w => w.id === activeWorkspaceId);
     const workspacePath = workspace?.path ?? '';
     if (!workspacePath) return;
 
     for (const session of terminalSessions) {
+      if (!agentSet.has(session.id)) continue;
       if (!sessionContinuationService.isMonitoring(session.id)) {
         void sessionContinuationService.startMonitoring(
-          {
-            id: session.id,
-            title: session.title,
-            workspacePath,
-          },
-          settings.continuation,
+          { id: session.id, title: session.title, workspacePath },
+          settings.continuation!,
           llmProviders.routing,
           llmProviders.relay,
         );
       }
     }
-  }, [terminalSessions, settings.continuation, activeWorkspaceId, workspaces, llmProviders.routing, llmProviders.relay]);
+  }, [agentSessionIds, terminalSessions, settings.continuation, activeWorkspaceId, workspaces, llmProviders.routing, llmProviders.relay]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ id: crypto.randomUUID(), message, type });
