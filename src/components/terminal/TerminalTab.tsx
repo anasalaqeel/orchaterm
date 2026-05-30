@@ -81,7 +81,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // No need to call resize_pty directly here.
     useImperativeHandle(ref, () => ({
       fit: () => {
-        if (!fitAddonRef.current) return;
+        if (!fitAddonRef.current || !termRef.current) return;
+        (termRef.current as any)._core?._charSizeService?.measure();
         safeFit(fitAddonRef.current);
       },
       focus: () => {
