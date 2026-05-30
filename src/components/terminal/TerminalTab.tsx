@@ -12,6 +12,7 @@ import { FitAddon } from 'xterm-addon-fit';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { css } from '@emotion/css';
+import { Copy, Check } from 'lucide-react';
 import { terminalGainedFocus, terminalLostFocus } from '../../services/terminalFocus';
 import { useDashboard } from '../../context/DashboardContext';
 import { DEFAULT_TERMINAL_CONFIG, buildCombo } from '../../utils/terminalThemes';
@@ -63,6 +64,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     const fitAddonRef = useRef<FitAddon | null>(null);
     const [spawnState, setSpawnState] = useState<SpawnState>('idle');
     const [errorMsg, setErrorMsg] = useState('');
+    const [hasSelection, setHasSelection] = useState(false);
+    const [hasCopied, setHasCopied] = useState(false);
     // Guard against React StrictMode double-invocation. When StrictMode runs
     // cleanup immediately after the first effect, it sets this to true so the
     // second (redundant) invocation is a no-op. Manually triggered retries
@@ -198,6 +201,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       term.element?.addEventListener('mouseup', onMouseUp);
       term.element?.addEventListener('mousedown', onMouseDown);
 
+      const selDispose = term.onSelectionChange(() => {
+        setHasSelection(term.hasSelection());
+      });
+
       // ─ Forward keyboard input → PTY ──────────────────────────────────
       const dataDispose = term.onData((data) => {
         invoke('write_pty', { sessionId, data }).catch((err) =>
@@ -295,8 +302,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         resizeObserver.disconnect();
         term.textarea?.removeEventListener('focus', onFocusIn);
         term.textarea?.removeEventListener('blur',  onFocusOut);
+        term.element?.removeEventListener('mouseup', onMouseUp);
+        term.element?.removeEventListener('mousedown', onMouseDown);
         terminalLostFocus(); // ensure count stays consistent on unmount
         dataDispose.dispose();
+        selDispose.dispose();
         if (unlisten) unlisten();
         resizeDispose.dispose();
         term.dispose();
@@ -396,6 +406,25 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         {/* Terminal canvas */}
         <div ref={containerRef} className={styles.terminalContainer} />
 
+        {/* Floating Copy Button */}
+        {hasSelection && (
+          <button 
+            className={styles.floatingCopyBtn}
+            title="Copy selection"
+            onClick={() => {
+              const term = termRef.current;
+              if (term && term.hasSelection() && navigator.clipboard) {
+                navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+                setHasCopied(true);
+                setTimeout(() => setHasCopied(false), 2000);
+                term.clearSelection();
+              }
+            }}
+          >
+            {hasCopied ? <Check size={14} /> : <Copy size={14} />} <span>{hasCopied ? 'Copied' : 'Copy'}</span>
+          </button>
+        )}
+
         {/* Error overlay with retry */}
         {spawnState === 'error' && (
           <div className={styles.errorOverlay}>
@@ -434,6 +463,29 @@ const styles = {
     /* xterm renders its own canvas; this colour shows only in any gap
        before the canvas is attached or while transitioning. */
     background-color: #070d14;
+  `,
+  floatingCopyBtn: css`
+    position: absolute;
+    top: 12px;
+    right: 24px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(11, 21, 32, 0.85);
+    backdrop-filter: blur(4px);
+    color: #e2e8f0;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    z-index: 20;
+    transition: all 0.2s;
+    &:hover {
+      background: rgba(15, 28, 43, 0.95);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
   `,
   errorOverlay: css`
     position: absolute;
