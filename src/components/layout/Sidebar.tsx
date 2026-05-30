@@ -145,7 +145,6 @@ export function Sidebar() {
           {workspaces.map((w, i) => {
             const isConsoleOpen = !!onDashboard && viewMode === 'console' && w.id === activeWorkspaceId;
             const isWsHovered   = hoveredWsId === w.id;
-            const isRunning     = localStorage.getItem(`orchaterm:conductor:running:${w.id}`) === 'true';
 
             return (
               <motion.div
@@ -186,7 +185,6 @@ export function Sidebar() {
                       )}
                     </AnimatePresence>
 
-                    {isRunning && <span className={s.wsRunDot} />}
                   </button>
 
                   <AnimatePresence>
@@ -487,14 +485,6 @@ const s = {
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
-  `,
-  wsRunDot: css`
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--color-brand);
-    flex-shrink: 0;
-    animation: runPulse 1.6s ease-in-out infinite;
-    @keyframes runPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
   `,
   wsActions: css`
     display: flex;

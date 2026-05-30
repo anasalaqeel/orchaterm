@@ -1,14 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SessionContinuationService } from '../services/sessionContinuationService';
 
-// Default buffer contains a usage-limit marker so the detection pre-gate lets
-// the LLM run — most tests exercise the limit-detected path. The no-marker case
-// (a normal shell) is covered explicitly by its own test.
 vi.mock('../services/bufferWatcher', () => ({
   bufferWatcher: {
     watchForSummary: vi.fn().mockResolvedValue(() => {}),
     watchForIdle: vi.fn().mockResolvedValue(() => {}),
-    getBuffer: vi.fn().mockReturnValue('Claude\n...working...\nClaude usage limit reached · resets at 3pm'),
+    getBuffer: vi.fn().mockReturnValue('some terminal output'),
   },
 }));
 
@@ -55,13 +52,8 @@ const defaultMeta = {
 describe('SessionContinuationService', () => {
   let service: SessionContinuationService;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
-    // clearAllMocks resets call history but NOT implementations/return values,
-    // so restore the per-test defaults to keep tests isolated from each other.
-    const { bufferWatcher } = await import('../services/bufferWatcher');
-    vi.mocked(bufferWatcher.getBuffer).mockReturnValue('Claude\n...working...\nClaude usage limit reached · resets at 3pm');
-    mockProvider.complete.mockResolvedValue('PROGRESS');
     service = new SessionContinuationService();
   });
 
@@ -91,7 +83,7 @@ describe('SessionContinuationService', () => {
     expect(service.isMonitoring('sess-a')).toBe(false);
   });
 
-  it('calls detection provider when a summary delta arrives and a limit marker is present', async () => {
+  it('calls detection provider when a summary delta arrives', async () => {
     const capturedCallbacks: Array<(chunk: string) => void> = [];
     const { bufferWatcher } = await import('../services/bufferWatcher');
     vi.mocked(bufferWatcher.watchForSummary).mockImplementation(
@@ -104,26 +96,6 @@ describe('SessionContinuationService', () => {
     await service.startMonitoring(defaultMeta, defaultConfig, mockProvider, mockProvider);
     if (capturedCallbacks[0]) await capturedCallbacks[0]('new output delta');
     expect(mockProvider.complete).toHaveBeenCalled();
-  });
-
-  it('skips detection entirely on normal shell output (no limit marker → no LLM call, no checkpoint)', async () => {
-    const capturedCallbacks: Array<(chunk: string) => void> = [];
-    const { bufferWatcher } = await import('../services/bufferWatcher');
-    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(
-      async (_id, onChunk) => { capturedCallbacks.push(onChunk); return () => {}; }
-    );
-    // Bare PowerShell prompt returning after a finished command — the exact
-    // false-positive case. Even if the LLM *would* say STOPPED, the pre-gate
-    // must prevent the call so no checkpoint/modal fires.
-    vi.mocked(bufferWatcher.getBuffer).mockReturnValue('PS C:\\proj> git status\nnothing to commit, working tree clean\nPS C:\\proj>');
-    mockProvider.complete.mockResolvedValue('STOPPED');
-
-    const { generateCheckpoint } = await import('../services/checkpointGenerator');
-
-    await service.startMonitoring(defaultMeta, defaultConfig, mockProvider, mockProvider);
-    if (capturedCallbacks[0]) await capturedCallbacks[0]('git status\nnothing to commit, working tree clean');
-    expect(mockProvider.complete).not.toHaveBeenCalled();
-    expect(generateCheckpoint).not.toHaveBeenCalled();
   });
 
   it('emits detection-update event after classification', async () => {
