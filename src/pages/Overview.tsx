@@ -54,6 +54,20 @@ export const DashboardView: React.FC = () => {
 
   const handleBackToGrid = useCallback(() => setViewMode('grid'), [setViewMode]);
 
+  // Tracks which workspaces have ever had their console opened this session.
+  // Once mounted, a WorkspaceConsole stays mounted (PTY sessions survive workspace switches).
+  const [mountedConsoleIds, setMountedConsoleIds] = useState<Set<string>>(new Set());
+
+  // Mark the active workspace as mounted whenever console view is active.
+  useEffect(() => {
+    if (viewMode === 'console' && activeWorkspaceId) {
+      setMountedConsoleIds(prev => {
+        if (prev.has(activeWorkspaceId)) return prev;
+        return new Set([...prev, activeWorkspaceId]);
+      });
+    }
+  }, [viewMode, activeWorkspaceId]);
+
   // Open the New Workspace modal whenever the sidebar + button sets the flag.
   useEffect(() => {
     if (newWorkspaceModalOpen) {
@@ -97,37 +111,37 @@ export const DashboardView: React.FC = () => {
     setShowAddProj(false);
   };
 
-  /* ── Derived (memoized so the React.memo'd WorkspaceConsole boundary holds) ── */
   const showConsole = viewMode === 'console' && !!activeProject;
-  const activeSpace = useMemo(
-    () => (activeProject && activeSpaceId
-      ? spaces.find(sp => sp.id === activeSpaceId && sp.workspaceId === activeProject.id) ?? null
-      : null),
-    [spaces, activeProject, activeSpaceId],
-  );
-  const panelKey = useMemo(
-    () => (activeProject ? `${activeProject.id}::${activeSpaceId ?? 'workspace'}` : 'empty'),
-    [activeProject, activeSpaceId],
-  );
 
   /*
-   * Single return — console view is ALWAYS mounted so PTY sessions survive
-   * viewMode switches. The grid flies in as a position:absolute overlay on top.
-   * This mirrors how AppLayout keeps DashboardView alive across route changes.
+   * Console view is ALWAYS mounted (once opened) so PTY sessions survive both
+   * viewMode switches and workspace switches. Each workspace gets its own
+   * WorkspaceConsole instance keyed by workspace.id; only the active one is
+   * visible (CSS display toggle). The grid flies in as an absolute overlay on top.
    */
   return (
     <div className={s.pageRoot}>
 
-      {/* ── Console — always mounted, CSS-toggled (keeps PTY sessions alive) ─── */}
-      {activeProject && (
-        <WorkspaceConsole
-          active={showConsole}
-          project={activeProject}
-          space={activeSpace}
-          panelKey={panelKey}
-          onBack={handleBackToGrid}
-        />
-      )}
+      {/* ── Per-workspace consoles: lazy-mounted on first open, never unmounted ── */}
+      {workspaces.filter(w => mountedConsoleIds.has(w.id)).map(workspace => {
+        const isThisActive = workspace.id === activeWorkspaceId;
+        // Only resolve the active space for the currently visible workspace.
+        // Non-active workspaces always get a stable panelKey so their
+        // TerminalContainer never remounts due to space changes elsewhere.
+        const thisSpace = isThisActive && activeSpaceId
+          ? spaces.find(sp => sp.id === activeSpaceId && sp.workspaceId === workspace.id) ?? null
+          : null;
+        return (
+          <WorkspaceConsole
+            key={workspace.id}
+            active={showConsole && isThisActive}
+            project={workspace}
+            space={thisSpace}
+            panelKey={`${workspace.id}::${thisSpace?.id ?? 'workspace'}`}
+            onBack={handleBackToGrid}
+          />
+        );
+      })}
 
       {/* ── Grid — absolute overlay, animates in/out over the console ───────── */}
       <AnimatePresence>
