@@ -286,6 +286,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       // returns the real terminal dimensions before spawn_pty is called.
       const rafId = requestAnimationFrame(() => {
         if (!effectActiveRef.current) return; // guard: component may have unmounted
+        // measure() ensures char metrics are fresh before computing cols/rows.
+        // Without this, the initial fit (and therefore the PTY spawn dims) may
+        // use stale metrics, putting PTY and xterm out of sync from the start.
+        (term as any)._core?._charSizeService?.measure();
         safeFit(fitAddon);   // fit xterm.js; onResize fires but isSpawnedRef=false → no-op
         spawnSession();      // reads fitted dims, spawns PTY, then sets isSpawnedRef=true
       });
