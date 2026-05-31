@@ -88,7 +88,6 @@ export const DashboardView: React.FC = () => {
   const handleAddProjectSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProjName.trim()) { showToast('Name required', 'error'); return; }
-    if (!newProjPath.trim()) { showToast('Path required', 'error'); return; }
     addWorkspace({
       name: newProjName, path: newProjPath, description: newProjDesc,
       color: newProjColor, status: 'active', currentTask: '',
@@ -286,9 +285,9 @@ export const DashboardView: React.FC = () => {
                         <Input type="text" placeholder="e.g. My API" value={newProjName} onChange={e => setNewProjName(e.target.value)} className={s.fieldInput} required />
                       </div>
                       <div className={s.fieldGroup}>
-                        <label className={s.fieldLabel}>Directory path</label>
+                        <label className={s.fieldLabel}>Directory path <span className={s.optional}>(optional)</span></label>
                         <div className={s.pathInputRow}>
-                          <Input type="text" placeholder="C:\Users\me\projects\my-app" value={newProjPath} onChange={e => setNewProjPath(e.target.value)} className={cx(s.fieldInput, s.pathInput)} required />
+                          <Input type="text" placeholder="C:\Users\me\projects\my-app" value={newProjPath} onChange={e => setNewProjPath(e.target.value)} className={cx(s.fieldInput, s.pathInput)} />
                           <button type="button" className={s.browseBtn} onClick={handleBrowseDirectory} title="Browse for folder">
                             <FolderOpen size={14} /><span>Browse</span>
                           </button>
