@@ -11,6 +11,7 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { css } from '@emotion/css';
 import { Copy, Check } from 'lucide-react';
 import { terminalGainedFocus, terminalLostFocus } from '../../services/terminalFocus';
@@ -281,6 +282,32 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         resizeObserver.observe(containerRef.current);
       }
 
+      // ─ File drag-drop (paths from OS via Tauri window event) ──────────────
+      // onDragDropEvent is the idiomatic Tauri v2 API — gives a typed payload with
+      // a `type` discriminant. We only act on 'drop', ignoring 'enter'/'over'/'leave'.
+      // Position is in logical (CSS) pixels so it's directly comparable to getBoundingClientRect.
+      let unlistenDrop: UnlistenFn | null = null;
+      getCurrentWindow().onDragDropEvent((event) => {
+        if (event.payload.type !== 'drop') return;
+        const { paths, position } = event.payload;
+        if (!paths?.length || !position) return;
+        const container = containerRef.current;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        if (
+          position.x >= rect.left && position.x <= rect.right &&
+          position.y >= rect.top  && position.y <= rect.bottom
+        ) {
+          const text = paths.map((p) => (p.includes(' ') ? `"${p}"` : p)).join(' ');
+          invoke('write_pty', { sessionId, data: text }).catch(() => {});
+        }
+      })
+        .then((fn) => {
+          if (cancelled) fn();
+          else unlistenDrop = fn;
+        })
+        .catch(() => {});
+
       // ─ Spawn the PTY process (inside rAF so dims are correct) ──────────
       // Deferring to rAF ensures CSS flex layout has resolved and safeFit
       // returns the real terminal dimensions before spawn_pty is called.
@@ -313,6 +340,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         dataDispose.dispose();
         selDispose.dispose();
         if (unlisten) unlisten();
+        if (unlistenDrop) unlistenDrop();
         resizeDispose.dispose();
         term.dispose();
         termRef.current = null;

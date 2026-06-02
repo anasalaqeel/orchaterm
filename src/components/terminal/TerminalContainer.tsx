@@ -9,7 +9,7 @@ import type { TerminalSession, InterruptPolicy } from "../../types";
 import { loadTerminalTabs, saveTerminalTabs } from "../../services/storage";
 import { Input } from '../ui';
 import { useSplitTree, findNodeById } from "../../hooks/useSplitTree";
-import { computeSplitLayout, type DividerRect } from "../../utils/splitLayout";
+import { computeSplitLayout, type DividerRect, type SplitLayout } from "../../utils/splitLayout";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -139,6 +139,13 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const tabCounter = useRef(0);
   const registeredIds = useRef<Set<string>>(new Set());
 
+  // ── Single-view overlay ──────────────────────────────────────────────────
+  // When set, this bg session is shown full-screen without touching the split
+  // tree. Clicking a grouped tab clears this and restores the split view.
+  const [singleViewSessionId, setSingleViewSessionId] = useState<string | null>(null);
+  const singleViewRef = useRef<string | null>(null);
+  singleViewRef.current = singleViewSessionId;
+
   // ── Split tree ───────────────────────────────────────────────────────────
   const {
     tree,
@@ -176,31 +183,55 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   }, []);
 
   // ── Split layout (no header height — terminals use full pane) ────────────
-  const layout = useMemo(
+  // treeLayout: always reflects the split tree — drives tab bar group display.
+  // renderLayout: what's actually rendered — overrides tree with a single
+  //   full-screen pane when singleViewSessionId is set (bg tab is being shown).
+  const treeLayout = useMemo(
     () => computeSplitLayout(tree, 0, 0, containerSize.width, containerSize.height, 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tree, containerSize.width, containerSize.height],
   );
+  const treeLayoutRef = useRef(treeLayout);
+  treeLayoutRef.current = treeLayout;
 
-  const isSplit = layout.panes.length > 1;
+  const renderLayout = useMemo((): SplitLayout => {
+    if (singleViewSessionId) {
+      return {
+        panes: [{
+          leafId: '__single__',
+          sessionId: singleViewSessionId,
+          top: 0, left: 0,
+          width: containerSize.width,
+          height: containerSize.height,
+          termTop: 0,
+          termHeight: containerSize.height,
+        }],
+        dividers: [],
+      };
+    }
+    return treeLayout;
+  }, [singleViewSessionId, treeLayout, containerSize.width, containerSize.height]);
 
-  // Sessions ordered by pane position (for tab group), then background sessions
+  // isSplit / inViewSessions / bgSessions — always from treeLayout so the
+  // group bracket in the tab bar persists while single-viewing a bg tab.
+  const isSplit = treeLayout.panes.length > 1;
+
   const inViewSessions = useMemo(() => {
-    return layout.panes
+    return treeLayout.panes
       .map((p) => sessions.find((s) => s.id === p.sessionId))
       .filter((s): s is TerminalSession => !!s);
-  }, [layout.panes, sessions]);
+  }, [treeLayout.panes, sessions]);
 
   const bgSessions = useMemo(
-    () => sessions.filter((s) => !layout.panes.some((p) => p.sessionId === s.id)),
-    [sessions, layout.panes],
+    () => sessions.filter((s) => !treeLayout.panes.some((p) => p.sessionId === s.id)),
+    [sessions, treeLayout.panes],
   );
 
-  // Derived: session in active pane → drives tab bar highlight
-  const activeSessionId = useMemo(
-    () => layout.panes.find((p) => p.leafId === activePaneId)?.sessionId ?? null,
-    [layout.panes, activePaneId],
-  );
+  // Active session: single-view takes priority, else follow activePaneId in tree.
+  const activeSessionId = useMemo(() => {
+    if (singleViewSessionId) return singleViewSessionId;
+    return treeLayout.panes.find((p) => p.leafId === activePaneId)?.sessionId ?? null;
+  }, [singleViewSessionId, treeLayout.panes, activePaneId]);
 
   // ── Drag-drop split state ────────────────────────────────────────────────
   const [isDraggingTab, setIsDraggingTab] = useState(false);
@@ -212,9 +243,12 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const [leavingPaneIds, setLeavingPaneIds] = useState<Set<string>>(new Set());
 
   // ── Fit newly-visible terminals + trigger enter animation ────────────────
+  // Use render-visible IDs (not tree-visible) so switching to/from single-view
+  // also triggers fit for the session that just became visible.
   const prevVisibleRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const current = new Set(visibleSessionIds);
+    const ids = singleViewSessionId ? [singleViewSessionId] : visibleSessionIds;
+    const current = new Set(ids);
     const entering: string[] = [];
     requestAnimationFrame(() => {
       for (const sid of current) {
@@ -230,7 +264,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleSessionIds.join(",")]);
+  }, [singleViewSessionId, visibleSessionIds.join(",")]);
 
   // ── Color picker ─────────────────────────────────────────────────────────
   const [colorPickerOpenId, setColorPickerOpenId] = useState<string | null>(null);
@@ -369,6 +403,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
     return () => {
       cancelled = true;
+      setSingleViewSessionId(null);
       setSessions((prev) => {
         prev.forEach((s) => invoke("kill_pty", { sessionId: s.id }).catch(() => {}));
         return prev;
@@ -426,6 +461,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         interruptPolicy: "always",
       };
       setSessions((prev) => [...prev, newSession]);
+      // Clear single-view so the new tab replaces the active tree pane normally.
+      setSingleViewSessionId(null);
       setLeafSession(activePaneIdRef.current, newId);
     },
     [settings.shellPath, workspaceId, setLeafSession],
@@ -436,6 +473,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       e.stopPropagation();
       invoke("kill_pty", { sessionId }).catch(() => {});
       tabRefs.current.delete(sessionId);
+      if (singleViewRef.current === sessionId) setSingleViewSessionId(null);
       removePanesBySession(sessionId);
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     },
@@ -453,26 +491,30 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     [closePane],
   );
 
-  const layoutRef = useRef(layout);
-  layoutRef.current = layout;
-
   const switchTab = useCallback(
     (sessionId: string) => {
-      // If already visible in a pane, focus that pane instead of replacing
-      const existingPane = layoutRef.current.panes.find((p) => p.sessionId === sessionId);
-      if (existingPane) {
-        setActivePaneId(existingPane.leafId);
-        requestAnimationFrame(() => tabRefs.current.get(sessionId)?.current?.focus());
+      // Session is in the split tree — clear single-view and focus its pane.
+      const treePane = treeLayoutRef.current.panes.find((p) => p.sessionId === sessionId);
+      if (treePane) {
+        setSingleViewSessionId(null);
+        setActivePaneId(treePane.leafId);
+        requestAnimationFrame(() => {
+          // Fit all group panes after restoring split view from single-view.
+          for (const p of treeLayoutRef.current.panes) {
+            tabRefs.current.get(p.sessionId)?.current?.fit();
+          }
+          tabRefs.current.get(sessionId)?.current?.focus();
+        });
         return;
       }
-      // Not in any pane — show in the active pane
-      setLeafSession(activePaneIdRef.current, sessionId);
+      // Not in tree — show as single-view overlay (tree is preserved).
+      setSingleViewSessionId(sessionId);
       requestAnimationFrame(() => {
         const ref = tabRefs.current.get(sessionId);
         if (ref?.current) { ref.current.fit(); ref.current.focus(); }
       });
     },
-    [setLeafSession, setActivePaneId],
+    [setActivePaneId],
   );
 
   // ── Rename ───────────────────────────────────────────────────────────────
@@ -592,6 +634,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         return { ...s, order: i };
       });
     });
+    setSingleViewSessionId(null);
     dragIdRef.current = null;
     draggingSessionIdRef.current = null;
     setDragId(null);
@@ -637,6 +680,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         return { ...s, order: i };
       });
     });
+    setSingleViewSessionId(null);
     dragIdRef.current = null;
     draggingSessionIdRef.current = null;
     setDragId(null);
@@ -653,6 +697,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       if (!sessionId) return;
       const before = edge === "left" || edge === "top";
       const direction = edge === "left" || edge === "right" ? "h" : "v";
+      setSingleViewSessionId(null);
       moveSession(sessionId, leafId, direction, before);
       dragIdRef.current = null;
       draggingSessionIdRef.current = null;
@@ -1102,9 +1147,10 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
           <>
             {/* All terminals — absolute positioned so PTYs stay alive */}
             {sessions.map((session) => {
-              const pane = layout.panes.find((p) => p.sessionId === session.id);
+              const pane = renderLayout.panes.find((p) => p.sessionId === session.id);
               const tabRef = tabRefs.current.get(session.id) ?? null;
-              const isActivePane = isSplit && pane?.leafId === activePaneId;
+              // No active-pane border or collapse button while in single-view mode.
+              const isActivePane = !singleViewSessionId && isSplit && pane?.leafId === activePaneId;
               return (
                 <div
                   key={session.id}
@@ -1132,7 +1178,9 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   }
                   onClick={() => {
                     if (pane) {
-                      setActivePaneId(pane.leafId);
+                      // Don't write '__single__' into activePaneId — that fake
+                      // leafId exists only in renderLayout, not the tree.
+                      if (!singleViewRef.current) setActivePaneId(pane.leafId);
                       tabRefs.current.get(session.id)?.current?.focus();
                     }
                   }}
@@ -1144,7 +1192,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                     shell={session.shell}
                     shellArgs={session.shellArgs}
                   />
-                  {isSplit && pane && (
+                  {!singleViewSessionId && isSplit && pane && (
                     <>
                       {isActivePane && (
                         <div
@@ -1174,7 +1222,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
             })}
 
             {/* Drag-resize dividers */}
-            {layout.dividers.map((div) => (
+            {renderLayout.dividers.map((div) => (
               <div
                 key={`${div.containerId}-${div.childIndex}`}
                 className={cx(
@@ -1194,8 +1242,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
             ))}
 
             {/* Drop zones — visible arrow indicators at pane edges during drag */}
-            {isDraggingTab &&
-              layout.panes.filter((pane) => pane.sessionId !== draggingSessionIdRef.current).map((pane) => {
+            {isDraggingTab && !singleViewSessionId &&
+              treeLayout.panes.filter((pane) => pane.sessionId !== draggingSessionIdRef.current).map((pane) => {
                 const W = pane.width;
                 const H = pane.height;
                 const eW = W * DROP_EDGE_FRACTION;
@@ -1222,7 +1270,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
             {/* Drop indicator — animated preview of where new pane will appear */}
             {hoveredDrop &&
               (() => {
-                const pane = layout.panes.find((p) => p.leafId === hoveredDrop.leafId);
+                const pane = treeLayout.panes.find((p) => p.leafId === hoveredDrop.leafId);
                 if (!pane) return null;
                 const { edge } = hoveredDrop;
                 const hw = pane.width / 2;
