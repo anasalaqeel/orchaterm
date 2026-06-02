@@ -45,7 +45,15 @@ const TAB_COLOR_PRESETS = [
   "#84cc16",
 ];
 
-const DROP_EDGE_FRACTION = 0.28; // fraction of pane width/height that counts as an edge zone
+// Derives the closest drop edge from cursor position inside an element.
+// Uses distance-to-edge so every pixel of the pane resolves to an edge — no dead zones.
+function detectDropEdge(e: React.DragEvent): DropEdge {
+  const rect = e.currentTarget.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = (e.clientY - rect.top) / rect.height;
+  const d: Record<DropEdge, number> = { left: x, right: 1 - x, top: y, bottom: 1 - y };
+  return (Object.keys(d) as DropEdge[]).reduce((a, b) => (d[a] <= d[b] ? a : b));
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -1241,31 +1249,17 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
               />
             ))}
 
-            {/* Drop zones — visible arrow indicators at pane edges during drag */}
+            {/* Drop zones — single overlay per pane; edge resolved from cursor distance */}
             {isDraggingTab && !singleViewSessionId &&
-              treeLayout.panes.filter((pane) => pane.sessionId !== draggingSessionIdRef.current).map((pane) => {
-                const W = pane.width;
-                const H = pane.height;
-                const eW = W * DROP_EDGE_FRACTION;
-                const eH = H * DROP_EDGE_FRACTION;
-
-                const zones: { edge: DropEdge; top: number; left: number; width: number; height: number; }[] = [
-                  { edge: "left",   top: pane.top,           left: pane.left,          width: eW,          height: H   },
-                  { edge: "right",  top: pane.top,           left: pane.left + W - eW, width: eW,          height: H   },
-                  { edge: "top",    top: pane.top,           left: pane.left + eW,     width: W - 2 * eW,  height: eH  },
-                  { edge: "bottom", top: pane.top + H - eH,  left: pane.left + eW,     width: W - 2 * eW,  height: eH  },
-                ];
-
-                return zones.map((z) => (
-                  <div
-                    key={`zone-${pane.leafId}-${z.edge}`}
-                    style={{ position: "absolute", top: z.top, left: z.left, width: z.width, height: z.height, zIndex: 50 }}
-                    onDragOver={(e) => { e.preventDefault(); setHoveredDrop({ leafId: pane.leafId, edge: z.edge }); }}
-                    onDragLeave={() => setHoveredDrop(null)}
-                    onDrop={(e) => { e.preventDefault(); handlePaneDrop(pane.leafId, z.edge); }}
-                  />
-                ));
-              })}
+              treeLayout.panes.filter((pane) => pane.sessionId !== draggingSessionIdRef.current).map((pane) => (
+                <div
+                  key={`zone-${pane.leafId}`}
+                  style={{ position: "absolute", top: pane.top, left: pane.left, width: pane.width, height: pane.height, zIndex: 50 }}
+                  onDragOver={(e) => { e.preventDefault(); setHoveredDrop({ leafId: pane.leafId, edge: detectDropEdge(e) }); }}
+                  onDragLeave={() => setHoveredDrop(null)}
+                  onDrop={(e) => { e.preventDefault(); handlePaneDrop(pane.leafId, detectDropEdge(e)); }}
+                />
+              ))}
 
             {/* Drop indicator — animated preview of where new pane will appear */}
             {hoveredDrop &&
