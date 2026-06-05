@@ -8,8 +8,8 @@ import { css, cx } from "@emotion/css";
 import type { TerminalSession, InterruptPolicy } from "../../types";
 import { loadTerminalTabs, saveTerminalTabs } from "../../services/storage";
 import { Input } from '../ui';
-import { useSplitTree, findNodeById } from "../../hooks/useSplitTree";
-import { computeSplitLayout, type DividerRect, type SplitLayout } from "../../utils/splitLayout";
+import { useSplitTree, findNodeById, collectLeafSessionIds } from "../../hooks/useSplitTree";
+import { computeSplitLayout, type DividerRect } from "../../utils/splitLayout";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -147,26 +147,22 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const tabCounter = useRef(0);
   const registeredIds = useRef<Set<string>>(new Set());
 
-  // ── Single-view overlay ──────────────────────────────────────────────────
-  // When set, this bg session is shown full-screen without touching the split
-  // tree. Clicking a grouped tab clears this and restores the split view.
-  const [singleViewSessionId, setSingleViewSessionId] = useState<string | null>(null);
-  const singleViewRef = useRef<string | null>(null);
-  singleViewRef.current = singleViewSessionId;
-
   // ── Split tree ───────────────────────────────────────────────────────────
   const {
     tree,
     activePaneId,
     setActivePaneId,
+    switchSession,
     moveSession,
     closePane,
     setRatios,
-    setLeafSession,
     removePanesBySession,
     resetTree,
+    initializeGroups,
     visibleSessionIds,
-  } = useSplitTree("");
+    groups,
+    activeGroupId,
+  } = useSplitTree(sessions);
 
   const activePaneIdRef = useRef(activePaneId);
   activePaneIdRef.current = activePaneId;
@@ -202,44 +198,14 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const treeLayoutRef = useRef(treeLayout);
   treeLayoutRef.current = treeLayout;
 
-  const renderLayout = useMemo((): SplitLayout => {
-    if (singleViewSessionId) {
-      return {
-        panes: [{
-          leafId: '__single__',
-          sessionId: singleViewSessionId,
-          top: 0, left: 0,
-          width: containerSize.width,
-          height: containerSize.height,
-          termTop: 0,
-          termHeight: containerSize.height,
-        }],
-        dividers: [],
-      };
-    }
-    return treeLayout;
-  }, [singleViewSessionId, treeLayout, containerSize.width, containerSize.height]);
+  const renderLayout = treeLayout;
 
-  // isSplit / inViewSessions / bgSessions — always from treeLayout so the
-  // group bracket in the tab bar persists while single-viewing a bg tab.
   const isSplit = treeLayout.panes.length > 1;
 
-  const inViewSessions = useMemo(() => {
-    return treeLayout.panes
-      .map((p) => sessions.find((s) => s.id === p.sessionId))
-      .filter((s): s is TerminalSession => !!s);
-  }, [treeLayout.panes, sessions]);
-
-  const bgSessions = useMemo(
-    () => sessions.filter((s) => !treeLayout.panes.some((p) => p.sessionId === s.id)),
-    [sessions, treeLayout.panes],
-  );
-
-  // Active session: single-view takes priority, else follow activePaneId in tree.
+  // Active session: follow activePaneId in tree.
   const activeSessionId = useMemo(() => {
-    if (singleViewSessionId) return singleViewSessionId;
     return treeLayout.panes.find((p) => p.leafId === activePaneId)?.sessionId ?? null;
-  }, [singleViewSessionId, treeLayout.panes, activePaneId]);
+  }, [treeLayout.panes, activePaneId]);
 
   // ── Drag-drop split state ────────────────────────────────────────────────
   const [isDraggingTab, setIsDraggingTab] = useState(false);
@@ -255,7 +221,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   // also triggers fit for the session that just became visible.
   const prevVisibleRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const ids = singleViewSessionId ? [singleViewSessionId] : visibleSessionIds;
+    const ids = visibleSessionIds;
     const current = new Set(ids);
     const entering: string[] = [];
     requestAnimationFrame(() => {
@@ -272,7 +238,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [singleViewSessionId, visibleSessionIds.join(",")]);
+  }, [visibleSessionIds.join(",")]);
 
   // ── Color picker ─────────────────────────────────────────────────────────
   const [colorPickerOpenId, setColorPickerOpenId] = useState<string | null>(null);
@@ -363,27 +329,54 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       const saved = allTabs[scopeKey];
       if (cancelled) return;
 
-      if (saved && saved.length > 0) {
-        tabCounter.current = saved.length;
-        const restored: TerminalSession[] = saved
-          .slice()
-          .sort((a, b) => a.order - b.order)
-          .map((tab, i) => {
-            const newId = crypto.randomUUID();
-            tabRefs.current.set(newId, React.createRef<TerminalTabHandle | null>());
-            return {
-              id: newId,
-              title: tab.title,
-              shell: tab.shell,
-              shellArgs: tab.shellArgs,
+      if (saved) {
+        const isLegacy = Array.isArray(saved);
+        const tabsToRestore = isLegacy ? saved : saved.tabs;
+
+        if (tabsToRestore.length > 0) {
+          tabCounter.current = tabsToRestore.length;
+          const restored: TerminalSession[] = tabsToRestore
+            .slice()
+            .sort((a, b) => a.order - b.order)
+            .map((tab, i) => {
+              const newId = tab.id ?? crypto.randomUUID();
+              tabRefs.current.set(newId, React.createRef<TerminalTabHandle | null>());
+              return {
+                id: newId,
+                title: tab.title,
+                shell: tab.shell,
+                shellArgs: tab.shellArgs,
+                workspaceId,
+                color: tab.color,
+                order: i,
+                interruptPolicy: "always" as const,
+              };
+            });
+          setSessions(restored);
+          
+          if (!isLegacy && saved.groups && saved.activeGroupId) {
+            initializeGroups(saved.groups, saved.activeGroupId);
+          } else {
+            resetTree(restored[0].id);
+          }
+        } else {
+          tabCounter.current = 1;
+          const defaultId = crypto.randomUUID();
+          tabRefs.current.set(defaultId, React.createRef<TerminalTabHandle | null>());
+          setSessions([
+            {
+              id: defaultId,
+              title: `${shellName} 1`,
+              shell: shellPath,
+              shellArgs,
               workspaceId,
-              color: tab.color,
-              order: i,
-              interruptPolicy: "always" as const,
-            };
-          });
-        setSessions(restored);
-        resetTree(restored[0].id);
+              color: null,
+              order: 0,
+              interruptPolicy: "always",
+            },
+          ]);
+          resetTree(defaultId);
+        }
       } else {
         tabCounter.current = 1;
         const defaultId = crypto.randomUUID();
@@ -411,11 +404,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
     return () => {
       cancelled = true;
-      setSingleViewSessionId(null);
-      setSessions((prev) => {
-        prev.forEach((s) => invoke("kill_pty", { sessionId: s.id }).catch(() => {}));
-        return prev;
-      });
+      sessions.forEach((s) => invoke("kill_pty", { sessionId: s.id }).catch(() => {}));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, scopeKey]);
@@ -431,13 +420,18 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       if (sessions.length === 0) {
         delete allTabs[scopeKey];
       } else {
-        allTabs[scopeKey] = sessions.map((s) => ({
-          title: s.title,
-          shell: s.shell,
-          shellArgs: s.shellArgs,
-          color: s.color,
-          order: s.order,
-        }));
+        allTabs[scopeKey] = {
+          tabs: sessions.map((s) => ({
+            id: s.id,
+            title: s.title,
+            shell: s.shell,
+            shellArgs: s.shellArgs,
+            color: s.color,
+            order: s.order,
+          })),
+          groups,
+          activeGroupId,
+        };
       }
       await saveTerminalTabs(allTabs);
     }, 500);
@@ -445,9 +439,22 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       if (saveTabsTimer.current) clearTimeout(saveTabsTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions, isInitializing, scopeKey]);
+  }, [sessions, groups, activeGroupId, isInitializing, scopeKey]);
 
   // ── Tab actions ──────────────────────────────────────────────────────────
+
+  const switchTab = useCallback(
+    (sessionId: string) => {
+      switchSession(sessionId);
+      requestAnimationFrame(() => {
+        for (const p of treeLayoutRef.current.panes) {
+          tabRefs.current.get(p.sessionId)?.current?.fit();
+        }
+        tabRefs.current.get(sessionId)?.current?.focus();
+      });
+    },
+    [switchSession],
+  );
 
   const createNewTab = useCallback(
     (shell?: ShellInfo) => {
@@ -469,11 +476,11 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         interruptPolicy: "always",
       };
       setSessions((prev) => [...prev, newSession]);
-      // Clear single-view so the new tab replaces the active tree pane normally.
-      setSingleViewSessionId(null);
-      setLeafSession(activePaneIdRef.current, newId);
+      requestAnimationFrame(() => {
+        switchTab(newId);
+      });
     },
-    [settings.shellPath, workspaceId, setLeafSession],
+    [settings.shellPath, workspaceId, switchTab],
   );
 
   const closeTab = useCallback(
@@ -481,7 +488,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       e.stopPropagation();
       invoke("kill_pty", { sessionId }).catch(() => {});
       tabRefs.current.delete(sessionId);
-      if (singleViewRef.current === sessionId) setSingleViewSessionId(null);
       removePanesBySession(sessionId);
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     },
@@ -494,35 +500,11 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       setTimeout(() => {
         closePane(leafId);
         setLeavingPaneIds((prev) => { const n = new Set(prev); n.delete(sessionId); return n; });
+        // Automatically switch to the newly detached tab
+        switchTab(sessionId);
       }, 180);
     },
-    [closePane],
-  );
-
-  const switchTab = useCallback(
-    (sessionId: string) => {
-      // Session is in the split tree — clear single-view and focus its pane.
-      const treePane = treeLayoutRef.current.panes.find((p) => p.sessionId === sessionId);
-      if (treePane) {
-        setSingleViewSessionId(null);
-        setActivePaneId(treePane.leafId);
-        requestAnimationFrame(() => {
-          // Fit all group panes after restoring split view from single-view.
-          for (const p of treeLayoutRef.current.panes) {
-            tabRefs.current.get(p.sessionId)?.current?.fit();
-          }
-          tabRefs.current.get(sessionId)?.current?.focus();
-        });
-        return;
-      }
-      // Not in tree — show as single-view overlay (tree is preserved).
-      setSingleViewSessionId(sessionId);
-      requestAnimationFrame(() => {
-        const ref = tabRefs.current.get(sessionId);
-        if (ref?.current) { ref.current.fit(); ref.current.focus(); }
-      });
-    },
-    [setActivePaneId],
+    [closePane, switchTab],
   );
 
   // ── Rename ───────────────────────────────────────────────────────────────
@@ -642,7 +624,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         return { ...s, order: i };
       });
     });
-    setSingleViewSessionId(null);
     dragIdRef.current = null;
     draggingSessionIdRef.current = null;
     setDragId(null);
@@ -688,7 +669,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         return { ...s, order: i };
       });
     });
-    setSingleViewSessionId(null);
     dragIdRef.current = null;
     draggingSessionIdRef.current = null;
     setDragId(null);
@@ -705,7 +685,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       if (!sessionId) return;
       const before = edge === "left" || edge === "top";
       const direction = edge === "left" || edge === "right" ? "h" : "v";
-      setSingleViewSessionId(null);
       moveSession(sessionId, leafId, direction, before);
       dragIdRef.current = null;
       draggingSessionIdRef.current = null;
@@ -788,176 +767,125 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         onDrop={handleDropOnStrip}
       >
         <div className={styles.tabsList} onDragOver={(e) => e.preventDefault()}>
-          {/* In-view group — only shown in split mode */}
-          {isSplit && inViewSessions.length > 0 && (
-            <div className={styles.tabGroup}>
-              {inViewSessions.map((session, groupIdx) => {
-                const isActive = session.id === activeSessionId;
-                const isEditing = session.id === editingSessionId;
-                const isDragging = session.id === dragId;
-                const isDragOver = session.id === dragOverId;
-                const tabColor = session.color ?? "#7B68EE";
-                const isColorPickerOpen = session.id === colorPickerOpenId;
-                return (
+          {(() => {
+            const renderedGroupIds = new Set<string>();
+            const elements: React.ReactNode[] = [];
+
+            const renderTab = (session: TerminalSession, groupIdx: number, inSplitGroup: boolean) => {
+              const isActive = session.id === activeSessionId;
+              const isEditing = session.id === editingSessionId;
+              const isDragging = session.id === dragId;
+              const isDragOver = session.id === dragOverId;
+              const tabColor = session.color ?? "#7B68EE";
+              const isColorPickerOpen = session.id === colorPickerOpenId;
+
+              return (
+                <div
+                  key={session.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, session.id)}
+                  onDragOver={(e) => handleDragOver(e, session.id)}
+                  onDrop={(e) => handleDrop(e, session.id)}
+                  onDragEnd={handleDragEnd}
+                  onClick={() => switchTab(session.id)}
+                  onContextMenu={(e) => handleTabContextMenu(e, session.id)}
+                  className={cx(
+                    styles.tab,
+                    inSplitGroup ? styles.groupedTab : undefined,
+                    inSplitGroup
+                      ? (isActive ? styles.groupedActiveTab : styles.groupedInactiveTab)
+                      : (isActive ? styles.activeTab : styles.inactiveTab),
+                    isDragging && styles.tabDragging,
+                    isDragOver && styles.tabDragOver,
+                  )}
+                  style={isActive ? { borderTopColor: tabColor } : undefined}
+                >
+                  {inSplitGroup && (
+                    <span className={cx(styles.paneBadge, isActive ? styles.paneBadgeActive : styles.paneBadgeInactive)}>
+                      {groupIdx + 1}
+                    </span>
+                  )}
                   <div
-                    key={session.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, session.id)}
-                    onDragOver={(e) => handleDragOver(e, session.id)}
-                    onDrop={(e) => handleDrop(e, session.id)}
-                    onDragEnd={handleDragEnd}
-                    onClick={() => switchTab(session.id)}
-                    onContextMenu={(e) => handleTabContextMenu(e, session.id)}
-                    className={cx(
-                      styles.tab,
-                      styles.groupedTab,
-                      isActive ? styles.groupedActiveTab : styles.groupedInactiveTab,
-                      isDragging && styles.tabDragging,
-                      isDragOver && styles.tabDragOver,
-                    )}
-                    style={isActive ? { borderTopColor: tabColor } : undefined}
+                    className={styles.colorDotWrapper}
+                    onClick={(e) => {
+                      if (!isActive) return;
+                      e.stopPropagation();
+                      if (isColorPickerOpen) {
+                        setColorPickerOpenId(null);
+                      } else {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setColorPickerPos({ top: rect.bottom + 8, left: rect.left - 4 });
+                        setColorPickerOpenId(session.id);
+                      }
+                    }}
                   >
-                    <span className={cx(styles.paneBadge, isActive ? styles.paneBadgeActive : styles.paneBadgeInactive)}>{groupIdx + 1}</span>
-                    <div
-                      className={styles.colorDotWrapper}
-                      onClick={(e) => {
-                        if (!isActive) return;
-                        e.stopPropagation();
-                        if (isColorPickerOpen) {
-                          setColorPickerOpenId(null);
-                        } else {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setColorPickerPos({ top: rect.bottom + 8, left: rect.left - 4 });
-                          setColorPickerOpenId(session.id);
-                        }
-                      }}
+                    <span
+                      className={cx(styles.colorDot, isActive && styles.colorDotActive)}
+                      style={{ backgroundColor: session.color ?? (isActive ? "var(--color-brand)" : "var(--bg-tertiary)") }}
+                      title={isActive ? "Change tab color" : undefined}
+                    />
+                  </div>
+                  {isEditing ? (
+                    <Input
+                      type="text"
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      onBlur={() => saveRename(session.id)}
+                      onKeyDown={(e) => handleRenameKeyDown(session.id, e)}
+                      className={styles.renameInput}
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span
+                      onDoubleClick={(e) => startRename(session.id, session.title, e)}
+                      className={styles.tabTitle}
+                      title={`${session.title} — double-click to rename`}
                     >
-                      <span
-                        className={cx(styles.colorDot, isActive && styles.colorDotActive)}
-                        style={{ backgroundColor: session.color ?? (isActive ? "var(--color-brand)" : "var(--bg-tertiary)") }}
-                        title={isActive ? "Change tab color" : undefined}
-                      />
-                    </div>
-                    {isEditing ? (
-                      <Input
-                        type="text"
-                        value={editingTitle}
-                        onChange={(e) => setEditingTitle(e.target.value)}
-                        onBlur={() => saveRename(session.id)}
-                        onKeyDown={(e) => handleRenameKeyDown(session.id, e)}
-                        className={styles.renameInput}
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <span
-                        onDoubleClick={(e) => startRename(session.id, session.title, e)}
-                        className={styles.tabTitle}
-                        title={`${session.title} — double-click to rename`}
-                      >
-                        {session.title}
-                      </span>
-                    )}
-                    <div className={cx(styles.tabActions, "tab-actions-btn-group")}>
-                      {!isEditing && (
-                        <button onClick={(e) => { e.stopPropagation(); startRename(session.id, session.title, e); }} className={styles.tabActionBtn} title="Rename tab">
-                          <Edit2 className={styles.tinyIcon} />
-                        </button>
-                      )}
-                      <button onClick={(e) => closeTab(session.id, e)} className={styles.closeTabBtn} title="Close tab">
-                        <X className={styles.tinyIcon} />
+                      {session.title}
+                    </span>
+                  )}
+                  <div className={cx(styles.tabActions, "tab-actions-btn-group")}>
+                    {!isEditing && (
+                      <button onClick={(e) => { e.stopPropagation(); startRename(session.id, session.title, e); }} className={styles.tabActionBtn} title="Rename tab">
+                        <Edit2 className={styles.tinyIcon} />
                       </button>
-                    </div>
+                    )}
+                    <button onClick={(e) => closeTab(session.id, e)} className={styles.closeTabBtn} title="Close tab">
+                      <X className={styles.tinyIcon} />
+                    </button>
+                  </div>
+                </div>
+              );
+            };
+
+            for (const session of sessions) {
+              const group = groups.find((g) => collectLeafSessionIds(g.tree).includes(session.id));
+              if (!group) continue;
+              if (renderedGroupIds.has(group.id)) continue;
+              
+              renderedGroupIds.add(group.id);
+              
+              const groupLeafSessionIds = collectLeafSessionIds(group.tree);
+              const groupSessions = groupLeafSessionIds
+                .map((id) => sessions.find((s) => s.id === id))
+                .filter((s): s is TerminalSession => !!s);
+                
+              const isGroupSplit = groupSessions.length > 1;
+
+              if (isGroupSplit) {
+                elements.push(
+                  <div className={styles.tabGroup} key={`group-${group.id}`}>
+                    {groupSessions.map((s, idx) => renderTab(s, idx, true))}
                   </div>
                 );
-              })}
-            </div>
-          )}
-
-          {/* Separator between groups */}
-          {isSplit && inViewSessions.length > 0 && bgSessions.length > 0 && (
-            <div className={styles.tabGroupSep} />
-          )}
-
-          {/* Background tabs (or all tabs in single-pane mode) */}
-          {(isSplit ? bgSessions : sessions).map((session) => {
-            const isActive = session.id === activeSessionId;
-            const isEditing = session.id === editingSessionId;
-            const isDragging = session.id === dragId;
-            const isDragOver = session.id === dragOverId;
-            const tabColor = session.color ?? "#7B68EE";
-            const isColorPickerOpen = session.id === colorPickerOpenId;
-            return (
-              <div
-                key={session.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, session.id)}
-                onDragOver={(e) => handleDragOver(e, session.id)}
-                onDrop={(e) => handleDrop(e, session.id)}
-                onDragEnd={handleDragEnd}
-                onClick={() => switchTab(session.id)}
-                onContextMenu={(e) => handleTabContextMenu(e, session.id)}
-                className={cx(
-                  styles.tab,
-                  isActive ? styles.activeTab : styles.inactiveTab,
-                  isDragging && styles.tabDragging,
-                  isDragOver && styles.tabDragOver,
-                )}
-                style={isActive ? { borderTopColor: tabColor } : undefined}
-              >
-                <div
-                  className={styles.colorDotWrapper}
-                  onClick={(e) => {
-                    if (!isActive) return;
-                    e.stopPropagation();
-                    if (isColorPickerOpen) {
-                      setColorPickerOpenId(null);
-                    } else {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setColorPickerPos({ top: rect.bottom + 8, left: rect.left - 4 });
-                      setColorPickerOpenId(session.id);
-                    }
-                  }}
-                >
-                  <span
-                    className={cx(styles.colorDot, isActive && styles.colorDotActive)}
-                    style={{ backgroundColor: session.color ?? (isActive ? "var(--color-brand)" : "var(--bg-tertiary)") }}
-                    title={isActive ? "Change tab color" : undefined}
-                  />
-                </div>
-                {isEditing ? (
-                  <Input
-                    type="text"
-                    value={editingTitle}
-                    onChange={(e) => setEditingTitle(e.target.value)}
-                    onBlur={() => saveRename(session.id)}
-                    onKeyDown={(e) => handleRenameKeyDown(session.id, e)}
-                    className={styles.renameInput}
-                    autoFocus
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <span
-                    onDoubleClick={(e) => startRename(session.id, session.title, e)}
-                    className={styles.tabTitle}
-                    title={`${session.title} — double-click to rename`}
-                  >
-                    {session.title}
-                  </span>
-                )}
-                <div className={cx(styles.tabActions, "tab-actions-btn-group")}>
-                  {!isEditing && (
-                    <button onClick={(e) => { e.stopPropagation(); startRename(session.id, session.title, e); }} className={styles.tabActionBtn} title="Rename tab">
-                      <Edit2 className={styles.tinyIcon} />
-                    </button>
-                  )}
-                  <button onClick={(e) => closeTab(session.id, e)} className={styles.closeTabBtn} title="Close tab">
-                    <X className={styles.tinyIcon} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+              } else {
+                elements.push(renderTab(groupSessions[0], -1, false));
+              }
+            }
+            
+            return elements;
+          })()}
         </div>
 
         <div className={styles.newTabWrapper}>
@@ -1157,8 +1085,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
             {sessions.map((session) => {
               const pane = renderLayout.panes.find((p) => p.sessionId === session.id);
               const tabRef = tabRefs.current.get(session.id) ?? null;
-              // No active-pane border or collapse button while in single-view mode.
-              const isActivePane = !singleViewSessionId && isSplit && pane?.leafId === activePaneId;
+              const isActivePane = isSplit && pane?.leafId === activePaneId;
               return (
                 <div
                   key={session.id}
@@ -1186,9 +1113,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   }
                   onClick={() => {
                     if (pane) {
-                      // Don't write '__single__' into activePaneId — that fake
-                      // leafId exists only in renderLayout, not the tree.
-                      if (!singleViewRef.current) setActivePaneId(pane.leafId);
+                      setActivePaneId(pane.leafId);
                       tabRefs.current.get(session.id)?.current?.focus();
                     }
                   }}
@@ -1200,7 +1125,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                     shell={session.shell}
                     shellArgs={session.shellArgs}
                   />
-                  {!singleViewSessionId && isSplit && pane && (
+                  {isSplit && pane && (
                     <>
                       {isActivePane && (
                         <div
@@ -1250,7 +1175,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
             ))}
 
             {/* Drop zones — single overlay per pane; edge resolved from cursor distance */}
-            {isDraggingTab && !singleViewSessionId &&
+            {isDraggingTab &&
               treeLayout.panes.filter((pane) => pane.sessionId !== draggingSessionIdRef.current).map((pane) => (
                 <div
                   key={`zone-${pane.leafId}`}
