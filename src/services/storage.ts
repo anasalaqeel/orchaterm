@@ -146,6 +146,7 @@ export async function saveUIState(state: UIState): Promise<void> {
 // On restore, fresh PTY sessions are spawned with the saved metadata.
 
 export interface PersistedTab {
+  id?: string;
   title: string;
   shell: string;
   shellArgs: string[];
@@ -153,7 +154,13 @@ export interface PersistedTab {
   order: number;
 }
 
-export type TerminalTabsState = Record<string, PersistedTab[]>;
+export interface PersistedTerminalState {
+  tabs: PersistedTab[];
+  groups: any[]; // The full layout tree structure
+  activeGroupId: string;
+}
+
+export type TerminalTabsState = Record<string, PersistedTerminalState | PersistedTab[]>;
 
 export async function loadTerminalTabs(): Promise<TerminalTabsState> {
   try {
