@@ -216,6 +216,31 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const [animatingPaneIds, setAnimatingPaneIds] = useState<Set<string>>(new Set());
   const [leavingPaneIds, setLeavingPaneIds] = useState<Set<string>>(new Set());
 
+  // ── Tab bar scroll state ──────────────────────────────────────────────────
+  const tabsListRef = useRef<HTMLDivElement | null>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    const el = tabsListRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+  }, []);
+
+  useEffect(() => {
+    const el = tabsListRef.current;
+    if (!el) return;
+    checkScroll();
+    
+    el.addEventListener('scroll', checkScroll, { passive: true });
+    window.addEventListener('resize', checkScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', checkScroll);
+      window.removeEventListener('resize', checkScroll);
+    };
+  }, [checkScroll, sessions, containerSize, activeSessionId]);
+
   // ── Fit newly-visible terminals + trigger enter animation ────────────────
   // Use render-visible IDs (not tree-visible) so switching to/from single-view
   // also triggers fit for the session that just became visible.
@@ -766,126 +791,139 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDropOnStrip}
       >
-        <div className={styles.tabsList} onDragOver={(e) => e.preventDefault()}>
-          {(() => {
-            const renderedGroupIds = new Set<string>();
-            const elements: React.ReactNode[] = [];
+        <div className={styles.tabsContainerWrapper}>
+          <div
+            ref={tabsListRef}
+            className={styles.tabsList}
+            onDragOver={(e) => e.preventDefault()}
+            onWheel={(e) => {
+              if (e.deltaY !== 0) {
+                e.currentTarget.scrollLeft += e.deltaY;
+              }
+            }}
+          >
+            {(() => {
+              const renderedGroupIds = new Set<string>();
+              const elements: React.ReactNode[] = [];
 
-            const renderTab = (session: TerminalSession, groupIdx: number, inSplitGroup: boolean) => {
-              const isActive = session.id === activeSessionId;
-              const isEditing = session.id === editingSessionId;
-              const isDragging = session.id === dragId;
-              const isDragOver = session.id === dragOverId;
-              const tabColor = session.color ?? "#7B68EE";
-              const isColorPickerOpen = session.id === colorPickerOpenId;
+              const renderTab = (session: TerminalSession, groupIdx: number, inSplitGroup: boolean) => {
+                const isActive = session.id === activeSessionId;
+                const isEditing = session.id === editingSessionId;
+                const isDragging = session.id === dragId;
+                const isDragOver = session.id === dragOverId;
+                const tabColor = session.color ?? "#7B68EE";
+                const isColorPickerOpen = session.id === colorPickerOpenId;
 
-              return (
-                <div
-                  key={session.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, session.id)}
-                  onDragOver={(e) => handleDragOver(e, session.id)}
-                  onDrop={(e) => handleDrop(e, session.id)}
-                  onDragEnd={handleDragEnd}
-                  onClick={() => switchTab(session.id)}
-                  onContextMenu={(e) => handleTabContextMenu(e, session.id)}
-                  className={cx(
-                    styles.tab,
-                    inSplitGroup ? styles.groupedTab : undefined,
-                    inSplitGroup
-                      ? (isActive ? styles.groupedActiveTab : styles.groupedInactiveTab)
-                      : (isActive ? styles.activeTab : styles.inactiveTab),
-                    isDragging && styles.tabDragging,
-                    isDragOver && styles.tabDragOver,
-                  )}
-                  style={isActive ? { borderTopColor: tabColor } : undefined}
-                >
-                  {inSplitGroup && (
-                    <span className={cx(styles.paneBadge, isActive ? styles.paneBadgeActive : styles.paneBadgeInactive)}>
-                      {groupIdx + 1}
-                    </span>
-                  )}
+                return (
                   <div
-                    className={styles.colorDotWrapper}
-                    onClick={(e) => {
-                      if (!isActive) return;
-                      e.stopPropagation();
-                      if (isColorPickerOpen) {
-                        setColorPickerOpenId(null);
-                      } else {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setColorPickerPos({ top: rect.bottom + 8, left: rect.left - 4 });
-                        setColorPickerOpenId(session.id);
-                      }
-                    }}
-                  >
-                    <span
-                      className={cx(styles.colorDot, isActive && styles.colorDotActive)}
-                      style={{ backgroundColor: session.color ?? (isActive ? "var(--color-brand)" : "var(--bg-tertiary)") }}
-                      title={isActive ? "Change tab color" : undefined}
-                    />
-                  </div>
-                  {isEditing ? (
-                    <Input
-                      type="text"
-                      value={editingTitle}
-                      onChange={(e) => setEditingTitle(e.target.value)}
-                      onBlur={() => saveRename(session.id)}
-                      onKeyDown={(e) => handleRenameKeyDown(session.id, e)}
-                      className={styles.renameInput}
-                      autoFocus
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <span
-                      onDoubleClick={(e) => startRename(session.id, session.title, e)}
-                      className={styles.tabTitle}
-                      title={`${session.title} — double-click to rename`}
-                    >
-                      {session.title}
-                    </span>
-                  )}
-                  <div className={cx(styles.tabActions, "tab-actions-btn-group")}>
-                    {!isEditing && (
-                      <button onClick={(e) => { e.stopPropagation(); startRename(session.id, session.title, e); }} className={styles.tabActionBtn} title="Rename tab">
-                        <Edit2 className={styles.tinyIcon} />
-                      </button>
+                    key={session.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, session.id)}
+                    onDragOver={(e) => handleDragOver(e, session.id)}
+                    onDrop={(e) => handleDrop(e, session.id)}
+                    onDragEnd={handleDragEnd}
+                    onClick={() => switchTab(session.id)}
+                    onContextMenu={(e) => handleTabContextMenu(e, session.id)}
+                    className={cx(
+                      styles.tab,
+                      inSplitGroup ? styles.groupedTab : undefined,
+                      inSplitGroup
+                        ? (isActive ? styles.groupedActiveTab : styles.groupedInactiveTab)
+                        : (isActive ? styles.activeTab : styles.inactiveTab),
+                      isDragging && styles.tabDragging,
+                      isDragOver && styles.tabDragOver,
                     )}
-                    <button onClick={(e) => closeTab(session.id, e)} className={styles.closeTabBtn} title="Close tab">
-                      <X className={styles.tinyIcon} />
-                    </button>
-                  </div>
-                </div>
-              );
-            };
-
-            for (const session of sessions) {
-              const group = groups.find((g) => collectLeafSessionIds(g.tree).includes(session.id));
-              if (!group) continue;
-              if (renderedGroupIds.has(group.id)) continue;
-              
-              renderedGroupIds.add(group.id);
-              
-              const groupLeafSessionIds = collectLeafSessionIds(group.tree);
-              const groupSessions = groupLeafSessionIds
-                .map((id) => sessions.find((s) => s.id === id))
-                .filter((s): s is TerminalSession => !!s);
-                
-              const isGroupSplit = groupSessions.length > 1;
-
-              if (isGroupSplit) {
-                elements.push(
-                  <div className={styles.tabGroup} key={`group-${group.id}`}>
-                    {groupSessions.map((s, idx) => renderTab(s, idx, true))}
+                    style={isActive ? { borderTopColor: tabColor } : undefined}
+                  >
+                    {inSplitGroup && (
+                      <span className={cx(styles.paneBadge, isActive ? styles.paneBadgeActive : styles.paneBadgeInactive)}>
+                        {groupIdx + 1}
+                      </span>
+                    )}
+                    <div
+                      className={cx(styles.colorDotWrapper)}
+                      onClick={(e) => {
+                        if (!isActive) return;
+                        e.stopPropagation();
+                        if (isColorPickerOpen) {
+                          setColorPickerOpenId(null);
+                        } else {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setColorPickerPos({ top: rect.bottom + 8, left: rect.left - 4 });
+                          setColorPickerOpenId(session.id);
+                        }
+                      }}
+                    >
+                      <span
+                        className={cx(styles.colorDot, isActive && styles.colorDotActive)}
+                        style={{ backgroundColor: session.color ?? (isActive ? "var(--color-brand)" : "var(--bg-tertiary)") }}
+                        title={isActive ? "Change tab color" : undefined}
+                      />
+                    </div>
+                    {isEditing ? (
+                      <Input
+                        type="text"
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        onBlur={() => saveRename(session.id)}
+                        onKeyDown={(e) => handleRenameKeyDown(session.id, e)}
+                        className={styles.renameInput}
+                        autoFocus
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <span
+                        onDoubleClick={(e) => startRename(session.id, session.title, e)}
+                        className={styles.tabTitle}
+                        title={`${session.title} — double-click to rename`}
+                      >
+                        {session.title}
+                      </span>
+                    )}
+                    <div className={cx(styles.tabActions, "tab-actions-btn-group")}>
+                      {!isEditing && (
+                        <button onClick={(e) => { e.stopPropagation(); startRename(session.id, session.title, e); }} className={styles.tabActionBtn} title="Rename tab">
+                          <Edit2 className={styles.tinyIcon} />
+                        </button>
+                      )}
+                      <button onClick={(e) => closeTab(session.id, e)} className={styles.closeTabBtn} title="Close tab">
+                        <X className={styles.tinyIcon} />
+                      </button>
+                    </div>
                   </div>
                 );
-              } else {
-                elements.push(renderTab(groupSessions[0], -1, false));
+              };
+
+              for (const session of sessions) {
+                const group = groups.find((g) => collectLeafSessionIds(g.tree).includes(session.id));
+                if (!group) continue;
+                if (renderedGroupIds.has(group.id)) continue;
+                
+                renderedGroupIds.add(group.id);
+                
+                const groupLeafSessionIds = collectLeafSessionIds(group.tree);
+                const groupSessions = groupLeafSessionIds
+                  .map((id) => sessions.find((s) => s.id === id))
+                  .filter((s): s is TerminalSession => !!s);
+                  
+                const isGroupSplit = groupSessions.length > 1;
+
+                if (isGroupSplit) {
+                  elements.push(
+                    <div className={styles.tabGroup} key={`group-${group.id}`}>
+                      {groupSessions.map((s, idx) => renderTab(s, idx, true))}
+                    </div>
+                  );
+                } else {
+                  elements.push(renderTab(groupSessions[0], -1, false));
+                }
               }
-            }
-            
-            return elements;
-          })()}
+              
+              return elements;
+            })()}
+          </div>
+          {canScrollLeft && <div className={styles.scrollFadeLeft} />}
+          {canScrollRight && <div className={styles.scrollFadeRight} />}
         </div>
 
         <div className={styles.newTabWrapper}>
@@ -1234,17 +1272,51 @@ const styles = {
     user-select: none;
     flex-shrink: 0;
   `,
+  tabsContainerWrapper: css`
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    min-width: 0;
+    overflow: hidden;
+  `,
   tabsList: css`
     display: flex;
     align-items: flex-end;
     overflow-x: auto;
     padding-top: 8px;
     gap: 4px;
+    width: 100%;
     min-width: 0;
+    scrollbar-width: none;
     &::-webkit-scrollbar {
       display: none;
     }
-    scrollbar-width: none;
+  `,
+  scrollFadeLeft: css`
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 24px;
+    pointer-events: none;
+    background: linear-gradient(to right, var(--bg-secondary) 15%, transparent);
+    z-index: 2;
+    animation: fadeIn 0.15s ease-out;
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  `,
+  scrollFadeRight: css`
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 32px;
+    pointer-events: none;
+    background: linear-gradient(to left, var(--bg-secondary) 15%, transparent);
+    z-index: 2;
+    animation: fadeIn 0.15s ease-out;
   `,
   tab: css`
     display: flex;

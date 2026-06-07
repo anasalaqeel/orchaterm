@@ -6,7 +6,9 @@ import { useDashboard } from '../../context/DashboardContext';
 import {
   History, Sparkles, Settings,
   Sun, Moon, LayoutDashboard,
-  Plus, Trash2, ChevronsLeft, ChevronsRight,
+  Plus, Trash2,
+  ChevronLeft, ChevronRight,
+  ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
 import logoDark from '../../assets/logos/icon-large-dark.svg';
 import logoLight from '../../assets/logos/icon-large-light.svg';
@@ -68,6 +70,16 @@ export function Sidebar() {
     }
   };
 
+  const [fullyHidden, setFullyHidden] = useState<boolean>(
+    () => localStorage.getItem('orchaterm:sidebar-fully-hidden') === '1',
+  );
+
+  const toggleFullyHidden = () => {
+    const next = !fullyHidden;
+    setFullyHidden(next);
+    localStorage.setItem('orchaterm:sidebar-fully-hidden', next ? '1' : '0');
+  };
+
   const openInConsole = (id: string) => {
     setActiveWorkspaceId(id);
     setViewMode('console');
@@ -78,12 +90,20 @@ export function Sidebar() {
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cx(s.navBtn, layoutCollapsed && s.navBtnCollapsed, isActive && s.navBtnActive);
 
+  const currentWidth = collapsed ? W_COLLAPSED : W_EXPANDED;
+
   return (
-    <motion.aside
-      className={s.sidebar}
-      animate={{ width: collapsed ? W_COLLAPSED : W_EXPANDED }}
-      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-    >
+    <>
+      <motion.aside
+        className={s.sidebar}
+        animate={{ width: fullyHidden ? 0 : currentWidth }}
+        transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+        style={{
+          borderRightWidth: fullyHidden ? '0px' : '1px',
+          visibility: fullyHidden ? 'hidden' : 'visible',
+          transition: `border-right-width 0.22s ease, visibility 0.22s`,
+        }}
+      >
 
       {/* Brand */}
       <div className={cx(s.brand, layoutCollapsed && s.brandCollapsed)}>
@@ -315,7 +335,19 @@ export function Sidebar() {
           </motion.button>
         </div>
       </div>
-    </motion.aside>
+      </motion.aside>
+
+      <button
+        className={cx(s.collapseBtn, fullyHidden && s.collapseBtnCollapsed)}
+        style={{
+          left: fullyHidden ? 0 : currentWidth - 8,
+        }}
+        onClick={toggleFullyHidden}
+        title={fullyHidden ? 'Expand sidebar' : 'Fully collapse sidebar'}
+      >
+        {fullyHidden ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+      </button>
+    </>
   );
 }
 
@@ -589,4 +621,64 @@ const s = {
     &:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-color-hover); }
   `,
   themeIcon: css`width: 14px; height: 14px;`,
+  /* Floating expand/collapse handle — straddles the sidebar border, always visible */
+  collapseBtn: css`
+    position: absolute;
+    top: 50%; transform: translateY(-50%);
+    z-index: 100;
+    width: 16px; height: 48px;
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: left 0.22s cubic-bezier(0.4,0,0.2,1),
+                width 0.22s cubic-bezier(0.4,0,0.2,1),
+                height 0.22s cubic-bezier(0.4,0,0.2,1),
+                border-radius 0.22s cubic-bezier(0.4,0,0.2,1),
+                opacity 0.22s cubic-bezier(0.4,0,0.2,1),
+                transform 0.15s ease, color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
+    
+    svg {
+      opacity: 0.6;
+      transition: opacity 0.15s ease;
+    }
+    
+    &:hover {
+      color: var(--color-brand);
+      background: rgba(var(--color-brand-rgb), 0.08);
+      border-color: rgba(var(--color-brand-rgb), 0.4);
+      box-shadow: var(--shadow-brand);
+      svg {
+        opacity: 1;
+      }
+    }
+  `,
+  /* Sleek floating expand tab when the sidebar is collapsed */
+  collapseBtnCollapsed: css`
+    width: 12px;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    border-left: none;
+    background: var(--bg-tertiary);
+    opacity: 0.4;
+    box-shadow: var(--shadow-sm);
+    
+    svg {
+      opacity: 0;
+    }
+    
+    &:hover {
+      width: 22px;
+      opacity: 1;
+      color: var(--color-brand);
+      background: var(--bg-hover);
+      border-color: rgba(var(--color-brand-rgb), 0.4);
+      box-shadow: var(--shadow-brand);
+      svg {
+        opacity: 1;
+      }
+    }
+  `,
 };
