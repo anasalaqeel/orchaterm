@@ -96,6 +96,7 @@ const s = {
     overflow: hidden;
     background: var(--bg-canvas);
     color: var(--text-primary);
+    position: relative;
   `,
   main: css`
     flex: 1;
