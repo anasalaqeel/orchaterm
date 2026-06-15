@@ -33,6 +33,8 @@ interface TerminalTabProps {
   shell: string;
   /** Optional extra args forwarded to spawn_pty (e.g. ["--", "bash"] for wsl). */
   shellArgs?: string[];
+  /** Called when the PTY child process exits. */
+  onExit?: () => void;
 }
 
 type SpawnState = 'idle' | 'spawning' | 'running' | 'error';
@@ -53,7 +55,7 @@ function safeFit(addon: FitAddon): { cols: number; rows: number } | null {
 }
 
 export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
-  ({ sessionId, workspacePath, shell, shellArgs }, ref) => {
+  ({ sessionId, workspacePath, shell, shellArgs, onExit }, ref) => {
     const { settings } = useDashboard();
     const terminalConfig = useMemo(
       () => settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG,
@@ -82,9 +84,12 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // No need to call resize_pty directly here.
     useImperativeHandle(ref, () => ({
       fit: () => {
-        if (!fitAddonRef.current || !termRef.current) return;
-        (termRef.current as any)._core?._charSizeService?.measure();
+        const term = termRef.current;
+        if (!fitAddonRef.current || !term) return;
+        (term as any)._core?._charSizeService?.measure();
         safeFit(fitAddonRef.current);
+        term.scrollToBottom();
+        term.refresh(0, term.rows - 1);
       },
       focus: () => {
         termRef.current?.focus();
@@ -250,6 +255,15 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           console.error('[TerminalTab] Failed to listen:', err),
         );
 
+      let unlistenExit: UnlistenFn | null = null;
+      listen(`pty-exit-${sessionId}`, () => {
+        term.write('\r\n\x1b[31m[Process Exited]\x1b[0m\r\n');
+        if (onExit) onExit();
+      }).then(fn => {
+        if (cancelled) fn();
+        else unlistenExit = fn;
+      });
+
       // ─ ResizeObserver with debounce ──────────────────────────────────
       // Only responsibility: call safeFit when the container element changes
       // size. The term.onResize handler above forwards any resulting dimension
@@ -340,6 +354,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         dataDispose.dispose();
         selDispose.dispose();
         if (unlisten) unlisten();
+        if (unlistenExit) unlistenExit();
         if (unlistenDrop) unlistenDrop();
         resizeDispose.dispose();
         term.dispose();
@@ -393,6 +408,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     useEffect(() => {
       const term = termRef.current;
       if (!term) return;
+      
       term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
         if (e.type !== 'keydown') return true;
         const combo = buildCombo(e);
@@ -400,7 +416,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         
         if (!binding) {
           if (combo === 'ctrl+shift+c') binding = { key: combo, action: 'copy' };
-          else return true;
+          else if (combo === 'ctrl+shift+v') binding = { key: combo, action: 'paste' };
+          else if (combo === 'ctrl+l') binding = { key: combo, action: 'clear' };
+          else {
+            return true;
+          }
         }
 
         switch (binding.action) {
