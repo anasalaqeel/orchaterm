@@ -284,6 +284,10 @@ fn spawn_pty(
         .unwrap_or_else(|| platform_default_shell());
 
     let mut cmd = CommandBuilder::new(&shell_to_use);
+
+    #[cfg(not(target_os = "windows"))]
+    cmd.env("TERM", "xterm-256color");
+
     // Append any extra args (e.g. ["--", "bash"] for wsl).
     if let Some(args) = shell_args {
         for arg in args {
@@ -335,6 +339,54 @@ fn spawn_pty(
         }
         sessions.insert(session_id.clone(), session);
     }
+
+    // ── Child process monitor thread ───────────────────────────────────────
+    // portable_pty's reader thread can block indefinitely on Windows even after
+    // the child process dies. Polling `try_wait` guarantees we detect the exit.
+    let sid_monitor = session_id.clone();
+    let app_handle_monitor = app_handle.clone();
+    
+    thread::spawn(move || {
+        loop {
+            thread::sleep(std::time::Duration::from_millis(100));
+            let state_monitor = app_handle_monitor.state::<PtyState>();
+            let mut sessions = match lock_sessions(&state_monitor) {
+                Ok(s) => s,
+                Err(_) => break,
+            };
+            if let Some(session) = sessions.get_mut(&sid_monitor) {
+                match session.child.try_wait() {
+                    Ok(Some(_status)) => {
+                        // Child exited.
+                        let payload = PtyPayload {
+                            session_id: sid_monitor.clone(),
+                            data: "".to_string(),
+                        };
+                        let _ = app_handle_monitor.emit(&format!("pty-exit-{}", sid_monitor), payload);
+                        
+                        // We do not remove the session from the map here to avoid
+                        // race conditions with the frontend closing the tab.
+                        break;
+                    }
+                    Ok(None) => {
+                        // Still running
+                    }
+                    Err(_) => {
+                        // Error checking status, assume dead.
+                        let payload = PtyPayload {
+                            session_id: sid_monitor.clone(),
+                            data: "".to_string(),
+                        };
+                        let _ = app_handle_monitor.emit(&format!("pty-exit-{}", sid_monitor), payload);
+                        break;
+                    }
+                }
+            } else {
+                // Session was removed (killed by user)
+                break;
+            }
+        }
+    });
 
     // ── Reader thread ──────────────────────────────────────────────────────
     // Reads output from the PTY master and emits a session-scoped Tauri event.
@@ -540,6 +592,26 @@ pub fn run() {
             save_store,
             write_file_path
         ])
+        .setup(|app| {
+            #[cfg(target_os = "windows")]
+            {
+                use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+                use windows::core::Interface;
+
+                for (label, window) in app.webview_windows() {
+                    let _ = window.with_webview(move |webview| {
+                        unsafe {
+                            let controller = webview.controller();
+                            let settings = controller.CoreWebView2().unwrap().Settings().unwrap();
+                            let settings3: ICoreWebView2Settings3 = settings.cast().unwrap();
+                            let _ = settings3.SetAreBrowserAcceleratorKeysEnabled(false);
+                            println!("[Tauri Setup] Disabled WebView2 accelerator keys for window: {}", label);
+                        }
+                    });
+                }
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

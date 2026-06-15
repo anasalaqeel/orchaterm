@@ -23,6 +23,7 @@ interface TerminalContainerProps {
   workspaceId: string;
   workspacePath: string;
   scopeKey: string;
+  active?: boolean;
 }
 
 type DropEdge = "left" | "right" | "top" | "bottom";
@@ -88,6 +89,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   workspaceId,
   workspacePath,
   scopeKey,
+  active = true,
 }) => {
   const { settings, addTerminalSession, removeTerminalSession, updateTerminalSession } =
     useDashboard();
@@ -246,24 +248,49 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   // also triggers fit for the session that just became visible.
   const prevVisibleRef = useRef<Set<string>>(new Set());
   useEffect(() => {
+    if (!active) return;
     const ids = visibleSessionIds;
     const current = new Set(ids);
     const entering: string[] = [];
-    requestAnimationFrame(() => {
-      for (const sid of current) {
-        if (!prevVisibleRef.current.has(sid)) {
-          tabRefs.current.get(sid)?.current?.fit();
-          entering.push(sid);
+
+    // Defer inside double requestAnimationFrame so the parent DOM transition
+    // (display flex) is fully completed and browser layout has resolved.
+    const id1 = requestAnimationFrame(() => {
+      const id2 = requestAnimationFrame(() => {
+        for (const sid of current) {
+          const isNew = !prevVisibleRef.current.has(sid);
+          if (isNew || active) {
+            tabRefs.current.get(sid)?.current?.fit();
+            if (isNew) entering.push(sid);
+          }
         }
-      }
-      prevVisibleRef.current = current;
-      if (entering.length > 0) {
-        setAnimatingPaneIds(new Set(entering));
-        setTimeout(() => setAnimatingPaneIds(new Set()), 260);
-      }
+        prevVisibleRef.current = current;
+        if (entering.length > 0) {
+          setAnimatingPaneIds(new Set(entering));
+          setTimeout(() => setAnimatingPaneIds(new Set()), 260);
+        }
+
+        // Auto-focus the active session when returning to the workspace console
+        if (activeSessionId) {
+          tabRefs.current.get(activeSessionId)?.current?.focus();
+        }
+
+        // xterm.js viewport sync workaround: call fit() again after the CSS animation
+        // completes (220ms) so that scrollToBottom and refresh use the final settled DOM geometry.
+        setTimeout(() => {
+          for (const sid of current) {
+            tabRefs.current.get(sid)?.current?.fit();
+          }
+        }, 250);
+      });
+      return () => cancelAnimationFrame(id2);
     });
+
+    return () => {
+      cancelAnimationFrame(id1);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleSessionIds.join(",")]);
+  }, [visibleSessionIds.join(","), active, activeSessionId]);
 
   // ── Color picker ─────────────────────────────────────────────────────────
   const [colorPickerOpenId, setColorPickerOpenId] = useState<string | null>(null);
@@ -509,8 +536,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   );
 
   const closeTab = useCallback(
-    (sessionId: string, e: React.MouseEvent) => {
-      e.stopPropagation();
+    (sessionId: string, e?: React.MouseEvent) => {
+      e?.stopPropagation();
       invoke("kill_pty", { sessionId }).catch(() => {});
       tabRefs.current.delete(sessionId);
       removePanesBySession(sessionId);
@@ -1162,6 +1189,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                     workspacePath={workspacePath}
                     shell={session.shell}
                     shellArgs={session.shellArgs}
+                    onExit={() => closeTab(session.id)}
                   />
                   {isSplit && pane && (
                     <>
