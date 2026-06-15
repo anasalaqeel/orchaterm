@@ -33,7 +33,9 @@ export const DEFAULT_TERMINAL_CONFIG: TerminalConfig = {
   cursorBlink: true,
   scrollback: 5000,
   macOptionIsMeta: true,
-  keybindings: [],
+  keybindings: [
+    { key: 'ctrl+l', action: 'clear' }
+  ],
 };
 
 export interface ThemePreset {

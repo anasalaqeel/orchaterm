@@ -82,6 +82,7 @@ export const WorkspaceConsole = memo(function WorkspaceConsole({
             scopeKey={panelKey}
             workspaceId={project.id}
             workspacePath={project.path}
+            active={active}
           />
         }
         chat={active && <GroupChat key={panelKey} workspaceId={project.id} />}
