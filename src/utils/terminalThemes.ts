@@ -1,4 +1,4 @@
-import type { TerminalConfig, TerminalTheme } from '../types';
+import type { TerminalConfig, TerminalKeybinding, TerminalTheme } from '../types';
 
 export const DEFAULT_TERMINAL_CONFIG: TerminalConfig = {
   theme: {
@@ -33,8 +33,14 @@ export const DEFAULT_TERMINAL_CONFIG: TerminalConfig = {
   cursorBlink: true,
   scrollback: 5000,
   macOptionIsMeta: true,
+  // Industry-standard terminal copy/paste (Windows Terminal, VS Code, GNOME
+  // Terminal). Ctrl+Shift+C/V are safe to reserve — shells never use Shift+Ctrl
+  // combos, so nothing is stolen from the PTY. Every OTHER combination still
+  // passes straight through. Users can remove these or add a 'passthrough'
+  // override in Settings. (mac: add meta+c / meta+v if you prefer Cmd.)
   keybindings: [
-    { key: 'ctrl+l', action: 'clear' }
+    { key: 'ctrl+shift+c', action: 'copy' },
+    { key: 'ctrl+shift+v', action: 'paste' },
   ],
 };
 
@@ -175,4 +181,40 @@ export function buildCombo(e: KeyboardEvent): string {
     parts.push(key);
   }
   return parts.join('+');
+}
+
+/**
+ * Resolves a combo string against the configured terminal keybindings.
+ *
+ * Pure — no DOM, no side effects. The terminal's key handler uses this as the
+ * single source of truth: a `null` result means "no reserved binding", so the
+ * key passes through to the PTY (the default for every unconfigured combo).
+ *
+ * @returns the matching binding, or `null` when nothing is bound to the combo.
+ */
+export function resolveTerminalKey(
+  combo: string,
+  keybindings: TerminalKeybinding[],
+): TerminalKeybinding | null {
+  return keybindings.find((b) => b.key === combo) ?? null;
+}
+
+/**
+ * Merges a persisted (possibly partial) terminal config with the defaults.
+ *
+ * Plain object spread would let a saved `keybindings` array fully shadow the
+ * defaults — so when we ship a new standard binding (e.g. copy/paste), existing
+ * users whose config predates it would never receive it. Instead we backfill
+ * each default binding ONLY when the saved config has no entry for that combo.
+ * User additions and overrides (including setting a combo to 'passthrough') are
+ * always respected, because removing a default = rebinding its combo, not
+ * deleting it.
+ */
+export function mergeTerminalConfig(saved?: Partial<TerminalConfig>): TerminalConfig {
+  const merged = { ...DEFAULT_TERMINAL_CONFIG, ...(saved ?? {}) };
+  const base = saved?.keybindings ?? [];
+  const savedCombos = new Set(base.map((b) => b.key));
+  const backfill = DEFAULT_TERMINAL_CONFIG.keybindings.filter((b) => !savedCombos.has(b.key));
+  merged.keybindings = [...base, ...backfill];
+  return merged;
 }

@@ -24,10 +24,12 @@ const TERMINAL_BLOCKED: Array<{
   // DevTools — Windows/Linux
   { key: 'F12' },
   { key: 'i', ctrl: true, shift: true },
-  { key: 'c', ctrl: true, shift: true },
   { key: 'j', ctrl: true, shift: true },
   // DevTools — macOS (Cmd+Option+I)
   { key: 'i', ctrl: true, alt: true },
+  // NOTE: Ctrl+Shift+C (Chromium "inspect element") is intentionally NOT blocked
+  // here — it is the terminal copy chord. The terminal's key handler consumes it
+  // (returns false → xterm cancels the event), so DevTools still never opens.
 ];
 
 for (const def of TERMINAL_BLOCKED) {

@@ -450,6 +450,16 @@ fn write_pty(session_id: String, data: String, state: State<'_, PtyState>) -> Re
             .ok_or_else(|| format!("Session not found: {session_id}"))?
     };
 
+    // [TEMP DEBUG] hex-dump every byte sent to the PTY so stray bytes between
+    // two Ctrl+D presses are visible in the dev terminal. Remove after diagnosing.
+    let hex: String = data
+        .as_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    eprintln!("[PTY-OUT {}] {hex}", &session_id[..session_id.len().min(4)]);
+
     let mut writer = writer_arc.lock().map_err(|_| "Writer lock poisoned")?;
     writer
         .write_all(data.as_bytes())

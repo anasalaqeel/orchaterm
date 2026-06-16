@@ -45,15 +45,18 @@ export default function App() {
     const zoomOut   = () => applyZoom(current - ZOOM_STEP);
     const zoomReset = () => applyZoom(1);
 
+    // context: 'non-terminal' — zoom keys are reserved everywhere EXCEPT when a
+    // terminal is focused. Inside a terminal these combos pass through to the
+    // shell (full-passthrough policy), so they no longer double-fire.
     const removals = [
       // Ctrl+= (same physical key as + on most keyboards, no shift needed)
-      registerShortcut({ key: '=', ctrl: true, context: 'global', handler: zoomIn }),
+      registerShortcut({ key: '=', ctrl: true, context: 'non-terminal', handler: zoomIn }),
       // Ctrl++ (Shift+=) — some keyboards / locales send this
-      registerShortcut({ key: '+', ctrl: true, shift: true, context: 'global', handler: zoomIn }),
+      registerShortcut({ key: '+', ctrl: true, shift: true, context: 'non-terminal', handler: zoomIn }),
       // Ctrl+- (zoom out)
-      registerShortcut({ key: '-', ctrl: true, context: 'global', handler: zoomOut }),
+      registerShortcut({ key: '-', ctrl: true, context: 'non-terminal', handler: zoomOut }),
       // Ctrl+0 (reset)
-      registerShortcut({ key: '0', ctrl: true, context: 'global', handler: zoomReset }),
+      registerShortcut({ key: '0', ctrl: true, context: 'non-terminal', handler: zoomReset }),
     ];
 
     return () => {

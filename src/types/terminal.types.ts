@@ -50,7 +50,7 @@ export interface TerminalTheme {
 export interface TerminalKeybinding {
   /** Combo string e.g. "ctrl+k", "ctrl+shift+t". Lowercase, modifiers first. */
   key: string;
-  action: 'clear' | 'scroll-top' | 'scroll-bottom' | 'send-text' | 'copy' | 'paste';
+  action: 'clear' | 'scroll-top' | 'scroll-bottom' | 'send-text' | 'copy' | 'paste' | 'passthrough';
   /** Only used when action === 'send-text'. */
   text?: string;
 }

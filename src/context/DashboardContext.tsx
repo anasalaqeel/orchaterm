@@ -15,7 +15,7 @@ import { needsBroker } from '../services/needsBroker';
 import { sessionContinuationService } from '../services/sessionContinuationService';
 import { writePtyChunked } from '../utils/ptyUtils';
 import type { DetectionEvent, CheckpointSnapshot } from '../types';
-import { DEFAULT_TERMINAL_CONFIG } from '../utils/terminalThemes';
+import { DEFAULT_TERMINAL_CONFIG, mergeTerminalConfig } from '../utils/terminalThemes';
 
 export interface ToastInfo {
   id: string;
@@ -131,7 +131,7 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
       llmProviderMode: raw.llmProviderMode ?? 'advanced',
       simpleLlmProvider: raw.simpleLlmProvider ?? (raw.llmProviders.relay ?? { ...DEFAULT_OLLAMA_CONFIG }),
       providerApiKeys: raw.providerApiKeys ?? {},
-      terminalConfig: { ...DEFAULT_TERMINAL_CONFIG, ...(raw.terminalConfig ?? {}) },
+      terminalConfig: mergeTerminalConfig(raw.terminalConfig),
       continuation: raw.continuation ?? {
         enabled: false,
         targetSessionId: null,

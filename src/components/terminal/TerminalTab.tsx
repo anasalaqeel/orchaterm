@@ -16,7 +16,7 @@ import { css } from '@emotion/css';
 import { Copy, Check } from 'lucide-react';
 import { terminalGainedFocus, terminalLostFocus } from '../../services/terminalFocus';
 import { useDashboard } from '../../context/DashboardContext';
-import { DEFAULT_TERMINAL_CONFIG, buildCombo } from '../../utils/terminalThemes';
+import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey } from '../../utils/terminalThemes';
 
 // ── Public ref handle exposed to TerminalContainer ─────────────────────────
 export interface TerminalTabHandle {
@@ -409,19 +409,19 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       const term = termRef.current;
       if (!term) return;
       
+      // ── Single keyboard authority ──────────────────────────────────────
+      // When this terminal has focus, it is the sole decision point. The
+      // resolver maps the pressed combo to a configured binding; ANY combo
+      // without a binding (the default — keybindings ships empty) returns true
+      // so xterm forwards it untouched to the PTY, exactly like a standalone
+      // terminal emulator. A 'passthrough' binding is an explicit override that
+      // forces an otherwise-reserved chord back to the shell.
       term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
         if (e.type !== 'keydown') return true;
-        const combo = buildCombo(e);
-        let binding = terminalConfig.keybindings.find(b => b.key === combo);
-        
-        if (!binding) {
-          if (combo === 'ctrl+shift+c') binding = { key: combo, action: 'copy' };
-          else if (combo === 'ctrl+shift+v') binding = { key: combo, action: 'paste' };
-          else if (combo === 'ctrl+l') binding = { key: combo, action: 'clear' };
-          else {
-            return true;
-          }
-        }
+
+        const binding = resolveTerminalKey(buildCombo(e), terminalConfig.keybindings);
+        if (!binding) return true;            // unbound → send to PTY
+        if (binding.action === 'passthrough') return true; // explicit override → PTY
 
         switch (binding.action) {
           case 'clear':
@@ -437,20 +437,22 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
             invoke('write_pty', { sessionId, data: binding.text ?? '' }).catch(() => {});
             break;
           case 'copy':
+            // xterm has no native copy on Ctrl+Shift+C (Chromium maps that to
+            // "inspect element"), so we copy the selection ourselves.
             if (term.hasSelection() && navigator.clipboard) {
               navigator.clipboard.writeText(term.getSelection()).catch(() => {});
               term.clearSelection();
             }
             break;
           case 'paste':
-            if (navigator.clipboard) {
-              navigator.clipboard.readText().then(text => {
-                if (text) invoke('write_pty', { sessionId, data: text }).catch(() => {});
-              }).catch(() => {});
-            }
+            // Do NOT read+write the clipboard here — Chromium already fires a
+            // native paste event for Ctrl+Shift+V, which xterm handles with
+            // proper bracketed-paste support. Doing it again caused a double
+            // paste. We still consume the keydown (return false below) so the
+            // raw Ctrl+V control byte (0x16) is never sent to the shell.
             break;
         }
-        return false;
+        return false; // matched action → consume, do not send to PTY
       });
     }, [terminalConfig.keybindings, sessionId]);
 
