@@ -1234,7 +1234,7 @@ export const SettingsView: React.FC = () => {
               <span>Keybindings</span>
             </h3>
             <p className={styles.cardDescription}>
-              Map key combos to terminal actions. Format: <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>ctrl+k</code>, <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>ctrl+shift+t</code>, <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>alt+b</code>. Modifiers: ctrl, alt, shift, meta.
+              Every key combo is sent to the shell by default. Add a binding only to reserve a combo for a terminal action — use <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>passthrough</code> to force an otherwise-reserved combo back to the shell. Format: <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>ctrl+k</code>, <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>ctrl+shift+t</code>, <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>alt+b</code>. Modifiers: ctrl, alt, shift, meta.
             </p>
 
             {terminalConfig.keybindings.length > 0 && (
@@ -1305,6 +1305,7 @@ export const SettingsView: React.FC = () => {
                   <option value="send-text">send-text</option>
                   <option value="copy">copy</option>
                   <option value="paste">paste</option>
+                  <option value="passthrough">passthrough</option>
                 </select>
               </div>
 

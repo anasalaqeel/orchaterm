@@ -49,7 +49,14 @@ document.addEventListener(
       if (s.context === 'non-terminal'  && termFocused)  continue;
       if (s.context === 'terminal-only' && !termFocused) continue;
       if (!matches(s, e)) continue;
+      // Fully consume the key: preventDefault blocks the browser/WebView default
+      // action, stopImmediatePropagation stops the event before it reaches
+      // xterm's textarea keydown handler — otherwise the keystroke would also be
+      // forwarded to the PTY (double-fire). With this, a reserved app chord never
+      // leaks to the shell, and any key NOT in the registry falls through
+      // untouched so the terminal can forward it.
       e.preventDefault();
+      e.stopImmediatePropagation();
       s.handler(e);
     }
   },
