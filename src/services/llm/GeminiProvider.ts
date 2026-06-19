@@ -1,6 +1,9 @@
 import { LLMProvider, ProviderConfig, ChatMessage, StreamCallbacks } from './types';
 import { customFetch as fetch } from './fetch';
 
+// Bound non-streaming completions so a hung server can't stall callers forever.
+const COMPLETE_TIMEOUT_MS = 90_000;
+
 export class GeminiProvider implements LLMProvider {
   private baseUrl: string;
   private model: string;
@@ -24,20 +27,30 @@ export class GeminiProvider implements LLMProvider {
 
   async complete(messages: ChatMessage[], systemPrompt?: string): Promise<string> {
     const url = `${this.baseUrl}/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(this.toContents(messages, systemPrompt)),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), COMPLETE_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify(this.toContents(messages, systemPrompt)),
+      });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(`Gemini error: ${response.status} — ${(err as any)?.error?.message ?? response.statusText}`);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(`Gemini error: ${response.status} — ${(err as any)?.error?.message ?? response.statusText}`);
+      }
+      const data = await response.json();
+      const text = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
+      if (!text) throw new Error('Gemini returned empty response');
+      return text;
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw new Error('Gemini request timed out');
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    const data = await response.json();
-    const text = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
-    if (!text) throw new Error('Gemini returned empty response');
-    return text;
   }
 
   stream(messages: ChatMessage[], systemPrompt: string, callbacks: StreamCallbacks): () => void {

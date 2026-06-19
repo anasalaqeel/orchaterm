@@ -20,7 +20,7 @@ fn main() {
         }
     };
 
-    println!("2. Spawning powershell.exe...");
+    println!("2. Spawning cmd.exe...");
     let cmd = CommandBuilder::new("cmd.exe");
     let mut child = match pair.slave.spawn_command(cmd) {
         Ok(c) => c,

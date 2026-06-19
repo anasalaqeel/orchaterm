@@ -72,3 +72,68 @@ describe('OllamaProvider.listModels', () => {
     expect(await provider.listModels()).toEqual([]);
   });
 });
+
+describe('OllamaProvider.complete timeout', () => {
+  it('aborts and throws when the server hangs past the timeout', async () => {
+    vi.useFakeTimers();
+    // Hang until the AbortController fires, then reject like a real aborted fetch.
+    mockFetch.mockImplementation((_url: string, init: any) =>
+      new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () =>
+          reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+        );
+      }),
+    );
+
+    const provider = new OllamaProvider({ provider: 'ollama', model: 'llama3.2' });
+    const p = provider.complete([{ role: 'user', content: 'Hi' }]);
+    // Attach the rejection handler BEFORE advancing timers, otherwise the
+    // rejection fires with no handler attached → unhandled-rejection noise.
+    const assertion = expect(p).rejects.toThrow('Ollama request timed out');
+
+    await vi.advanceTimersByTimeAsync(90_000);
+    await assertion;
+
+    vi.useRealTimers();
+  });
+});
+
+describe('OllamaProvider.stream', () => {
+  // Builds a Response-like object whose body reader yields the given string chunks.
+  function streamResponse(chunks: string[]) {
+    const enc = new TextEncoder();
+    let i = 0;
+    return {
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: async () =>
+            i < chunks.length
+              ? { done: false, value: enc.encode(chunks[i++]) }
+              : { done: true, value: undefined },
+        }),
+      },
+    };
+  }
+
+  it('reassembles a JSON line split across two reads (no dropped tokens)', async () => {
+    mockFetch.mockResolvedValue(
+      streamResponse([
+        '{"message":{"content":"Hel',                                            // line split mid-token
+        'lo "},"done":false}\n{"message":{"content":"world"},"done":true}\n',
+      ]),
+    );
+
+    const provider = new OllamaProvider({ provider: 'ollama', model: 'llama3.2' });
+    const tokens: string[] = [];
+    await new Promise<void>((resolve, reject) => {
+      provider.stream([{ role: 'user', content: 'Hi' }], 'sys', {
+        onToken: (t) => tokens.push(t),
+        onDone: () => resolve(),
+        onError: (e) => reject(new Error(e)),
+      });
+    });
+
+    expect(tokens.join('')).toBe('Hello world');
+  });
+});

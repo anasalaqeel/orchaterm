@@ -497,6 +497,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   // Engine is a singleton — subscribe once on mount, never re-subscribe.
   useEffect(() => {
     const unsubLog = orchestratorEngine.onLog((entry) => {
+      // Engine is one global singleton; ignore logs from a plan that belongs to
+      // a different workspace so they don't leak into this panel's feed.
+      if (entry.workspaceId && entry.workspaceId !== workspaceId) return;
       setMessages(prev => [...prev, {
         id:            crypto.randomUUID(),
         role:          'conductor',

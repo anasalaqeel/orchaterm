@@ -519,6 +519,10 @@ ${task.description}${buildAgentProtocol(task.id)}`;
       message,
       taskId,
       sessionId,
+      // Tag with the running plan's scope so each workspace's GroupChat shows
+      // only its own logs (the engine is one global singleton).
+      workspaceId: this.plan?.workspaceId,
+      spaceId: this.plan?.spaceId,
       ...extra,
     };
     for (const cb of this.logListeners) cb(entry);

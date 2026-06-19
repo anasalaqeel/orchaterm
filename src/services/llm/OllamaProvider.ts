@@ -1,6 +1,10 @@
 import { LLMProvider, ProviderConfig, ChatMessage, StreamCallbacks } from './types';
 import { customFetch as fetch } from './fetch';
 
+// Bound non-streaming completions so a hung server can't stall the conductor
+// pipeline / auto-answer forever (the call site only awaits this promise).
+const COMPLETE_TIMEOUT_MS = 90_000;
+
 export class OllamaProvider implements LLMProvider {
   private baseUrl: string;
   private model: string;
@@ -15,19 +19,29 @@ export class OllamaProvider implements LLMProvider {
       ? [{ role: 'system', content: systemPrompt }, ...messages]
       : messages;
 
-    const response = await fetch(`${this.baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.model, messages: allMessages, stream: false }),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), COMPLETE_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${this.baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({ model: this.model, messages: allMessages, stream: false }),
+      });
 
-    if (!response.ok) {
-      throw new Error(`Ollama error: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        throw new Error(`Ollama error: ${response.status} ${response.statusText}`);
+      }
+      const data = await response.json();
+      const text = data.message?.content ?? data.response ?? '';
+      if (!text) throw new Error('Ollama returned empty response');
+      return text.trim();
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw new Error('Ollama request timed out');
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    const data = await response.json();
-    const text = data.message?.content ?? data.response ?? '';
-    if (!text) throw new Error('Ollama returned empty response');
-    return text.trim();
   }
 
   stream(messages: ChatMessage[], systemPrompt: string, callbacks: StreamCallbacks): () => void {
@@ -50,11 +64,17 @@ export class OllamaProvider implements LLMProvider {
         const reader = res.body?.getReader();
         if (!reader) { onError('No response body'); return; }
         const decoder = new TextDecoder();
+        let buf = '';
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          for (const line of decoder.decode(value, { stream: true }).split('\n')) {
+          // Buffer across reads — a JSON line can be split mid-token between two
+          // chunks; splitting each chunk independently dropped those tokens.
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() ?? '';
+          for (const line of lines) {
             const t = line.trim();
             if (!t) continue;
             try {

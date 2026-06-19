@@ -1352,8 +1352,9 @@ export const SettingsView: React.FC = () => {
               className={styles.amberButton}
               onClick={() => {
                 const path = (useCustomPath ? customShellPath : defaultShell).trim();
-                if (!path) { showToast('Shell path is required', 'error'); return; }
-                updateSettings({ shellPath: path, terminalConfig });
+                // Terminal appearance + keybindings are independent of the shell
+                // path — save them even when no shell is set (don't block on it).
+                updateSettings(path ? { shellPath: path, terminalConfig } : { terminalConfig });
                 showToast('Terminal settings saved', 'success');
               }}
             >
