@@ -331,14 +331,10 @@ export function useSplitTree(sessions: { id: string }[]) {
         }
         return { ...g, tree: newTree, activePaneId };
       });
+      // Drop groups left empty by the removal. Do NOT recreate a group for the
+      // removed session — it's being closed. (The sessions-sync effect owns
+      // re-adding a group for any *live* session that lost its group.)
       nextGroups = nextGroups.filter(g => g.tree !== null && collectLeafSessionIds(g.tree).length > 0);
-      
-      const root = newLeaf(sessionId);
-      nextGroups.push({
-        id: crypto.randomUUID(),
-        tree: root,
-        activePaneId: root.id,
-      });
       return nextGroups;
     });
   }, []);
