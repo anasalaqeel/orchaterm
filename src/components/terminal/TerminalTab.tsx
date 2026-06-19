@@ -16,7 +16,7 @@ import { css } from '@emotion/css';
 import { Copy, Check } from 'lucide-react';
 import { terminalGainedFocus, terminalLostFocus } from '../../services/terminalFocus';
 import { useDashboard } from '../../context/DashboardContext';
-import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey } from '../../utils/terminalThemes';
+import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey, kittyEncodeKey } from '../../utils/terminalThemes';
 import { writePtyChunked } from '../../utils/ptyUtils';
 
 // ── Public ref handle exposed to TerminalContainer ─────────────────────────
@@ -212,12 +212,16 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       const onMouseUp = (e: MouseEvent) => {
         if (e.button === 1) {
           e.preventDefault();
+          // Route through term.paste() (not a raw write) so xterm wraps the
+          // text in bracketed-paste markers when the app enabled mode 2004 —
+          // otherwise newlines in a multi-line selection are read as Enter and
+          // submitted line-by-line (e.g. agy ran each line as a command).
           const selection = term.getSelection();
           if (selection) {
-            writePtyChunked(sessionId, selection).catch(() => {});
+            term.paste(selection);
           } else if (navigator.clipboard) {
             navigator.clipboard.readText().then(text => {
-              if (text) writePtyChunked(sessionId, text).catch(() => {});
+              if (text) term.paste(text);
             }).catch(() => {});
           }
         }
@@ -249,6 +253,45 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         }
       });
 
+      // ─ Kitty keyboard protocol (minimal) ─────────────────────────────────
+      // xterm 5.3 has no kitty keyboard support, so apps that enable it (e.g.
+      // Antigravity CLI / agy) get no reply to their query and their keys stay
+      // legacy C0 bytes — desyncing their input parser (the double-Ctrl+D exit
+      // silently failed). We track the requested flags here and report Ctrl
+      // combos as CSI-u below (see kittyEncodeKey). Stack supports push/pop used
+      // by other TUIs (nvim, fzf). https://sw.kovidgoyal.net/kitty/keyboard-protocol/
+      let kittyFlags = 0;
+      const kittyStack: number[] = [];
+      type CsiParams = (number | number[])[];
+      const num = (p: CsiParams, i: number, dflt: number) =>
+        (typeof p[i] === 'number' ? (p[i] as number) : undefined) ?? dflt;
+      // CSI = flags ; mode u — set flags (mode 1=set, 2=set bits, 3=clear bits)
+      term.parser.registerCsiHandler({ prefix: '=', final: 'u' }, (p: CsiParams) => {
+        const flags = num(p, 0, 0);
+        const mode = num(p, 1, 1);
+        kittyFlags = mode === 2 ? kittyFlags | flags
+                   : mode === 3 ? kittyFlags & ~flags
+                   : flags;
+        return true;
+      });
+      // CSI > flags u — push current flags, then set new
+      term.parser.registerCsiHandler({ prefix: '>', final: 'u' }, (p: CsiParams) => {
+        kittyStack.push(kittyFlags);
+        kittyFlags = num(p, 0, 0);
+        return true;
+      });
+      // CSI < n u — pop n levels (default 1)
+      term.parser.registerCsiHandler({ prefix: '<', final: 'u' }, (p: CsiParams) => {
+        let n = num(p, 0, 1);
+        while (n-- > 0 && kittyStack.length) kittyFlags = kittyStack.pop()!;
+        return true;
+      });
+      // CSI ? u — query active flags. Reply CSI ? <flags> u.
+      term.parser.registerCsiHandler({ prefix: '?', final: 'u' }, () => {
+        invoke('write_pty', { sessionId, data: `\x1b[?${kittyFlags}u` }).catch(() => {});
+        return true;
+      });
+
       // ─ Single keyboard authority (bound to THIS term instance) ───────────
       // Reads the latest keybindings via a ref, so config edits apply live
       // without re-attaching AND the handler is never stranded on a stale
@@ -257,8 +300,18 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
         if (e.type !== 'keydown') return true;
         const binding = resolveTerminalKey(buildCombo(e), keybindingsRef.current);
-        if (!binding) return true;                          // unbound → PTY
-        if (binding.action === 'passthrough') return true;  // explicit → PTY
+        // Unbound or explicit passthrough → key goes to the PTY. Reserved app
+        // shortcuts (copy/paste/clear/…) still win over kitty encoding below.
+        if (!binding || binding.action === 'passthrough') {
+          // Under the kitty keyboard protocol, Ctrl combos must be CSI-u, not
+          // legacy C0 bytes (xterm 5.3 won't encode them itself).
+          const kittySeq = kittyEncodeKey(e, kittyFlags);
+          if (kittySeq) {
+            invoke('write_pty', { sessionId, data: kittySeq }).catch(() => {});
+            return false; // consume; don't let xterm send the legacy byte
+          }
+          return true; // legacy passthrough → PTY
+        }
         switch (binding.action) {
           case 'clear':         term.clear(); break;
           case 'scroll-top':    term.scrollToTop(); break;
@@ -268,9 +321,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
             break;
           case 'copy':
             // Chromium maps Ctrl+Shift+C to "inspect element"; copy ourselves.
+            // Keep the selection highlighted after copy (don't clearSelection).
             if (term.hasSelection() && navigator.clipboard) {
               navigator.clipboard.writeText(term.getSelection()).catch(() => {});
-              term.clearSelection();
             }
             break;
           case 'paste':
@@ -464,7 +517,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
                 navigator.clipboard.writeText(term.getSelection()).catch(() => {});
                 setHasCopied(true);
                 setTimeout(() => setHasCopied(false), 2000);
-                term.clearSelection();
+                // Keep the selection highlighted after copy.
               }
             }}
           >
