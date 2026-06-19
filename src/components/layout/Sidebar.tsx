@@ -36,6 +36,10 @@ export function Sidebar() {
   const onDashboard = useMatch('/');
 
   const [hoveredWsId, setHoveredWsId] = useState<string | null>(null);
+  const [hoveredWsRect, setHoveredWsRect] = useState<DOMRect | null>(null);
+
+  const [hoveredNavPath, setHoveredNavPath] = useState<string | null>(null);
+  const [hoveredNavRect, setHoveredNavRect] = useState<DOMRect | null>(null);
 
   // Lazy initialisers so localStorage is only read once (on mount).
   const [collapsed,       setCollapsed]       = useState<boolean>(
@@ -176,9 +180,17 @@ export function Sidebar() {
                 <div
                   className={cx(s.wsRow, isConsoleOpen && s.wsRowActive, layoutCollapsed && s.wsRowCollapsed)}
                   style={isConsoleOpen ? { '--ws-color': w.color } as CSSProperties : undefined}
-                  onMouseEnter={() => setHoveredWsId(w.id)}
-                  onMouseLeave={() => setHoveredWsId(null)}
-                  title={collapsed ? w.name : undefined}
+                  onMouseEnter={(e) => {
+                    setHoveredWsId(w.id);
+                    if (collapsed) {
+                      setHoveredWsRect(e.currentTarget.getBoundingClientRect());
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredWsId(null);
+                    setHoveredWsRect(null);
+                  }}
+                  title={undefined}
                 >
                   <button
                     className={cx(s.wsClickArea, layoutCollapsed && s.wsClickAreaCollapsed)}
@@ -229,6 +241,65 @@ export function Sidebar() {
                       </motion.div>
                     )}
                   </AnimatePresence>
+
+                  <AnimatePresence>
+                    {collapsed && hoveredWsId === w.id && hoveredWsRect && (
+                      <motion.div
+                        initial={{ opacity: 0, x: -8, scale: 0.96 }}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        exit={{ opacity: 0, x: -8, scale: 0.96 }}
+                        transition={{ duration: 0.12, ease: [0.4, 0, 0.2, 1] }}
+                        className={cx(s.wsRow, s.wsPopout, isConsoleOpen && s.wsPopoutActive)}
+                        style={{
+                          top: hoveredWsRect.top,
+                          left: hoveredWsRect.left,
+                          width: 228,
+                          height: hoveredWsRect.height,
+                          borderColor: isConsoleOpen ? w.color + 'aa' : undefined,
+                          boxShadow: isConsoleOpen
+                            ? `var(--shadow-lg), 0 0 16px ${w.color}33`
+                            : undefined,
+                          '--ws-color': w.color,
+                        } as CSSProperties}
+                      >
+                        <button
+                          className={s.wsClickArea}
+                          onClick={() => {
+                            openInConsole(w.id);
+                            setHoveredWsId(null);
+                            setHoveredWsRect(null);
+                          }}
+                        >
+                          <span
+                            className={s.wsAvatar}
+                            style={{ backgroundColor: w.color + '22', borderColor: w.color + '44' }}
+                          >
+                            <span className={s.wsAvatarDot} style={{ backgroundColor: w.color }} />
+                          </span>
+                          <span className={s.wsName}>
+                            {w.name}
+                          </span>
+                        </button>
+
+                        <div className={s.wsActions} style={{ display: 'flex' }}>
+                          <button
+                            className={cx(s.iconBtn, s.iconBtnDanger)}
+                            title="Delete workspace"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Delete "${w.name}"?`)) {
+                                deleteWorkspace(w.id);
+                                setHoveredWsId(null);
+                                setHoveredWsRect(null);
+                              }
+                            }}
+                          >
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </motion.div>
             );
@@ -241,8 +312,22 @@ export function Sidebar() {
             to="/"
             end
             className={cx(s.navBtn, layoutCollapsed && s.navBtnCollapsed, isOverviewActive && s.navBtnActive)}
-            onClick={() => setViewMode('grid')}
-            title={collapsed ? 'Overview' : undefined}
+            onClick={() => {
+              setViewMode('grid');
+              setHoveredNavPath(null);
+              setHoveredNavRect(null);
+            }}
+            title={undefined}
+            onMouseEnter={(e) => {
+              if (collapsed) {
+                setHoveredNavPath('/');
+                setHoveredNavRect(e.currentTarget.getBoundingClientRect());
+              }
+            }}
+            onMouseLeave={() => {
+              setHoveredNavPath(null);
+              setHoveredNavRect(null);
+            }}
           >
             {() => (
               <>
@@ -259,6 +344,27 @@ export function Sidebar() {
                     </motion.span>
                   )}
                 </AnimatePresence>
+
+                <AnimatePresence>
+                  {collapsed && hoveredNavPath === '/' && hoveredNavRect && (
+                    <motion.div
+                      initial={{ opacity: 0, x: -8, scale: 0.96 }}
+                      animate={{ opacity: 1, x: 0, scale: 1 }}
+                      exit={{ opacity: 0, x: -8, scale: 0.96 }}
+                      transition={{ duration: 0.12, ease: [0.4, 0, 0.2, 1] }}
+                      className={cx(s.navBtn, s.navPopout, isOverviewActive && s.navPopoutActive)}
+                      style={{
+                        top: hoveredNavRect.top,
+                        left: hoveredNavRect.left,
+                        width: 228,
+                        height: hoveredNavRect.height,
+                      }}
+                    >
+                      <LayoutDashboard className={s.navIcon} />
+                      <span>Overview</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </>
             )}
           </NavLink>
@@ -268,9 +374,23 @@ export function Sidebar() {
               key={to}
               to={to}
               className={navLinkClass}
-              title={collapsed ? label : undefined}
+              title={undefined}
+              onMouseEnter={(e) => {
+                if (collapsed) {
+                  setHoveredNavPath(to);
+                  setHoveredNavRect(e.currentTarget.getBoundingClientRect());
+                }
+              }}
+              onMouseLeave={() => {
+                setHoveredNavPath(null);
+                setHoveredNavRect(null);
+              }}
+              onClick={() => {
+                setHoveredNavPath(null);
+                setHoveredNavRect(null);
+              }}
             >
-              {() => (
+              {({ isActive }) => (
                 <>
                   <Icon className={s.navIcon} />
                   <AnimatePresence initial={false}>
@@ -283,6 +403,27 @@ export function Sidebar() {
                       >
                         {label}
                       </motion.span>
+                    )}
+                  </AnimatePresence>
+
+                  <AnimatePresence>
+                    {collapsed && hoveredNavPath === to && hoveredNavRect && (
+                      <motion.div
+                        initial={{ opacity: 0, x: -8, scale: 0.96 }}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        exit={{ opacity: 0, x: -8, scale: 0.96 }}
+                        transition={{ duration: 0.12, ease: [0.4, 0, 0.2, 1] }}
+                        className={cx(s.navBtn, s.navPopout, isActive && s.navPopoutActive)}
+                        style={{
+                          top: hoveredNavRect.top,
+                          left: hoveredNavRect.left,
+                          width: 228,
+                          height: hoveredNavRect.height,
+                        }}
+                      >
+                        <Icon className={s.navIcon} />
+                        <span>{label}</span>
+                      </motion.div>
                     )}
                   </AnimatePresence>
                 </>
@@ -680,5 +821,44 @@ const s = {
         opacity: 1;
       }
     }
+  `,
+
+  /* Hover popouts for collapsed sidebar items */
+  wsPopout: css`
+    position: fixed;
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-lg), 0 4px 20px rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-right: 8px;
+    z-index: 1000;
+    pointer-events: auto;
+    button {
+      padding: 7px 6px;
+    }
+  `,
+  wsPopoutActive: css`
+    background: var(--bg-active) !important;
+  `,
+  navPopout: css`
+    position: fixed;
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-lg), 0 4px 20px rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px !important;
+    z-index: 1000;
+    pointer-events: auto;
+    justify-content: flex-start !important;
+  `,
+  navPopoutActive: css`
+    background: var(--color-brand) !important;
+    border-color: var(--color-brand) !important;
+    box-shadow: var(--shadow-lg), 0 0 16px rgba(var(--color-brand-rgb), 0.3) !important;
+    color: #fff !important;
   `,
 };
