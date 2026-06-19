@@ -2,6 +2,8 @@ import { LLMProvider, ProviderConfig, ChatMessage, StreamCallbacks } from './typ
 import { customFetch as fetch } from './fetch';
 
 const ANTHROPIC_VERSION = '2023-06-01';
+// Bound non-streaming completions so a hung server can't stall callers forever.
+const COMPLETE_TIMEOUT_MS = 90_000;
 const HARDCODED_MODELS = [
   'claude-opus-4-8',
   'claude-sonnet-4-6',
@@ -39,20 +41,30 @@ export class AnthropicProvider implements LLMProvider {
     };
     if (systemPrompt) body.system = systemPrompt;
 
-    const response = await fetch(`${this.baseUrl}/v1/messages`, {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify(body),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), COMPLETE_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${this.baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: this.headers,
+        signal: controller.signal,
+        body: JSON.stringify(body),
+      });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(`Anthropic error: ${response.status} — ${(err as any)?.error?.message ?? response.statusText}`);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(`Anthropic error: ${response.status} — ${(err as any)?.error?.message ?? response.statusText}`);
+      }
+      const data = await response.json();
+      const text = (data.content?.[0]?.text ?? '').trim();
+      if (!text) throw new Error('Anthropic returned empty response');
+      return text;
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw new Error('Anthropic request timed out');
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    const data = await response.json();
-    const text = (data.content?.[0]?.text ?? '').trim();
-    if (!text) throw new Error('Anthropic returned empty response');
-    return text;
   }
 
   stream(messages: ChatMessage[], systemPrompt: string, callbacks: StreamCallbacks): () => void {

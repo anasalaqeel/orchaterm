@@ -1,6 +1,9 @@
 import { LLMProvider, ProviderConfig, ChatMessage, StreamCallbacks } from './types';
 import { customFetch as fetch } from './fetch';
 
+// Bound non-streaming completions so a hung server can't stall callers forever.
+const COMPLETE_TIMEOUT_MS = 90_000;
+
 export class OpenAICompatProvider implements LLMProvider {
   private baseUrl: string;
   private model: string;
@@ -23,20 +26,30 @@ export class OpenAICompatProvider implements LLMProvider {
       ? [{ role: 'system', content: systemPrompt }, ...messages]
       : messages;
 
-    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify({ model: this.model, messages: allMessages, stream: false }),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), COMPLETE_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: this.headers,
+        signal: controller.signal,
+        body: JSON.stringify({ model: this.model, messages: allMessages, stream: false }),
+      });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(`API error: ${response.status} — ${(err as any)?.error?.message ?? response.statusText}`);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(`API error: ${response.status} — ${(err as any)?.error?.message ?? response.statusText}`);
+      }
+      const data = await response.json();
+      const text = (data.choices?.[0]?.message?.content ?? '').trim();
+      if (!text) throw new Error('API returned empty response');
+      return text;
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw new Error('API request timed out');
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    const data = await response.json();
-    const text = (data.choices?.[0]?.message?.content ?? '').trim();
-    if (!text) throw new Error('API returned empty response');
-    return text;
   }
 
   stream(messages: ChatMessage[], systemPrompt: string, callbacks: StreamCallbacks): () => void {

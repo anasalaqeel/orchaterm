@@ -77,4 +77,8 @@ export interface ConductorLogEntry {
   agentTitle?: string;
   /** File path — present on 'checkpoint' entries only. */
   checkpointPath?: string;
+  /** Owning plan's workspace/space — lets each GroupChat show only its own
+   *  conductor logs (the engine is a global singleton shared by every panel). */
+  workspaceId?: string;
+  spaceId?: string | null;
 }

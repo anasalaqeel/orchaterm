@@ -9,14 +9,15 @@ import {
 } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
+import { WebglAddon } from 'xterm-addon-webgl';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { css } from '@emotion/css';
 import { Copy, Check } from 'lucide-react';
 import { terminalGainedFocus, terminalLostFocus } from '../../services/terminalFocus';
 import { useDashboard } from '../../context/DashboardContext';
 import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey } from '../../utils/terminalThemes';
+import { writePtyChunked } from '../../utils/ptyUtils';
 
 // ── Public ref handle exposed to TerminalContainer ─────────────────────────
 export interface TerminalTabHandle {
@@ -78,6 +79,15 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // True once the PTY is alive — allows the term.onResize handler to call
     // resize_pty without racing a spawn that hasn't returned yet.
     const isSpawnedRef = useRef(false);
+
+    // Live refs read inside the (long-lived) main effect so it never closes over
+    // a stale value. keybindings: lets the custom key handler stay on THIS term
+    // and pick up config edits without re-attaching. onExit: avoids a stale
+    // callback firing on process exit after the parent re-rendered.
+    const keybindingsRef = useRef(terminalConfig.keybindings);
+    keybindingsRef.current = terminalConfig.keybindings;
+    const onExitRef = useRef(onExit);
+    onExitRef.current = onExit;
 
     // ── Expose fit() to parent via ref ───────────────────────────────────
     // safeFit → fit() → term.onResize fires → resize_pty (if spawned).
@@ -179,6 +189,17 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       termRef.current = term;
       fitAddonRef.current = fitAddon;
 
+      // GPU renderer — far faster than xterm's default DOM renderer for heavy
+      // TUI output (Claude Code, vim, spinners, large logs). Falls back to the
+      // DOM renderer automatically if WebGL is unavailable or the context is lost.
+      try {
+        const webgl = new WebglAddon();
+        webgl.onContextLoss(() => webgl.dispose());
+        term.loadAddon(webgl);
+      } catch {
+        /* WebGL unsupported — xterm keeps its DOM renderer */
+      }
+
       // ─ Track focus so keyboardManager knows when terminal is active ───
       // xterm's hidden textarea is the actual keyboard-capture element.
       // We listen on it directly since onFocus/onBlur are proposed-API only.
@@ -193,10 +214,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           e.preventDefault();
           const selection = term.getSelection();
           if (selection) {
-            invoke('write_pty', { sessionId, data: selection }).catch(() => {});
+            writePtyChunked(sessionId, selection).catch(() => {});
           } else if (navigator.clipboard) {
             navigator.clipboard.readText().then(text => {
-              if (text) invoke('write_pty', { sessionId, data: text }).catch(() => {});
+              if (text) writePtyChunked(sessionId, text).catch(() => {});
             }).catch(() => {});
           }
         }
@@ -213,10 +234,52 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       });
 
       // ─ Forward keyboard input → PTY ──────────────────────────────────
+      // Large inputs (paste) are chunked: Windows ConPTY / readline-based CLIs
+      // drop characters when a big buffer arrives in a single write. Single
+      // keystrokes go direct so typing has no added latency.
       const dataDispose = term.onData((data) => {
-        invoke('write_pty', { sessionId, data }).catch((err) =>
-          console.error('[TerminalTab] write_pty failed:', err),
-        );
+        if (data.length > 80) {
+          writePtyChunked(sessionId, data).catch((err) =>
+            console.error('[TerminalTab] writePtyChunked failed:', err),
+          );
+        } else {
+          invoke('write_pty', { sessionId, data }).catch((err) =>
+            console.error('[TerminalTab] write_pty failed:', err),
+          );
+        }
+      });
+
+      // ─ Single keyboard authority (bound to THIS term instance) ───────────
+      // Reads the latest keybindings via a ref, so config edits apply live
+      // without re-attaching AND the handler is never stranded on a stale
+      // disposed terminal after a deps change recreated it. Unbound combos
+      // (the default) return true → forwarded to the PTY like a real emulator.
+      term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+        if (e.type !== 'keydown') return true;
+        const binding = resolveTerminalKey(buildCombo(e), keybindingsRef.current);
+        if (!binding) return true;                          // unbound → PTY
+        if (binding.action === 'passthrough') return true;  // explicit → PTY
+        switch (binding.action) {
+          case 'clear':         term.clear(); break;
+          case 'scroll-top':    term.scrollToTop(); break;
+          case 'scroll-bottom': term.scrollToBottom(); break;
+          case 'send-text':
+            invoke('write_pty', { sessionId, data: binding.text ?? '' }).catch(() => {});
+            break;
+          case 'copy':
+            // Chromium maps Ctrl+Shift+C to "inspect element"; copy ourselves.
+            if (term.hasSelection() && navigator.clipboard) {
+              navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+              term.clearSelection();
+            }
+            break;
+          case 'paste':
+            // Chromium fires a native paste for Ctrl+Shift+V (bracketed-paste
+            // handled by xterm). We only consume the keydown so the raw control
+            // byte never reaches the shell — no manual clipboard read here.
+            break;
+        }
+        return false; // matched → consume
       });
 
       // ─ xterm.js → PTY size sync (primary resize mechanism) ──────────
@@ -258,7 +321,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       let unlistenExit: UnlistenFn | null = null;
       listen(`pty-exit-${sessionId}`, () => {
         term.write('\r\n\x1b[31m[Process Exited]\x1b[0m\r\n');
-        if (onExit) onExit();
+        onExitRef.current?.();
       }).then(fn => {
         if (cancelled) fn();
         else unlistenExit = fn;
@@ -296,31 +359,12 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         resizeObserver.observe(containerRef.current);
       }
 
-      // ─ File drag-drop (paths from OS via Tauri window event) ──────────────
-      // onDragDropEvent is the idiomatic Tauri v2 API — gives a typed payload with
-      // a `type` discriminant. We only act on 'drop', ignoring 'enter'/'over'/'leave'.
-      // Position is in logical (CSS) pixels so it's directly comparable to getBoundingClientRect.
-      let unlistenDrop: UnlistenFn | null = null;
-      getCurrentWindow().onDragDropEvent((event) => {
-        if (event.payload.type !== 'drop') return;
-        const { paths, position } = event.payload;
-        if (!paths?.length || !position) return;
-        const container = containerRef.current;
-        if (!container) return;
-        const rect = container.getBoundingClientRect();
-        if (
-          position.x >= rect.left && position.x <= rect.right &&
-          position.y >= rect.top  && position.y <= rect.bottom
-        ) {
-          const text = paths.map((p) => (p.includes(' ') ? `"${p}"` : p)).join(' ');
-          invoke('write_pty', { sessionId, data: text }).catch(() => {});
-        }
-      })
-        .then((fn) => {
-          if (cancelled) fn();
-          else unlistenDrop = fn;
-        })
-        .catch(() => {});
+      // NOTE: OS file drag-drop (insert dropped paths) is intentionally NOT
+      // wired here. The window sets `dragDropEnabled: false` (required so the
+      // HTML5 tab drag-and-drop / split system works on Windows), which means
+      // Tauri never emits onDragDropEvent — the old handler here was dead code
+      // that never fired. Reinstating file-drop requires a different approach
+      // that doesn't break tab DnD.
 
       // ─ Spawn the PTY process (inside rAF so dims are correct) ──────────
       // Deferring to rAF ensures CSS flex layout has resolved and safeFit
@@ -355,7 +399,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         selDispose.dispose();
         if (unlisten) unlisten();
         if (unlistenExit) unlistenExit();
-        if (unlistenDrop) unlistenDrop();
         resizeDispose.dispose();
         term.dispose();
         termRef.current = null;
@@ -404,57 +447,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       });
       return () => { cancelAnimationFrame(id1); cancelAnimationFrame(id2); };
     }, [terminalConfig]);
-
-    useEffect(() => {
-      const term = termRef.current;
-      if (!term) return;
-      
-      // ── Single keyboard authority ──────────────────────────────────────
-      // When this terminal has focus, it is the sole decision point. The
-      // resolver maps the pressed combo to a configured binding; ANY combo
-      // without a binding (the default — keybindings ships empty) returns true
-      // so xterm forwards it untouched to the PTY, exactly like a standalone
-      // terminal emulator. A 'passthrough' binding is an explicit override that
-      // forces an otherwise-reserved chord back to the shell.
-      term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-        if (e.type !== 'keydown') return true;
-
-        const binding = resolveTerminalKey(buildCombo(e), terminalConfig.keybindings);
-        if (!binding) return true;            // unbound → send to PTY
-        if (binding.action === 'passthrough') return true; // explicit override → PTY
-
-        switch (binding.action) {
-          case 'clear':
-            term.clear();
-            break;
-          case 'scroll-top':
-            term.scrollToTop();
-            break;
-          case 'scroll-bottom':
-            term.scrollToBottom();
-            break;
-          case 'send-text':
-            invoke('write_pty', { sessionId, data: binding.text ?? '' }).catch(() => {});
-            break;
-          case 'copy':
-            // xterm has no native copy on Ctrl+Shift+C (Chromium maps that to
-            // "inspect element"), so we copy the selection ourselves.
-            if (term.hasSelection() && navigator.clipboard) {
-              navigator.clipboard.writeText(term.getSelection()).catch(() => {});
-              term.clearSelection();
-            }
-            break;
-          case 'paste':
-            // Do NOT read+write the clipboard here — Chromium already fires a
-            // native paste event for Ctrl+Shift+V, which xterm handles with
-            // proper bracketed-paste support. Doing it again caused a double
-            // paste. We still consume the keydown (return false below) so the
-            // raw Ctrl+V control byte (0x16) is never sent to the shell.
-            break;
-        }
-        return false; // matched action → consume, do not send to PTY
-      });
-    }, [terminalConfig.keybindings, sessionId]);
 
     return (
       <div className={styles.wrapper}>
