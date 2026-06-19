@@ -200,6 +200,32 @@ export function resolveTerminalKey(
 }
 
 /**
+ * Encodes a Ctrl+<key> event as a kitty keyboard protocol CSI-u sequence, or
+ * returns `null` when the legacy encoding should be used instead.
+ *
+ * xterm 5.3 has no kitty keyboard support, so when an app enables the protocol
+ * (flags > 0) we must report Ctrl combos as `CSI <codepoint> ; <mods> u` —
+ * sending the legacy C0 byte (e.g. \x04 for Ctrl+D) desyncs kitty-aware TUIs,
+ * which silently dropped keys (Antigravity CLI's double-Ctrl+D-to-exit failed).
+ *
+ * Only pure Ctrl (optionally +Shift) combos on single printable keys are
+ * encoded. Alt is excluded so Windows AltGr typing is unaffected, and
+ * non-character keys (Enter/Tab/Esc/arrows) keep their legacy encoding — which
+ * is correct for the disambiguate flag.
+ *
+ * @see https://sw.kovidgoyal.net/kitty/keyboard-protocol/
+ */
+export function kittyEncodeKey(e: KeyboardEvent, flags: number): string | null {
+  if (flags <= 0) return null;
+  if (!e.ctrlKey || e.altKey || e.metaKey) return null;
+  if (e.key.length !== 1) return null;
+  const codepoint = e.key.toLowerCase().charCodeAt(0);
+  if (codepoint < 0x20 || codepoint > 0x7e) return null; // printable ASCII base
+  const mods = 1 + (e.shiftKey ? 1 : 0) + 4; // bit 4 = Ctrl
+  return `\x1b[${codepoint};${mods}u`;
+}
+
+/**
  * Merges a persisted (possibly partial) terminal config with the defaults.
  *
  * Plain object spread would let a saved `keybindings` array fully shadow the

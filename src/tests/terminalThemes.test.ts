@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildCombo, resolveTerminalKey, mergeTerminalConfig, DEFAULT_TERMINAL_CONFIG } from '../utils/terminalThemes';
+import { buildCombo, resolveTerminalKey, mergeTerminalConfig, DEFAULT_TERMINAL_CONFIG, kittyEncodeKey } from '../utils/terminalThemes';
 import type { TerminalKeybinding } from '../types';
 
 function makeEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
@@ -61,6 +61,40 @@ describe('resolveTerminalKey', () => {
 
   it('non-matching combo with a populated table → null', () => {
     expect(resolveTerminalKey('ctrl+x', [copy, pass])).toBeNull();
+  });
+});
+
+describe('kittyEncodeKey', () => {
+  it('flags 0 → null (protocol inactive, use legacy)', () => {
+    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, key: 'd' }), 0)).toBeNull();
+  });
+
+  it('Ctrl+D with flags active → CSI-u (codepoint 100, mods 5)', () => {
+    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, key: 'd' }), 1)).toBe('\x1b[100;5u');
+  });
+
+  it('Ctrl+C → codepoint 99', () => {
+    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, key: 'c' }), 1)).toBe('\x1b[99;5u');
+  });
+
+  it('Ctrl+Shift+D → shift adds to modifier (mods 6), base codepoint', () => {
+    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, shiftKey: true, key: 'D' }), 1)).toBe('\x1b[100;6u');
+  });
+
+  it('no Ctrl → null (plain typing untouched)', () => {
+    expect(kittyEncodeKey(makeEvent({ key: 'd' }), 1)).toBeNull();
+  });
+
+  it('Ctrl+Alt (AltGr) → null (Windows AltGr typing preserved)', () => {
+    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, altKey: true, key: 'd' }), 1)).toBeNull();
+  });
+
+  it('non-character key (Enter) → null (legacy encoding kept)', () => {
+    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, key: 'Enter' }), 1)).toBeNull();
+  });
+
+  it('meta held → null', () => {
+    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, metaKey: true, key: 'd' }), 1)).toBeNull();
   });
 });
 
