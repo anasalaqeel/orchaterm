@@ -203,10 +203,13 @@ export function resolveTerminalKey(
  * Encodes a Ctrl+<key> event as a kitty keyboard protocol CSI-u sequence, or
  * returns `null` when the legacy encoding should be used instead.
  *
- * xterm 5.3 has no kitty keyboard support, so when an app enables the protocol
- * (flags > 0) we must report Ctrl combos as `CSI <codepoint> ; <mods> u` —
- * sending the legacy C0 byte (e.g. \x04 for Ctrl+D) desyncs kitty-aware TUIs,
- * which silently dropped keys (Antigravity CLI's double-Ctrl+D-to-exit failed).
+ * xterm 5.3 has no kitty keyboard support, so when an app enables the
+ * "disambiguate escape codes" flag (bit 1) we must report Ctrl combos as
+ * `CSI <codepoint> ; <mods> u` — sending the legacy C0 byte (e.g. \x04 for
+ * Ctrl+D) desyncs kitty-aware TUIs, which silently dropped keys (Antigravity
+ * CLI's double-Ctrl+D-to-exit failed). Bit 1 is the only flag that changes the
+ * legacy Ctrl-code encoding; other bits (e.g. 4 = report alternate keys) leave
+ * unambiguous keys legacy, so we don't encode for those.
  *
  * Only pure Ctrl (optionally +Shift) combos on single printable keys are
  * encoded. Alt is excluded so Windows AltGr typing is unaffected, and
@@ -216,7 +219,7 @@ export function resolveTerminalKey(
  * @see https://sw.kovidgoyal.net/kitty/keyboard-protocol/
  */
 export function kittyEncodeKey(e: KeyboardEvent, flags: number): string | null {
-  if (flags <= 0) return null;
+  if ((flags & 1) === 0) return null; // bit 1 = disambiguate escape codes
   if (!e.ctrlKey || e.altKey || e.metaKey) return null;
   if (e.key.length !== 1) return null;
   const codepoint = e.key.toLowerCase().charCodeAt(0);
