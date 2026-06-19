@@ -501,10 +501,15 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       return () => { cancelAnimationFrame(id1); cancelAnimationFrame(id2); };
     }, [terminalConfig]);
 
+    // xterm only paints the cols×rows cell grid; the few px of leftover space
+    // around it shows the wrapper/container background. Drive that from the
+    // active theme so edges match the terminal bg when the theme changes.
+    const themeBg = terminalConfig.theme.background ?? '#070d14';
+
     return (
-      <div className={styles.wrapper}>
+      <div className={styles.wrapper} style={{ backgroundColor: themeBg }}>
         {/* Terminal canvas */}
-        <div ref={containerRef} className={styles.terminalContainer} />
+        <div ref={containerRef} className={styles.terminalContainer} style={{ backgroundColor: themeBg }} />
 
         {/* Floating Copy Button */}
         {hasSelection && (
