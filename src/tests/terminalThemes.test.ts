@@ -69,7 +69,15 @@ describe('kittyEncodeKey', () => {
     expect(kittyEncodeKey(makeEvent({ ctrlKey: true, key: 'd' }), 0)).toBeNull();
   });
 
-  it('Ctrl+D with flags active → CSI-u (codepoint 100, mods 5)', () => {
+  it('disambiguate bit unset (flags 4) → null', () => {
+    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, key: 'd' }), 4)).toBeNull();
+  });
+
+  it('disambiguate bit set within combined flags (5 = 1|4) → encodes', () => {
+    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, key: 'd' }), 5)).toBe('\x1b[100;5u');
+  });
+
+  it('Ctrl+D with disambiguate flag → CSI-u (codepoint 100, mods 5)', () => {
     expect(kittyEncodeKey(makeEvent({ ctrlKey: true, key: 'd' }), 1)).toBe('\x1b[100;5u');
   });
 
