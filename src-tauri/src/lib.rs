@@ -178,7 +178,10 @@ fn get_available_shells() -> Vec<ShellInfo> {
 struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
-    child: Box<dyn Child + Send>,
+    /// Behind its own Arc<Mutex> (like the writer) so the monitor thread can
+    /// poll `try_wait` and `kill_pty` can reap WITHOUT locking the global
+    /// session map — one stuck child can no longer freeze every other PTY.
+    child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
     /// Flipped to `true` by `kill_pty` so the reader thread exits promptly.
     shutdown: Arc<AtomicBool>,
 }
@@ -285,9 +288,6 @@ fn spawn_pty(
 
     let mut cmd = CommandBuilder::new(&shell_to_use);
 
-    #[cfg(not(target_os = "windows"))]
-    cmd.env("TERM", "xterm-256color");
-
     // Append any extra args (e.g. ["--", "bash"] for wsl).
     if let Some(args) = shell_args {
         for arg in args {
@@ -323,19 +323,25 @@ fn spawn_pty(
 
     let shutdown = Arc::new(AtomicBool::new(false));
 
+    // Child handle behind its own Arc<Mutex> so the monitor thread polls it
+    // without ever touching the global session map.
+    let child = Arc::new(Mutex::new(child));
+
     let session = PtySession {
         master: pair.master,
         writer: Arc::new(Mutex::new(writer)),
-        child,
+        child: Arc::clone(&child),
         shutdown: Arc::clone(&shutdown),
     };
 
     {
         let mut sessions = lock_sessions(&state)?;
         // If a stale session exists for this ID, kill it first.
-        if let Some(mut old) = sessions.remove(&session_id) {
+        if let Some(old) = sessions.remove(&session_id) {
             old.shutdown.store(true, Ordering::SeqCst);
-            let _ = old.child.kill();
+            if let Ok(mut c) = old.child.lock() {
+                let _ = c.kill();
+            }
         }
         sessions.insert(session_id.clone(), session);
     }
@@ -343,46 +349,47 @@ fn spawn_pty(
     // ── Child process monitor thread ───────────────────────────────────────
     // portable_pty's reader thread can block indefinitely on Windows even after
     // the child process dies. Polling `try_wait` guarantees we detect the exit.
+    // Polls only this session's child Arc — never the global session map — so it
+    // cannot contend with write_pty / resize_pty / spawn_pty.
     let sid_monitor = session_id.clone();
     let app_handle_monitor = app_handle.clone();
-    
+    let child_monitor = Arc::clone(&child);
+    let shutdown_monitor = Arc::clone(&shutdown);
+
     thread::spawn(move || {
         loop {
             thread::sleep(std::time::Duration::from_millis(100));
-            let state_monitor = app_handle_monitor.state::<PtyState>();
-            let mut sessions = match lock_sessions(&state_monitor) {
-                Ok(s) => s,
-                Err(_) => break,
-            };
-            if let Some(session) = sessions.get_mut(&sid_monitor) {
-                match session.child.try_wait() {
-                    Ok(Some(_status)) => {
-                        // Child exited.
-                        let payload = PtyPayload {
-                            session_id: sid_monitor.clone(),
-                            data: "".to_string(),
-                        };
-                        let _ = app_handle_monitor.emit(&format!("pty-exit-{}", sid_monitor), payload);
-                        
-                        // We do not remove the session from the map here to avoid
-                        // race conditions with the frontend closing the tab.
-                        break;
-                    }
-                    Ok(None) => {
-                        // Still running
-                    }
-                    Err(_) => {
-                        // Error checking status, assume dead.
-                        let payload = PtyPayload {
-                            session_id: sid_monitor.clone(),
-                            data: "".to_string(),
-                        };
-                        let _ = app_handle_monitor.emit(&format!("pty-exit-{}", sid_monitor), payload);
-                        break;
-                    }
+            // kill_pty flips this and removes the session — stop promptly.
+            if shutdown_monitor.load(Ordering::SeqCst) {
+                break;
+            }
+            let exited = {
+                let mut child = match child_monitor.lock() {
+                    Ok(c) => c,
+                    Err(p) => p.into_inner(),
+                };
+                match child.try_wait() {
+                    Ok(Some(_status)) => true,
+                    Ok(None) => false,
+                    Err(_) => true, // error checking status — assume dead
                 }
-            } else {
-                // Session was removed (killed by user)
+            };
+            if exited {
+                let payload = PtyPayload {
+                    session_id: sid_monitor.clone(),
+                    data: String::new(),
+                };
+                let _ = app_handle_monitor
+                    .emit(&format!("pty-exit-{}", sid_monitor), payload);
+
+                // Remove the session so its master/writer drop and the reader
+                // thread unblocks — otherwise a naturally-exited shell leaks a
+                // PTY handle + blocked reader thread until the tab is closed.
+                if let Ok(mut sessions) =
+                    lock_sessions(&app_handle_monitor.state::<PtyState>())
+                {
+                    sessions.remove(&sid_monitor);
+                }
                 break;
             }
         }
@@ -450,16 +457,6 @@ fn write_pty(session_id: String, data: String, state: State<'_, PtyState>) -> Re
             .ok_or_else(|| format!("Session not found: {session_id}"))?
     };
 
-    // [TEMP DEBUG] hex-dump every byte sent to the PTY so stray bytes between
-    // two Ctrl+D presses are visible in the dev terminal. Remove after diagnosing.
-    let hex: String = data
-        .as_bytes()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<Vec<_>>()
-        .join(" ");
-    eprintln!("[PTY-OUT {}] {hex}", &session_id[..session_id.len().min(4)]);
-
     let mut writer = writer_arc.lock().map_err(|_| "Writer lock poisoned")?;
     writer
         .write_all(data.as_bytes())
@@ -498,26 +495,38 @@ fn resize_pty(
 
 #[tauri::command]
 fn kill_pty(session_id: String, state: State<'_, PtyState>) -> Result<(), String> {
-    let mut sessions = lock_sessions(&state)?;
-    if let Some(mut session) = sessions.remove(&session_id) {
-        // Signal the reader thread to exit.
+    // Remove the session under the lock, then release it BEFORE any blocking
+    // wait. The previous version held the global lock across `child.wait()`,
+    // so a slow-dying child froze write_pty / resize_pty / spawn_pty (which all
+    // need this same lock) across every other terminal in the app.
+    let session = {
+        let mut sessions = lock_sessions(&state)?;
+        sessions.remove(&session_id)
+    };
+
+    if let Some(session) = session {
+        // Signal reader + monitor threads to exit.
         session.shutdown.store(true, Ordering::SeqCst);
 
-        // Kill the child process and reap it to avoid zombies.
-        let _ = session.child.kill();
-        // Wait briefly for the child to exit so the OS can reclaim resources.
-        // `wait` can block — use a short timeout via a helper thread.
-        let child_wait = thread::spawn(move || {
-            let _ = session.child.wait();
+        let child = Arc::clone(&session.child);
+        // Kill + reap on a detached thread, bounded by a real timeout so a
+        // stuck child can never block the command (or, transitively, the UI).
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            {
+                let mut c = match child.lock() {
+                    Ok(c) => c,
+                    Err(p) => p.into_inner(),
+                };
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+            let _ = tx.send(());
         });
-        // Give it 500ms; if the child is stuck we move on.
-        let _ = child_wait.join();
-
-        Ok(())
-    } else {
-        // Silently succeed — the session may have already been cleaned up.
-        Ok(())
+        let _ = rx.recv_timeout(std::time::Duration::from_millis(500));
+        // `session` (master + writer) drops here → reader thread gets EOF.
     }
+    Ok(())
 }
 
 // ── Persistent storage commands ────────────────────────────────────────────────
@@ -562,8 +571,15 @@ fn write_file_path(path: String, content: String) -> Result<(), String> {
         _ => return Err("write_file_path: only .md files are allowed".to_string()),
     }
 
-    // Reject writes to obvious system directories
-    let path_lower = path.to_lowercase().replace('\\', "/");
+    // Reject writes to obvious system directories.
+    let mut path_lower = path.to_lowercase().replace('\\', "/");
+    // Strip a Windows drive prefix (e.g. "c:") so the unix-style prefix checks
+    // below also catch "C:\Windows\System32\...". The old code only used
+    // starts_with on raw drive-prefixed paths, so the guard never fired on
+    // Windows.
+    if path_lower.len() >= 2 && path_lower.as_bytes()[1] == b':' {
+        path_lower = path_lower[2..].to_string();
+    }
     let blocked = [
         "/etc/", "/bin/", "/usr/bin/", "/usr/sbin/", "/sbin/",
         "/system/", "/windows/system32/", "/program files/",

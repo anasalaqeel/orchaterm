@@ -655,7 +655,10 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const importedPrompts = Array.isArray(parsed.savedPrompts)
         ? parsed.savedPrompts.filter((p: any) => isObj(p) && typeof p.id === 'string')
         : [];
-      const importedSettings = isObj(parsed.settings) ? { ...settings, ...parsed.settings } : settings;
+      // Run the same migration as initial load so imported settings always have
+      // every nested default (provider slots, terminalConfig, continuation, …)
+      // instead of a shallow merge that can leave required fields undefined.
+      const importedSettings = isObj(parsed.settings) ? migrateSettings(parsed.settings) : settings;
 
       setWorkspaces(importedWs);
       setSpaces(importedSpaces);

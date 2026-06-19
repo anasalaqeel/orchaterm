@@ -48,6 +48,16 @@ const INTERACTIVE_PROMPT_REGEX = new RegExp([
   String.raw`\?\s*$`,
 ].join('|'), 'im');
 
+// ── Buffer bounds ───────────────────────────────────────────────────────────────
+// Cap retained per-session output so a long-running agent (e.g. Claude Code
+// emitting megabytes of ANSI) can't grow an unbounded JS string (memory) and so
+// the marker scans below stay cheap regardless of total output (CPU). Detection
+// always works on the most-recent tail, so trimming older output is safe.
+const MAX_BUFFER_CHARS    = 256 * 1024;
+const NEEDS_SCAN_TAIL     =   8 * 1024; // runs on EVERY chunk — keep small
+const SENTINEL_SCAN_TAIL  =  32 * 1024;
+const PLAN_SCAN_TAIL      =  96 * 1024; // plan JSON arrays can be large
+
 // ── Internal entry ─────────────────────────────────────────────────────────────
 
 interface WatchEntry {
@@ -133,6 +143,15 @@ class BufferWatcher {
     if (!entry) return;
 
     entry.buffer.buffer += chunk;
+    // Trim to the cap, keeping the most-recent slice. Adjust the summary delta
+    // marker by the same amount so its length math stays correct.
+    if (entry.buffer.buffer.length > MAX_BUFFER_CHARS) {
+      const removed = entry.buffer.buffer.length - MAX_BUFFER_CHARS;
+      entry.buffer.buffer = entry.buffer.buffer.slice(removed);
+      if (entry.summaryLastLength !== undefined) {
+        entry.summaryLastLength = Math.max(0, entry.summaryLastLength - removed);
+      }
+    }
     entry.buffer.lastActivity = Date.now();
 
     // NEEDS detection runs regardless of mode — agents can request help at any time
@@ -208,7 +227,7 @@ class BufferWatcher {
       entry.ignoreUntil = undefined;
     }
 
-    const result = parseSentinel(entry.buffer.buffer);
+    const result = parseSentinel(entry.buffer.buffer.slice(-SENTINEL_SCAN_TAIL));
     if (!result) return;
 
     // Snapshot callback and clear before calling to avoid re-entrancy issues
@@ -240,7 +259,7 @@ class BufferWatcher {
       entry.ignoreUntil = undefined;
     }
 
-    const rawJson = parsePlanBlock(entry.buffer.buffer);
+    const rawJson = parsePlanBlock(entry.buffer.buffer.slice(-PLAN_SCAN_TAIL));
     if (rawJson === null) return;
 
     const onPlan  = entry.onPlan;
@@ -288,7 +307,7 @@ class BufferWatcher {
   // ── Internal: needs check ──────────────────────────────────────────────────
 
   private checkNeeds(entry: WatchEntry): void {
-    const request = parseNeedsBlock(entry.buffer.buffer);
+    const request = parseNeedsBlock(entry.buffer.buffer.slice(-NEEDS_SCAN_TAIL));
     if (!request) return;
 
     // Avoid re-firing for the same block — deduplicate by the ask field.
