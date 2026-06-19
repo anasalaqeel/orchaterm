@@ -55,6 +55,30 @@ function safeFit(addon: FitAddon): { cols: number; rows: number } | null {
   }
 }
 
+// Matches ANSI escapes / OSC sequences / lone control chars so we can tell
+// whether a chunk has any *printable* content yet.
+const ANSI_CONTROL = new RegExp('\\u001b\\][^\\u0007]*(?:\\u0007|\\u001b\\\\)|\\u001b\\[[0-9;?]*[ -\\/]*[@-~]|\\u001b[@-Z\\\\-_]|[\\u0000-\\u0009\\u000b-\\u001f\\u007f]', 'g');
+
+/**
+ * Some shells (notably Git Bash, whose default PS1 starts with `\n`) emit a
+ * leading newline before the first prompt, leaving a blank row at the very top.
+ * Strip exactly ONE leading newline — but only when it is the session's first
+ * visible content (everything before it is escape sequences). Returns the
+ * (possibly trimmed) data plus whether the one-shot decision is now resolved.
+ *
+ * Safe for other shells: PowerShell/WSL print a printable prompt first (decision
+ * resolves without stripping), and TUIs (Claude, agy) clear/redraw the screen.
+ */
+function stripLeadingPromptNewline(data: string): { out: string; resolved: boolean } {
+  const visible = data.replace(ANSI_CONTROL, '').replace(/\r/g, '');
+  if (visible === '') return { out: data, resolved: false }; // escapes only — wait
+  if (!visible.startsWith('\n')) return { out: data, resolved: true }; // printable first — leave as-is
+  // Leading newline confirmed: drop the first \n (and an immediately preceding \r).
+  const nl = data.indexOf('\n');
+  const cut = nl > 0 && data[nl - 1] === '\r' ? nl - 1 : nl;
+  return { out: data.slice(0, cut) + data.slice(nl + 1), resolved: true };
+}
+
 export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
   ({ sessionId, workspacePath, shell, shellArgs, onExit }, ref) => {
     const { settings } = useDashboard();
@@ -66,6 +90,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const termRef = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
+    const webglAddonRef = useRef<WebglAddon | null>(null);
     const [spawnState, setSpawnState] = useState<SpawnState>('idle');
     const [errorMsg, setErrorMsg] = useState('');
     const [hasSelection, setHasSelection] = useState(false);
@@ -98,6 +123,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         if (!fitAddonRef.current || !term) return;
         (term as any)._core?._charSizeService?.measure();
         safeFit(fitAddonRef.current);
+        // The WebGL glyph atlas desyncs while the pane is hidden (no paints) —
+        // on re-show the first frame draws stale/overlapping glyphs. Rebuild it,
+        // then force a full redraw so every cell repaints from clean state.
+        try { webglAddonRef.current?.clearTextureAtlas(); } catch { /* DOM renderer */ }
         term.scrollToBottom();
         term.refresh(0, term.rows - 1);
       },
@@ -192,19 +221,19 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       // GPU renderer — far faster than xterm's default DOM renderer for heavy
       // TUI output (Claude Code, vim, spinners, large logs). Falls back to the
       // DOM renderer automatically if WebGL is unavailable or the context is lost.
-      let webglAddon: WebglAddon | null = null;
       try {
-        webglAddon = new WebglAddon();
+        const webglAddon = new WebglAddon();
         webglAddon.onContextLoss(() => {
           // Dispose once and forget it — re-disposing (here or via term.dispose)
           // hits an already-torn-down RenderService and throws.
-          try { webglAddon?.dispose(); } catch { /* already gone */ }
-          webglAddon = null;
+          try { webglAddon.dispose(); } catch { /* already gone */ }
+          webglAddonRef.current = null;
         });
         term.loadAddon(webglAddon);
+        webglAddonRef.current = webglAddon;
       } catch {
         /* WebGL unsupported — xterm keeps its DOM renderer */
-        webglAddon = null;
+        webglAddonRef.current = null;
       }
 
       // ─ Track focus so keyboardManager knows when terminal is active ───
@@ -362,9 +391,22 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       let unlisten: UnlistenFn | null = null;
 
       const eventName = `pty-data-${sessionId}`;
-      listen(eventName, (event: any) => {
+      // Registering a Tauri listener is async (IPC round-trip). We MUST spawn the
+      // PTY only after this resolves — otherwise the shell's initial output
+      // (cursor-home / clear sequences + first prompt) can be emitted before the
+      // listener attaches and is dropped, leaving a stray blank line / garbled top.
+      // One-shot: suppress a single leading prompt newline at session start
+      // (e.g. Git Bash PS1 begins with `\n`, which otherwise leaves a blank top row).
+      let leadingNewlineResolved = false;
+      const dataListenerReady = listen(eventName, (event: any) => {
         const payload = event.payload as { session_id: string; data: string };
-        term.write(payload.data);
+        let data = payload.data;
+        if (!leadingNewlineResolved) {
+          const r = stripLeadingPromptNewline(data);
+          data = r.out;
+          leadingNewlineResolved = r.resolved;
+        }
+        term.write(data);
       })
         .then((fn) => {
           if (cancelled) {
@@ -426,18 +468,34 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       // that never fired. Reinstating file-drop requires a different approach
       // that doesn't break tab DnD.
 
-      // ─ Spawn the PTY process (inside rAF so dims are correct) ──────────
-      // Deferring to rAF ensures CSS flex layout has resolved and safeFit
-      // returns the real terminal dimensions before spawn_pty is called.
-      const rafId = requestAnimationFrame(() => {
-        if (!effectActiveRef.current) return; // guard: component may have unmounted
-        // measure() ensures char metrics are fresh before computing cols/rows.
-        // Without this, the initial fit (and therefore the PTY spawn dims) may
-        // use stale metrics, putting PTY and xterm out of sync from the start.
+      // ─ Spawn the PTY process once dims are real and settled ────────────
+      // Deferring to rAF ensures CSS flex layout has resolved. But a new tab
+      // can mount before its container is laid out (size 0) — proposeDimensions
+      // then fails and the PTY would spawn at xterm's 80×24 default. When the
+      // tab later becomes visible the first real fit() resizes ConPTY, which
+      // reflows and leaves a stray blank line at the top. So we POLL until
+      // safeFit yields valid dimensions, then spawn at the correct size — the
+      // later show-fit is a no-op (same cols/rows) and triggers no resize.
+      let rafId = 0;
+      let spawnAttempts = 0;
+      const trySpawn = () => {
+        if (!effectActiveRef.current) return; // unmounted
+        // measure() refreshes char metrics so proposeDimensions is accurate.
         (term as any)._core?._charSizeService?.measure();
-        safeFit(fitAddon);   // fit xterm.js; onResize fires but isSpawnedRef=false → no-op
-        spawnSession();      // reads fitted dims, spawns PTY, then sets isSpawnedRef=true
-      });
+        const dims = safeFit(fitAddon); // null while container has no size
+        if (!dims && spawnAttempts < 60) {
+          spawnAttempts++;
+          rafId = requestAnimationFrame(trySpawn);
+          return;
+        }
+        // Wait for the data listener to attach before spawning, so no initial
+        // PTY output (cursor-home / clear + first prompt) is dropped.
+        dataListenerReady.then(() => {
+          if (!effectActiveRef.current) return; // unmounted while awaiting
+          spawnSession();  // reads fitted dims, spawns PTY, then sets isSpawnedRef=true
+        });
+      };
+      rafId = requestAnimationFrame(trySpawn);
 
       // ─ Cleanup ───────────────────────────────────────────────────────
       return () => {
@@ -464,8 +522,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         // core RenderService is torn down throws inside term.dispose, and an
         // unmount-time throw with no error boundary tears down the whole React
         // root → blank/frozen app. Guard both for safety.
-        try { webglAddon?.dispose(); } catch { /* already disposed */ }
-        webglAddon = null;
+        try { webglAddonRef.current?.dispose(); } catch { /* already disposed */ }
+        webglAddonRef.current = null;
         try { term.dispose(); } catch (err) {
           console.error('[TerminalTab] term.dispose failed:', err);
         }

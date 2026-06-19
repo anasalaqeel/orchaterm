@@ -7,7 +7,7 @@ import { Plus, X, Terminal, Edit2, Check, ChevronDown, Minimize2 } from "lucide-
 import { css, cx } from "@emotion/css";
 import type { TerminalSession, InterruptPolicy } from "../../types";
 import { loadTerminalTabs, saveTerminalTabs } from "../../services/storage";
-import { Input } from '../ui';
+import { Input, ErrorBoundary } from '../ui';
 import { useSplitTree, findNodeById, collectLeafSessionIds } from "../../hooks/useSplitTree";
 import { computeSplitLayout, type DividerRect } from "../../utils/splitLayout";
 
@@ -1183,14 +1183,28 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                     }
                   }}
                 >
-                  <TerminalTab
-                    ref={tabRef}
-                    sessionId={session.id}
-                    workspacePath={workspacePath}
-                    shell={session.shell}
-                    shellArgs={session.shellArgs}
-                    onExit={() => closeTab(session.id)}
-                  />
+                  <ErrorBoundary
+                    resetKeys={[session.id]}
+                    onError={(err) => console.error(`[TerminalTab ${session.id}] crashed:`, err)}
+                    fallback={(_err, reset) => (
+                      <div className={styles.paneError}>
+                        <span>This terminal crashed.</span>
+                        <div className={styles.paneErrorActions}>
+                          <button onClick={reset} className={styles.launchBtn}>Reload</button>
+                          <button onClick={() => closeTab(session.id)} className={styles.launchBtn}>Close tab</button>
+                        </div>
+                      </div>
+                    )}
+                  >
+                    <TerminalTab
+                      ref={tabRef}
+                      sessionId={session.id}
+                      workspacePath={workspacePath}
+                      shell={session.shell}
+                      shellArgs={session.shellArgs}
+                      onExit={() => closeTab(session.id)}
+                    />
+                  </ErrorBoundary>
                   {isSplit && pane && (
                     <>
                       {isActivePane && (
@@ -1862,6 +1876,21 @@ const styles = {
       box-shadow: 0 6px 20px rgba(123, 104, 238, 0.4);
       filter: brightness(1.06);
     }
+  `,
+  paneError: css`
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: var(--text-secondary);
+    font-size: 13px;
+  `,
+  paneErrorActions: css`
+    display: flex;
+    gap: 10px;
   `,
   tinyIcon: css`
     width: 10px;
