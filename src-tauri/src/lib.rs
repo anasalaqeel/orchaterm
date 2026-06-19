@@ -256,7 +256,7 @@ fn platform_fallback_shell() -> &'static str {
 
 // ── Tauri Commands ─────────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 fn spawn_pty(
     session_id: String,
     workspace_path: String,
@@ -445,7 +445,7 @@ fn spawn_pty(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn write_pty(session_id: String, data: String, state: State<'_, PtyState>) -> Result<(), String> {
     // Grab a clone of the Arc<Mutex<Writer>> so we can drop the sessions lock
     // before performing the (potentially blocking) write.
@@ -466,7 +466,7 @@ fn write_pty(session_id: String, data: String, state: State<'_, PtyState>) -> Re
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn resize_pty(
     session_id: String,
     cols: u16,
@@ -493,7 +493,7 @@ fn resize_pty(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kill_pty(session_id: String, state: State<'_, PtyState>) -> Result<(), String> {
     // Remove the session under the lock, then release it BEFORE any blocking
     // wait. The previous version held the global lock across `child.wait()`,
@@ -509,21 +509,19 @@ fn kill_pty(session_id: String, state: State<'_, PtyState>) -> Result<(), String
         session.shutdown.store(true, Ordering::SeqCst);
 
         let child = Arc::clone(&session.child);
-        // Kill + reap on a detached thread, bounded by a real timeout so a
-        // stuck child can never block the command (or, transitively, the UI).
-        let (tx, rx) = std::sync::mpsc::channel();
+        // Kill + reap on a detached thread and return immediately. This command
+        // is synchronous, so it runs on the main (UI) thread — any blocking wait
+        // here freezes the whole webview. A stuck child (TUI ignoring the kill,
+        // grandchildren, slow reap) must never stall the close. The session is
+        // already removed from the map above, so UI state is consistent now.
         thread::spawn(move || {
-            {
-                let mut c = match child.lock() {
-                    Ok(c) => c,
-                    Err(p) => p.into_inner(),
-                };
-                let _ = c.kill();
-                let _ = c.wait();
-            }
-            let _ = tx.send(());
+            let mut c = match child.lock() {
+                Ok(c) => c,
+                Err(p) => p.into_inner(),
+            };
+            let _ = c.kill();
+            let _ = c.wait();
         });
-        let _ = rx.recv_timeout(std::time::Duration::from_millis(500));
         // `session` (master + writer) drops here → reader thread gets EOF.
     }
     Ok(())

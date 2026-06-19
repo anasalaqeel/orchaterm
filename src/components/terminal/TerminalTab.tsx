@@ -192,12 +192,19 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       // GPU renderer — far faster than xterm's default DOM renderer for heavy
       // TUI output (Claude Code, vim, spinners, large logs). Falls back to the
       // DOM renderer automatically if WebGL is unavailable or the context is lost.
+      let webglAddon: WebglAddon | null = null;
       try {
-        const webgl = new WebglAddon();
-        webgl.onContextLoss(() => webgl.dispose());
-        term.loadAddon(webgl);
+        webglAddon = new WebglAddon();
+        webglAddon.onContextLoss(() => {
+          // Dispose once and forget it — re-disposing (here or via term.dispose)
+          // hits an already-torn-down RenderService and throws.
+          try { webglAddon?.dispose(); } catch { /* already gone */ }
+          webglAddon = null;
+        });
+        term.loadAddon(webglAddon);
       } catch {
         /* WebGL unsupported — xterm keeps its DOM renderer */
+        webglAddon = null;
       }
 
       // ─ Track focus so keyboardManager knows when terminal is active ───
@@ -453,7 +460,15 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         if (unlisten) unlisten();
         if (unlistenExit) unlistenExit();
         resizeDispose.dispose();
-        term.dispose();
+        // Dispose the WebGL addon BEFORE term.dispose(): disposing it after the
+        // core RenderService is torn down throws inside term.dispose, and an
+        // unmount-time throw with no error boundary tears down the whole React
+        // root → blank/frozen app. Guard both for safety.
+        try { webglAddon?.dispose(); } catch { /* already disposed */ }
+        webglAddon = null;
+        try { term.dispose(); } catch (err) {
+          console.error('[TerminalTab] term.dispose failed:', err);
+        }
         termRef.current = null;
         fitAddonRef.current = null;
 
