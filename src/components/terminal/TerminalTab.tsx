@@ -10,6 +10,8 @@ import {
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebglAddon } from 'xterm-addon-webgl';
+import { WebLinksAddon } from 'xterm-addon-web-links';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { css } from '@emotion/css';
@@ -196,6 +198,20 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       if (effectActiveRef.current) return;
       effectActiveRef.current = true;
 
+      // ─ Track last paste to prevent double-pasting ──────────────────
+      let lastPasteTime = 0;
+      let lastPasteText = '';
+
+      const safePaste = (text: string) => {
+        const now = Date.now();
+        if (now - lastPasteTime < 100 && text === lastPasteText) {
+          return;
+        }
+        lastPasteTime = now;
+        lastPasteText = text;
+        term.paste(text);
+      };
+
       // ─ xterm instance ────────────────────────────────────────────────
       const term = new Terminal({
         cursorBlink: terminalConfig.cursorBlink,
@@ -213,6 +229,14 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
+
+      const webLinksAddon = new WebLinksAddon((_e, uri) => {
+        openUrl(uri).catch((err: any) => {
+          console.error('[TerminalTab] Failed to open link:', err);
+        });
+      });
+      term.loadAddon(webLinksAddon);
+
       term.open(containerRef.current);
 
       termRef.current = term;
@@ -244,7 +268,17 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       term.textarea?.addEventListener('focus', onFocusIn);
       term.textarea?.addEventListener('blur',  onFocusOut);
 
-      // ─ Mouse shortcuts (Linux middle-click paste) ─────────────
+      const onPaste = (e: ClipboardEvent) => {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const text = e.clipboardData?.getData('text');
+        if (text) {
+          safePaste(text);
+        }
+      };
+      term.textarea?.addEventListener('paste', onPaste, { capture: true });
+
+      // ─ Mouse shortcuts (Middle-click and Right-click Copy/Paste) ─────────
       const onMouseUp = (e: MouseEvent) => {
         if (e.button === 1) {
           e.preventDefault();
@@ -254,20 +288,42 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           // submitted line-by-line (e.g. agy ran each line as a command).
           const selection = term.getSelection();
           if (selection) {
-            term.paste(selection);
+            safePaste(selection);
           } else if (navigator.clipboard) {
             navigator.clipboard.readText().then(text => {
-              if (text) term.paste(text);
+              if (text) safePaste(text);
             }).catch(() => {});
+          }
+        } else if (e.button === 2) {
+          e.preventDefault();
+          const selection = term.getSelection();
+          if (selection) {
+            // Copy selection to clipboard and clear selection
+            if (navigator.clipboard) {
+              navigator.clipboard.writeText(selection).then(() => {
+                term.clearSelection();
+              }).catch(() => {});
+            }
+          } else {
+            // Paste from clipboard
+            if (navigator.clipboard) {
+              navigator.clipboard.readText().then(text => {
+                if (text) safePaste(text);
+              }).catch(() => {});
+            }
           }
         }
       };
       const onMouseDown = (e: MouseEvent) => {
-        if (e.button === 1) e.preventDefault(); // Prevent browser autoscroll
+        if (e.button === 1 || e.button === 2) e.preventDefault(); // Prevent browser autoscroll / context menu
+      };
+      const onContextMenu = (e: MouseEvent) => {
+        e.preventDefault();
       };
       
       term.element?.addEventListener('mouseup', onMouseUp);
       term.element?.addEventListener('mousedown', onMouseDown);
+      term.element?.addEventListener('contextmenu', onContextMenu);
 
       const selDispose = term.onSelectionChange(() => {
         setHasSelection(term.hasSelection());
@@ -335,12 +391,68 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       // (the default) return true → forwarded to the PTY like a real emulator.
       term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
         if (e.type !== 'keydown') return true;
+
         const binding = resolveTerminalKey(buildCombo(e), keybindingsRef.current);
-        // Unbound or explicit passthrough → key goes to the PTY. Reserved app
-        // shortcuts (copy/paste/clear/…) still win over kitty encoding below.
+        
+        // If there's an explicit binding, handle it according to its action.
+        if (binding && binding.action !== 'passthrough') {
+          switch (binding.action) {
+            case 'clear':         term.clear(); break;
+            case 'scroll-top':    term.scrollToTop(); break;
+            case 'scroll-bottom': term.scrollToBottom(); break;
+            case 'send-text':
+              invoke('write_pty', { sessionId, data: binding.text ?? '' }).catch(() => {});
+              break;
+            case 'copy':
+              if (term.hasSelection() && navigator.clipboard) {
+                navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+              }
+              break;
+            case 'paste':
+              if (navigator.clipboard) {
+                navigator.clipboard.readText().then(text => {
+                  if (text) safePaste(text);
+                }).catch(() => {});
+              }
+              break;
+          }
+          return false; // Consume: matched and handled
+        }
+
+        // If there is no explicit binding (or it is passthrough), we apply standard OS copy/paste overrides.
+        const isMac = navigator.userAgent.indexOf('Mac') !== -1;
+        const isCopyKey = isMac
+          ? (e.metaKey && e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.altKey && !e.shiftKey)
+          : (e.ctrlKey && e.key.toLowerCase() === 'c' && !e.metaKey && !e.altKey && !e.shiftKey);
+        
+        const isPasteKey = isMac
+          ? (e.metaKey && e.key.toLowerCase() === 'v' && !e.ctrlKey && !e.altKey && !e.shiftKey)
+          : (e.ctrlKey && e.key.toLowerCase() === 'v' && !e.metaKey && !e.altKey && !e.shiftKey);
+
+        if (isCopyKey && term.hasSelection()) {
+          // If the binding is explicitly 'passthrough' for this key, don't intercept it
+          if (!binding || binding.key !== buildCombo(e)) {
+            if (navigator.clipboard) {
+              navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+              return false; // Consume: do NOT send SIGINT to PTY
+            }
+          }
+        }
+
+        if (isPasteKey) {
+          // If the binding is explicitly 'passthrough' for this key, don't intercept it
+          if (!binding || binding.key !== buildCombo(e)) {
+            if (navigator.clipboard) {
+              navigator.clipboard.readText().then(text => {
+                if (text) safePaste(text);
+              }).catch(() => {});
+            }
+            return false; // Consume: do NOT send to PTY
+          }
+        }
+
+        // Unbound or explicit passthrough (and not consumed by standard copy/paste overrides) → PTY
         if (!binding || binding.action === 'passthrough') {
-          // Under the kitty keyboard protocol, Ctrl combos must be CSI-u, not
-          // legacy C0 bytes (xterm 5.3 won't encode them itself).
           const kittySeq = kittyEncodeKey(e, kittyFlags);
           if (kittySeq) {
             invoke('write_pty', { sessionId, data: kittySeq }).catch(() => {});
@@ -348,27 +460,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           }
           return true; // legacy passthrough → PTY
         }
-        switch (binding.action) {
-          case 'clear':         term.clear(); break;
-          case 'scroll-top':    term.scrollToTop(); break;
-          case 'scroll-bottom': term.scrollToBottom(); break;
-          case 'send-text':
-            invoke('write_pty', { sessionId, data: binding.text ?? '' }).catch(() => {});
-            break;
-          case 'copy':
-            // Chromium maps Ctrl+Shift+C to "inspect element"; copy ourselves.
-            // Keep the selection highlighted after copy (don't clearSelection).
-            if (term.hasSelection() && navigator.clipboard) {
-              navigator.clipboard.writeText(term.getSelection()).catch(() => {});
-            }
-            break;
-          case 'paste':
-            // Chromium fires a native paste for Ctrl+Shift+V (bracketed-paste
-            // handled by xterm). We only consume the keydown so the raw control
-            // byte never reaches the shell — no manual clipboard read here.
-            break;
-        }
-        return false; // matched → consume
+        return false;
       });
 
       // ─ xterm.js → PTY size sync (primary resize mechanism) ──────────
@@ -510,8 +602,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         resizeObserver.disconnect();
         term.textarea?.removeEventListener('focus', onFocusIn);
         term.textarea?.removeEventListener('blur',  onFocusOut);
+        term.textarea?.removeEventListener('paste', onPaste, { capture: true });
         term.element?.removeEventListener('mouseup', onMouseUp);
         term.element?.removeEventListener('mousedown', onMouseDown);
+        term.element?.removeEventListener('contextmenu', onContextMenu);
         terminalLostFocus(); // ensure count stays consistent on unmount
         dataDispose.dispose();
         selDispose.dispose();
