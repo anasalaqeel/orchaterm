@@ -364,11 +364,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
               }
               break;
             case 'paste':
-              if (navigator.clipboard) {
-                navigator.clipboard.readText().then(text => {
-                  if (text) term.paste(text);
-                }).catch(() => {});
-              }
+              // Chromium fires a native paste for Ctrl+Shift+V (bracketed-paste
+              // handled by xterm). We only consume the keydown so the raw control
+              // byte never reaches the shell — no manual clipboard read here.
               break;
           }
           return false; // Consume: matched and handled
