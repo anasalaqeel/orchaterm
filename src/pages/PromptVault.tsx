@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDashboard } from '../context/DashboardContext';
-import { ConfirmDialog, Input, Select } from '../components/ui';
+import { ConfirmDialog, Input, Select, Tooltip } from '../components/ui';
 import { SavedPrompt } from '../types';
 import {
   Search,
@@ -12,7 +12,8 @@ import {
   ChevronUp,
   Tag,
   Calendar,
-  X
+  X,
+  Info
 } from 'lucide-react';
 import { css, cx, keyframes } from '@emotion/css';
 
@@ -30,6 +31,27 @@ export const PromptVaultView: React.FC = () => {
   // Filter states
   const [search, setSearch] = useState('');
   const [filterWorkspace, setFilterWorkspace] = useState('all');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  // Get all unique tags from prompts matching the active workspace
+  const allTags = Array.from(
+    new Set(
+      savedPrompts
+        .filter(p => filterWorkspace === 'all' || p.workspaceId === filterWorkspace)
+        .flatMap(p => p.tags)
+    )
+  ).filter(Boolean);
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
+
+  // Clear tag filters when workspace filter changes
+  useEffect(() => {
+    setSelectedTags([]);
+  }, [filterWorkspace]);
 
   // Expanded cards state
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
@@ -139,12 +161,32 @@ export const PromptVaultView: React.FC = () => {
   // Filter calculations
   const filteredPrompts = savedPrompts.filter(p => {
     const matchesWorkspace = filterWorkspace === 'all' || p.workspaceId === filterWorkspace;
-    const matchesSearch =
-      p.title.toLowerCase().includes(search.toLowerCase()) ||
-      p.content.toLowerCase().includes(search.toLowerCase()) ||
-      p.tags.some(tag => tag.toLowerCase().includes(search.toLowerCase()));
+    
+    // Tag Chips Filter (AND matching: prompt must contain all selected tags)
+    const matchesSelectedTags = selectedTags.every(t => p.tags.includes(t));
+    
+    if (!matchesWorkspace || !matchesSelectedTags) return false;
+    
+    if (!search.trim()) return true;
 
-    return matchesWorkspace && matchesSearch;
+    // Split search input by spaces and commas into individual terms
+    const terms = search
+      .toLowerCase()
+      .split(/[\s,]+/)
+      .map(t => t.trim())
+      .filter(Boolean);
+
+    if (terms.length === 0) return true;
+
+    // Check if the prompt matches ALL of the terms (AND logic)
+    const matchesSearch = terms.every(term => {
+      const inTitle = p.title.toLowerCase().includes(term);
+      const inContent = p.content.toLowerCase().includes(term);
+      const inTags = p.tags.some(tag => tag.toLowerCase().includes(term));
+      return inTitle || inContent || inTags;
+    });
+
+    return matchesSearch;
   });
 
   const formatRelativeTime = (isoString: string | null) => {
@@ -198,12 +240,37 @@ export const PromptVaultView: React.FC = () => {
 
         {/* Global Search (title, content, tags) */}
         <div className={styles.searchFilterGroup}>
-          <label className={styles.filterLabel}>Search Prompts</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label className={styles.filterLabel}>Search Prompts</label>
+            <Tooltip
+              content={
+                <div>
+                  <h5 className={styles.tooltipTitle}>Search Tips & Examples</h5>
+                  <ul className={styles.tooltipList}>
+                    <li>
+                      <strong>AND Search:</strong> Requires all typed terms to match.
+                      <div className={styles.tooltipExample}>e.g. <code>git config</code> matches prompts containing both words.</div>
+                    </li>
+                    <li>
+                      <strong>Cross-Field Match:</strong> Terms can match across title, tags, or prompt text.
+                      <div className={styles.tooltipExample}>e.g. <code>react test</code> matches tag "react" & prompt body "test".</div>
+                    </li>
+                    <li>
+                      <strong>Multi-Tag Filter:</strong> Target multiple categories at once.
+                      <div className={styles.tooltipExample}>e.g. <code>api mock</code> matches prompts tagged with both tags.</div>
+                    </li>
+                  </ul>
+                </div>
+              }
+            >
+              <Info className={styles.infoIcon} />
+            </Tooltip>
+          </div>
           <div className={styles.searchWrapper}>
             <Search className={styles.iconSm} />
             <Input
               type="text"
-              placeholder="Search by keywords or tags..."
+              placeholder="Search by keywords, tags, or content (separated by space or comma)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className={styles.searchInput}
@@ -215,6 +282,38 @@ export const PromptVaultView: React.FC = () => {
             )}
           </div>
         </div>
+
+        {/* Tag Chips Row */}
+        {allTags.length > 0 && (
+          <div className={styles.tagChipsContainer}>
+            <span className={styles.tagChipsLabel}>Filter by Tags:</span>
+            <div className={styles.tagChipsList}>
+              {allTags.map(tag => {
+                const isActive = selectedTags.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => toggleTag(tag)}
+                    className={cx(styles.tagChip, isActive && styles.tagChipActive)}
+                    type="button"
+                  >
+                    <Tag className={styles.iconMin} style={{ width: '10px', height: '10px' }} />
+                    <span>{tag}</span>
+                  </button>
+                );
+              })}
+              {selectedTags.length > 0 && (
+                <button
+                  onClick={() => setSelectedTags([])}
+                  className={styles.clearTagsBtn}
+                  type="button"
+                >
+                  Clear Filters ({selectedTags.length})
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
 
@@ -587,6 +686,84 @@ const styles = {
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
   `,
+  tagChipsContainer: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: var(--spacing-xs, 4px);
+    
+    @media (min-width: 768px) {
+      grid-column: span 4 / span 4;
+    }
+  `,
+  tagChipsLabel: css`
+    font-size: 10px;
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  `,
+  tagChipsList: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  `,
+  tagChip: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg, 16px);
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover {
+      background-color: var(--bg-hover);
+      border-color: var(--border-color-hover);
+      color: var(--text-primary);
+    }
+    
+    svg {
+      color: var(--text-tertiary);
+    }
+  `,
+  tagChipActive: css`
+    background-color: rgba(59, 130, 246, 0.12);
+    border-color: var(--color-brand, #3b82f6);
+    color: var(--color-brand, #3b82f6);
+    font-weight: var(--font-weight-semibold);
+    
+    svg {
+      color: var(--color-brand, #3b82f6);
+    }
+    
+    &:hover {
+      background-color: rgba(59, 130, 246, 0.2);
+      border-color: var(--color-brand, #3b82f6);
+      color: var(--color-brand, #3b82f6);
+    }
+  `,
+  clearTagsBtn: css`
+    background: transparent;
+    border: none;
+    font-size: var(--font-size-xs, 11px);
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-weight: var(--font-weight-semibold);
+    padding: 4px 8px;
+    border-radius: var(--border-radius-sm);
+    transition: all 0.15s ease;
+
+    &:hover {
+      color: var(--color-error, #f87171);
+      background-color: rgba(248, 113, 113, 0.1);
+    }
+  `,
   filterGroup: css`
     display: flex;
     flex-direction: column;
@@ -598,6 +775,51 @@ const styles = {
     color: var(--text-tertiary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  `,
+  infoIcon: css`
+    width: 12px;
+    height: 12px;
+    color: var(--text-tertiary);
+    transition: color 0.2s ease;
+
+    &:hover {
+      color: var(--color-brand, #3b82f6);
+    }
+  `,
+  tooltipTitle: css`
+    font-size: var(--font-size-xs, 12px);
+    font-weight: var(--font-weight-bold, 700);
+    color: var(--text-primary, #f1f5f9);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  `,
+  tooltipList: css`
+    margin: 0;
+    padding-left: var(--spacing-md, 14px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs, 4px);
+
+    li {
+      list-style-type: disc;
+    }
+  `,
+  tooltipExample: css`
+    color: var(--text-tertiary, #64748b);
+    font-size: 10px;
+    margin-top: 2px;
+    margin-bottom: 4px;
+    font-style: italic;
+    
+    code {
+      background-color: var(--bg-primary, #1e293b);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-family: var(--font-family-mono);
+      font-style: normal;
+    }
   `,
   searchFilterGroup: css`
     display: flex;
