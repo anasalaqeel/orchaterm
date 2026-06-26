@@ -1522,11 +1522,9 @@ const MessageRow: React.FC<{
             <button className={s.actionBtn} onClick={handleCopy} title="Copy">
               {copied ? <Check size={11} /> : <Copy size={11} />}
             </button>
-            {msg.role === 'assistant' && (
-              <button className={s.actionBtn} onClick={onSaveToVault} title="Save to Prompt Vault">
-                <BookmarkPlus size={11} />
-              </button>
-            )}
+            <button className={s.actionBtn} onClick={onSaveToVault} title="Save to Prompt Vault">
+              <BookmarkPlus size={11} />
+            </button>
           </div>
         )}
       </div>
