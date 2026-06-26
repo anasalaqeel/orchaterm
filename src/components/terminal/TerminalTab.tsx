@@ -198,19 +198,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       if (effectActiveRef.current) return;
       effectActiveRef.current = true;
 
-      // ─ Track last paste to prevent double-pasting ──────────────────
-      let lastPasteTime = 0;
-      let lastPasteText = '';
-
-      const safePaste = (text: string) => {
-        const now = Date.now();
-        if (now - lastPasteTime < 100 && text === lastPasteText) {
-          return;
-        }
-        lastPasteTime = now;
-        lastPasteText = text;
-        term.paste(text);
-      };
 
       // ─ xterm instance ────────────────────────────────────────────────
       const term = new Terminal({
@@ -268,17 +255,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       term.textarea?.addEventListener('focus', onFocusIn);
       term.textarea?.addEventListener('blur',  onFocusOut);
 
-      const onPaste = (e: ClipboardEvent) => {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        const text = e.clipboardData?.getData('text');
-        if (text) {
-          safePaste(text);
-        }
-      };
-      term.textarea?.addEventListener('paste', onPaste, { capture: true });
-
-      // ─ Mouse shortcuts (Middle-click and Right-click Copy/Paste) ─────────
+      // ─ Mouse shortcuts (Linux middle-click paste) ───────────────────────
       const onMouseUp = (e: MouseEvent) => {
         if (e.button === 1) {
           e.preventDefault();
@@ -288,42 +265,20 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           // submitted line-by-line (e.g. agy ran each line as a command).
           const selection = term.getSelection();
           if (selection) {
-            safePaste(selection);
+            term.paste(selection);
           } else if (navigator.clipboard) {
             navigator.clipboard.readText().then(text => {
-              if (text) safePaste(text);
+              if (text) term.paste(text);
             }).catch(() => {});
-          }
-        } else if (e.button === 2) {
-          e.preventDefault();
-          const selection = term.getSelection();
-          if (selection) {
-            // Copy selection to clipboard and clear selection
-            if (navigator.clipboard) {
-              navigator.clipboard.writeText(selection).then(() => {
-                term.clearSelection();
-              }).catch(() => {});
-            }
-          } else {
-            // Paste from clipboard
-            if (navigator.clipboard) {
-              navigator.clipboard.readText().then(text => {
-                if (text) safePaste(text);
-              }).catch(() => {});
-            }
           }
         }
       };
       const onMouseDown = (e: MouseEvent) => {
-        if (e.button === 1 || e.button === 2) e.preventDefault(); // Prevent browser autoscroll / context menu
-      };
-      const onContextMenu = (e: MouseEvent) => {
-        e.preventDefault();
+        if (e.button === 1) e.preventDefault(); // Prevent browser autoscroll
       };
       
       term.element?.addEventListener('mouseup', onMouseUp);
       term.element?.addEventListener('mousedown', onMouseDown);
-      term.element?.addEventListener('contextmenu', onContextMenu);
 
       const selDispose = term.onSelectionChange(() => {
         setHasSelection(term.hasSelection());
@@ -411,7 +366,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
             case 'paste':
               if (navigator.clipboard) {
                 navigator.clipboard.readText().then(text => {
-                  if (text) safePaste(text);
+                  if (text) term.paste(text);
                 }).catch(() => {});
               }
               break;
@@ -419,39 +374,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           return false; // Consume: matched and handled
         }
 
-        // If there is no explicit binding (or it is passthrough), we apply standard OS copy/paste overrides.
-        const isMac = navigator.userAgent.indexOf('Mac') !== -1;
-        const isCopyKey = isMac
-          ? (e.metaKey && e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.altKey && !e.shiftKey)
-          : (e.ctrlKey && e.key.toLowerCase() === 'c' && !e.metaKey && !e.altKey && !e.shiftKey);
-        
-        const isPasteKey = isMac
-          ? (e.metaKey && e.key.toLowerCase() === 'v' && !e.ctrlKey && !e.altKey && !e.shiftKey)
-          : (e.ctrlKey && e.key.toLowerCase() === 'v' && !e.metaKey && !e.altKey && !e.shiftKey);
-
-        if (isCopyKey && term.hasSelection()) {
-          // If the binding is explicitly 'passthrough' for this key, don't intercept it
-          if (!binding || binding.key !== buildCombo(e)) {
-            if (navigator.clipboard) {
-              navigator.clipboard.writeText(term.getSelection()).catch(() => {});
-              return false; // Consume: do NOT send SIGINT to PTY
-            }
-          }
-        }
-
-        if (isPasteKey) {
-          // If the binding is explicitly 'passthrough' for this key, don't intercept it
-          if (!binding || binding.key !== buildCombo(e)) {
-            if (navigator.clipboard) {
-              navigator.clipboard.readText().then(text => {
-                if (text) safePaste(text);
-              }).catch(() => {});
-            }
-            return false; // Consume: do NOT send to PTY
-          }
-        }
-
-        // Unbound or explicit passthrough (and not consumed by standard copy/paste overrides) → PTY
+        // Unbound or explicit passthrough → PTY
         if (!binding || binding.action === 'passthrough') {
           const kittySeq = kittyEncodeKey(e, kittyFlags);
           if (kittySeq) {
@@ -602,10 +525,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         resizeObserver.disconnect();
         term.textarea?.removeEventListener('focus', onFocusIn);
         term.textarea?.removeEventListener('blur',  onFocusOut);
-        term.textarea?.removeEventListener('paste', onPaste, { capture: true });
         term.element?.removeEventListener('mouseup', onMouseUp);
         term.element?.removeEventListener('mousedown', onMouseDown);
-        term.element?.removeEventListener('contextmenu', onContextMenu);
         terminalLostFocus(); // ensure count stays consistent on unmount
         dataDispose.dispose();
         selDispose.dispose();
