@@ -20,7 +20,8 @@ import { DEFAULT_TERMINAL_CONFIG, mergeTerminalConfig } from '../utils/terminalT
 export interface ToastInfo {
   id: string;
   message: string;
-  type: 'success' | 'error' | 'info';
+  type: 'success' | 'error' | 'info' | 'loading';
+  persistent?: boolean;
 }
 
 export interface DashboardContextType {
@@ -42,7 +43,7 @@ export interface DashboardContextType {
   // ── UI helpers ──────────────────────────────────────────────────────────────
   toast: ToastInfo | null;
   setToast: (toast: ToastInfo | null) => void;
-  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  showToast: (message: string, type?: 'success' | 'error' | 'info' | 'loading', persistent?: boolean) => void;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
   isLoaded: boolean;
@@ -316,6 +317,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // ── Auto-clear toast ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!toast) return;
+    if (toast.type === 'loading' || toast.persistent) return;
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
   }, [toast]);
@@ -417,8 +419,8 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [agentSessionIds, terminalSessions, settings.aiEnabled, settings.continuation, activeWorkspaceId, workspaces, llmProviders.routing, llmProviders.relay]);
 
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    setToast({ id: crypto.randomUUID(), message, type });
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'loading' = 'info', persistent = false) => {
+    setToast({ id: crypto.randomUUID(), message, type, persistent });
   };
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
@@ -595,13 +597,13 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     await savePlans(next);
   };
 
-  // ── Terminal sessions (ephemeral) ─────────────────────────────────────────────
   const addTerminalSession = (session: TerminalSession) => {
     setTerminalSessions(prev =>
       prev.some(s => s.id === session.id)
         ? prev.map(s => s.id === session.id ? { ...s, ...session } : s)
         : [...prev, session],
     );
+    void sessionContinuationService.registerSession(session.id);
   };
 
   const removeTerminalSession = (sessionId: string) => {
@@ -616,10 +618,53 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const captureSessionNow = async (sessionId: string): Promise<void> => {
-    const snapshot = await sessionContinuationService.captureNow(sessionId);
-    if (snapshot) {
-      setLastCheckpoint(snapshot);
-      setPendingInjectionSnapshot(snapshot);
+    const workspace = workspaces.find(w => w.id === activeWorkspaceId);
+    const workspacePath = workspace?.path ?? '';
+    const session = terminalSessions.find(s => s.id === sessionId);
+
+    if (!session) {
+      showToast(`Cannot create checkpoint: session ${sessionId} not found`, 'error');
+      return;
+    }
+    if (!workspacePath) {
+      showToast(`Cannot create checkpoint: active workspace path is empty`, 'error');
+      return;
+    }
+
+    const isLocal = (settings.llmProviderMode === 'simple'
+      ? settings.simpleLlmProvider?.provider
+      : settings.llmProviders?.relay?.provider) === 'ollama';
+
+    const defaultMaxChars = isLocal ? 20000 : 100000;
+    const maxContextChars = settings.continuation?.maxContextChars ?? defaultMaxChars;
+
+    updateTerminalSession(sessionId, { isCheckpointing: true });
+
+    try {
+      const snapshot = await sessionContinuationService.captureNow(
+        sessionId,
+        { id: sessionId, title: session.title, workspacePath },
+        llmProviders.relay,
+        {
+          enabled: settings.continuation?.enabled ?? false,
+          targetSessionId: settings.continuation?.targetSessionId ?? null,
+          mode: settings.continuation?.mode ?? 'semi',
+          snapshotIntervalChars: settings.continuation?.snapshotIntervalChars ?? 4000,
+          maxContextChars,
+        }
+      );
+      if (snapshot) {
+        setLastCheckpoint(snapshot);
+        setPendingInjectionSnapshot(snapshot);
+        showToast(`Checkpoint created successfully for tab "${session.title}" in workspace "${workspace?.name}"!`, 'success', true);
+      } else {
+        showToast('Failed to generate checkpoint: checkpoint snapshot is null', 'error', true);
+      }
+    } catch (err) {
+      console.error('captureSessionNow error:', err);
+      showToast(`Error creating checkpoint: ${err}`, 'error', true);
+    } finally {
+      updateTerminalSession(sessionId, { isCheckpointing: false });
     }
   };
 

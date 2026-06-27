@@ -458,6 +458,14 @@ class BufferWatcher {
   }
 
   /**
+   * Start listening and accumulating buffer for a session.
+   * Does not register any callbacks, just keeps the buffer active.
+   */
+  async registerSession(sessionId: string): Promise<void> {
+    await this.ensureListening(sessionId);
+  }
+
+  /**
    * Stop all callbacks for a session and reset to idle mode.
    * Buffer is cleared. The Tauri event listener stays active so the watcher
    * can be reused for the next task on the same session without re-subscribing.

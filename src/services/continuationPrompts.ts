@@ -59,10 +59,12 @@ export function buildCheckpointNarrativePrompt(
   rawBuffer: string,
   sessionTitle: string,
   goalHint?: string,
+  previousSummary?: string,
 ): { system: string; userContent: string } {
   const goalLine = goalHint ? `\nSession goal: ${goalHint}\n` : '';
+  const prevLine = previousSummary ? `\nPrevious Handoff Summary (incorporate this context to maintain the continuous story of the entire session history):\n${previousSummary}\n` : '';
   return {
     system: CHECKPOINT_SYSTEM_PROMPT,
-    userContent: `Session: ${sessionTitle}${goalLine}\n\nTerminal output:\n${rawBuffer}`,
+    userContent: `Session: ${sessionTitle}${goalLine}${prevLine}\n\nRecent terminal output:\n${rawBuffer}`,
   };
 }

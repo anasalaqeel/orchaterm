@@ -20,6 +20,7 @@ export interface TerminalSession {
    * Default: 'never' — safe for all agent types.
    */
   interruptPolicy: InterruptPolicy;
+  isCheckpointing?: boolean;
 }
 
 export interface TerminalTheme {

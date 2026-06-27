@@ -810,6 +810,31 @@ export const SettingsView: React.FC = () => {
                   A progress snapshot is written every N new buffer characters. Minimum: 500.
                 </div>
               </div>
+
+              {/* Max context window */}
+              <div className={css`margin-bottom: 16px;`}>
+                <label className={fieldLabelStyle}>Checkpoint history sent to LLM (chars)</label>
+                <Input
+                  type="number"
+                  className={providerInputStyle}
+                  value={String(settings.continuation?.maxContextChars ?? 20000)}
+                  min={1000}
+                  onChange={e => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v) && v >= 1000) {
+                      updateSettings({
+                        continuation: {
+                          ...(settings.continuation ?? { enabled: false, targetSessionId: null, mode: 'semi', snapshotIntervalChars: 4000 }),
+                          maxContextChars: v,
+                        },
+                      });
+                    }
+                  }}
+                />
+                <div className={css`font-size: 11px; color: var(--text-tertiary); margin-top: 4px;`}>
+                  Limits the terminal output history buffer sent to the LLM when generating a handoff checkpoint file to prevent slow processing times. Minimum: 1000.
+                </div>
+              </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, paddingTop: 8, flexWrap: 'wrap' }}>
