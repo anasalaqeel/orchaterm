@@ -1,6 +1,6 @@
 import React from 'react';
 import { useDashboard } from '../../context/DashboardContext';
-import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Info, X, Loader2 } from 'lucide-react';
 import { css, cx } from '@emotion/css';
 
 export const Toast: React.FC = () => {
@@ -12,18 +12,20 @@ export const Toast: React.FC = () => {
     success: styles.success,
     error: styles.error,
     info: styles.info,
+    loading: styles.loading,
   }[toast.type];
 
   const Icon = {
     success: CheckCircle2,
     error: AlertTriangle,
     info: Info,
+    loading: Loader2,
   }[toast.type];
 
   return (
     <div className={styles.wrapper}>
       <div className={cx(styles.toastBox, typeStyle)}>
-        <Icon className={styles.icon} />
+        <Icon className={cx(styles.icon, toast.type === 'loading' && styles.loaderIcon)} />
         <span className={styles.message}>{toast.message}</span>
         <button
           onClick={() => setToast(null)}
@@ -99,6 +101,25 @@ const styles = {
       background-color: #eff6ff;
       border-color: #bfdbfe;
       color: #1e40af;
+    }
+  `,
+  loading: css`
+    background-color: rgba(31, 41, 55, 0.9);
+    border-color: rgba(156, 163, 175, 0.3);
+    color: #f3f4f6;
+    box-shadow: 0 0 15px -3px rgba(156, 163, 175, 0.2);
+
+    body.light & {
+      background-color: #f9fafb;
+      border-color: #e5e7eb;
+      color: #374151;
+    }
+  `,
+  loaderIcon: css`
+    animation: spin 1s linear infinite;
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
     }
   `,
   icon: css`
