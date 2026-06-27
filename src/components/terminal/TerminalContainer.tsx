@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { TerminalTab, TerminalTabHandle } from "./TerminalTab";
 import { useDashboard } from "../../context/DashboardContext";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, X, Terminal, Edit2, Check, ChevronDown, Minimize2 } from "lucide-react";
+import { Plus, X, Terminal, Edit2, Check, ChevronDown, Minimize2, Loader2 } from "lucide-react";
 import { css, cx } from "@emotion/css";
 import type { TerminalSession, InterruptPolicy } from "../../types";
 import { loadTerminalTabs, saveTerminalTabs } from "../../services/storage";
@@ -91,8 +91,16 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   scopeKey,
   active = true,
 }) => {
-  const { settings, addTerminalSession, removeTerminalSession, updateTerminalSession } =
-    useDashboard();
+  const {
+    settings,
+    addTerminalSession,
+    removeTerminalSession,
+    updateTerminalSession,
+    captureSessionNow,
+    lastCheckpoint,
+    setPendingInjectionSnapshot,
+    terminalSessions,
+  } = useDashboard();
 
   // ── Shell detection ──────────────────────────────────────────────────────
   const [availableShells, setAvailableShells] = useState<ShellInfo[]>([]);
@@ -352,6 +360,22 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions.map((s) => s.id).join(","), workspaceId]);
+
+  // Synchronize changes from global terminalSessions (like isCheckpointing status) back to local sessions
+  useEffect(() => {
+    setSessions((prev) => {
+      let changed = false;
+      const next = prev.map((s) => {
+        const globalSession = terminalSessions.find((gs) => gs.id === s.id);
+        if (globalSession && globalSession.isCheckpointing !== s.isCheckpointing) {
+          changed = true;
+          return { ...s, isCheckpointing: globalSession.isCheckpointing };
+        }
+        return s;
+      });
+      return changed ? next : prev;
+    });
+  }, [terminalSessions]);
 
   useEffect(() => {
     return () => {
@@ -907,6 +931,38 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                         {session.title}
                       </span>
                     )}
+
+                    {session.isCheckpointing && (
+                      <span className={css`
+                        font-size: 10px;
+                        background: var(--bg-secondary);
+                        color: var(--text-primary);
+                        border: 1px solid var(--border-color);
+                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+                        padding: 2px 8px;
+                        border-radius: 12px;
+                        font-weight: 500;
+                        margin-left: 8px;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 5px;
+                        white-space: nowrap;
+                        animation: pulse-toast 2s infinite ease-in-out;
+                        @keyframes pulse-toast {
+                          0% { opacity: 0.8; transform: scale(0.98); }
+                          50% { opacity: 1; transform: scale(1); }
+                          100% { opacity: 0.8; transform: scale(0.98); }
+                        }
+                      `}>
+                        <Loader2 className={css`
+                          width: 8px;
+                          height: 8px;
+                          animation: spin 1s linear infinite;
+                          color: var(--color-brand);
+                        `} />
+                        Generating Checkpoint...
+                      </span>
+                    )}
                     <div className={cx(styles.tabActions, "tab-actions-btn-group")}>
                       {!isEditing && (
                         <button onClick={(e) => { e.stopPropagation(); startRename(session.id, session.title, e); }} className={styles.tabActionBtn} title="Rename tab">
@@ -1125,6 +1181,77 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   </button>
                 );
               })}
+              <div
+                style={{
+                  height: 1,
+                  background: "var(--border-color)",
+                  margin: "4px 0",
+                }}
+              />
+              <button
+                onClick={async () => {
+                  const id = policyMenu.sessionId;
+                  setPolicyMenu(null);
+                  await captureSessionNow(id);
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "8px 12px",
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text-primary)",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                📷 Create Checkpoint Now
+              </button>
+              {lastCheckpoint && (
+                <>
+                  <div
+                    style={{
+                      height: 1,
+                      background: "var(--border-color)",
+                      margin: "4px 0",
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      setPendingInjectionSnapshot(lastCheckpoint);
+                      setPolicyMenu(null);
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--text-primary)",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: 500,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    💉 Inject Last Checkpoint...
+                  </button>
+                </>
+              )}
             </div>
           </>,
           document.body,

@@ -14,6 +14,8 @@ export interface ContinuationConfig {
   mode: ContinuationMode;
   /** Generate a periodic snapshot every N new buffer characters. Default: 4000. */
   snapshotIntervalChars: number;
+  /** Maximum character length of the terminal buffer to pass to the LLM. */
+  maxContextChars?: number;
 }
 
 export interface CheckpointSnapshot {

@@ -80,15 +80,35 @@ export class SessionContinuationService {
     return this.sessions.has(sessionId);
   }
 
+  async registerSession(sessionId: string): Promise<void> {
+    await bufferWatcher.registerSession(sessionId);
+  }
+
   /** IDs of every session currently being monitored. */
   getMonitoredSessionIds(): string[] {
     return Array.from(this.sessions.keys());
   }
 
-  async captureNow(sessionId: string): Promise<CheckpointSnapshot | null> {
-    const entry = this.sessions.get(sessionId);
-    if (!entry) return null;
-    return this.doCheckpoint(entry, 'manual', 'STOPPED');
+  async captureNow(
+    sessionId: string,
+    fallbackMeta?: SessionMeta,
+    fallbackProvider?: LLMProvider,
+    fallbackConfig?: ContinuationConfig,
+  ): Promise<CheckpointSnapshot | null> {
+    let entry = this.sessions.get(sessionId);
+    if (!entry) {
+      if (!fallbackMeta || !fallbackProvider) return null;
+      entry = {
+        meta: fallbackMeta,
+        config: fallbackConfig ?? { enabled: false, targetSessionId: null, snapshotIntervalChars: 0, mode: 'file-only' },
+        detectionProvider: fallbackProvider,
+        checkpointProvider: fallbackProvider,
+        consecutiveStopCount: 0,
+        lastPeriodicSnapshotLength: 0,
+        checkpointInProgress: false,
+      };
+    }
+    return this.doCheckpoint(entry, 'manual', 'STOPPED', true);
   }
 
   private async onDelta(sessionId: string, delta: string): Promise<void> {
@@ -145,6 +165,7 @@ export class SessionContinuationService {
     entry: MonitoredSession,
     triggeredBy: CheckpointSnapshot['triggeredBy'],
     label: DetectionLabel,
+    throwOnError?: boolean,
   ): Promise<CheckpointSnapshot | null> {
     entry.checkpointInProgress = true;
     try {
@@ -158,6 +179,7 @@ export class SessionContinuationService {
           triggeredBy,
           label,
           goalHint: entry.meta.goalHint,
+          maxContextChars: entry.config.maxContextChars,
         },
         entry.checkpointProvider,
       );
@@ -169,7 +191,11 @@ export class SessionContinuationService {
         snapshot,
       });
       return snapshot;
-    } catch {
+    } catch (e) {
+      console.error('[doCheckpoint] failed:', e);
+      if (throwOnError) {
+        throw e;
+      }
       return null;
     } finally {
       entry.checkpointInProgress = false;
