@@ -68,3 +68,12 @@ export interface TerminalConfig {
   macOptionIsMeta: boolean;
   keybindings: TerminalKeybinding[];
 }
+
+export interface QuickAction {
+  id: string;
+  label: string;
+  iconName?: string;
+  command: string;
+  autoExecute: boolean;
+  color?: string;
+}
