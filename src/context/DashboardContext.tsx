@@ -139,6 +139,8 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
         mode: 'semi',
         snapshotIntervalChars: 4000,
       },
+      aiEnabled: raw.aiEnabled !== false,
+      quickActions: raw.quickActions,
     };
   }
 
@@ -168,6 +170,8 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
       mode: 'semi',
       snapshotIntervalChars: 4000,
     },
+    aiEnabled: raw.aiEnabled !== false,
+    quickActions: raw.quickActions,
   };
 }
 
