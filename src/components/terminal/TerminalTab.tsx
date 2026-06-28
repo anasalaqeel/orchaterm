@@ -657,6 +657,7 @@ const styles = {
     /* xterm renders its own canvas; this colour shows only in any gap
        before the canvas is attached or while transitioning. */
     background-color: #070d14;
+    margin-bottom: 80px;
   `,
   floatingCopyBtn: css`
     position: absolute;

@@ -328,6 +328,7 @@ export const SettingsView: React.FC = () => {
   const [newQuickAction, setNewQuickAction] = useState<QuickAction>({
     id: '', label: '', command: '', autoExecute: false
   });
+  const [editingQuickActionId, setEditingQuickActionId] = useState<string | null>(null);
 
   const [showCustomColors, setShowCustomColors] = useState(false);
 
@@ -340,6 +341,7 @@ export const SettingsView: React.FC = () => {
     setConductorInteractionMode(settings.conductorInteractionMode ?? 'auto');
     setTerminalConfig(settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG);
     setQuickActions(settings.quickActions ?? DEFAULT_QUICK_ACTIONS);
+    setEditingQuickActionId(null);
     if (!useCustomPath) {
       setDefaultShell(settings.shellPath || '');
     }
@@ -1431,32 +1433,62 @@ export const SettingsView: React.FC = () => {
                     <th className={css`text-align:left;padding:6px 8px;`}>Command</th>
                     <th className={css`text-align:left;padding:6px 8px;`}>Auto Run</th>
                     <th className={css`text-align:left;padding:6px 8px;`}>Color</th>
-                    <th className={css`padding:6px 8px;width:32px;`} />
+                    <th className={css`padding:6px 8px;width:64px;`} />
                   </tr>
                 </thead>
                 <tbody>
-                  {quickActions.map((action, idx) => (
-                    <tr key={idx} className={css`border-bottom:1px solid var(--border-color);`}>
-                      <td className={css`padding:6px 8px;font-weight:600;color:var(--text-primary);`}>{action.label}</td>
-                      <td className={css`padding:6px 8px;color:var(--text-secondary);`}>{action.iconName || 'Terminal'}</td>
-                      <td className={css`padding:6px 8px;font-family:var(--font-family-mono);color:var(--color-brand);font-size:11px;`}>{action.command}</td>
-                      <td className={css`padding:6px 8px;color:var(--text-secondary);`}>{action.autoExecute ? 'Yes' : 'No'}</td>
-                      <td className={css`padding:6px 8px;`}>
-                        {action.color && (
-                          <div className={css`width:16px;height:16px;border-radius:50%;background:${action.color};border:1px solid rgba(255,255,255,0.1);`} />
-                        )}
-                      </td>
-                      <td className={css`padding:6px 8px;`}>
-                        <button
-                          type="button"
-                          onClick={() => setQuickActions(prev => prev.filter((_, i) => i !== idx))}
-                          className={css`background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:14px;&:hover{color:var(--color-error);}`}
-                        >
-                          ✕
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {quickActions.map((action, idx) => {
+                    const isEditing = editingQuickActionId === action.id;
+                    return (
+                      <tr key={action.id || idx} className={css`border-bottom:1px solid var(--border-color); ${isEditing ? 'background: rgba(123, 104, 238, 0.05);' : ''}`}>
+                        <td className={css`padding:6px 8px;font-weight:600;color:var(--text-primary);`}>{action.label}</td>
+                        <td className={css`padding:6px 8px;color:var(--text-secondary);`}>{action.iconName || 'Terminal'}</td>
+                        <td className={css`padding:6px 8px;font-family:var(--font-family-mono);color:var(--color-brand);font-size:11px;`}>{action.command}</td>
+                        <td className={css`padding:6px 8px;color:var(--text-secondary);`}>{action.autoExecute ? 'Yes' : 'No'}</td>
+                        <td className={css`padding:6px 8px;`}>
+                          {action.color && (
+                            <div className={css`width:16px;height:16px;border-radius:50%;background:${action.color};border:1px solid rgba(255,255,255,0.1);`} />
+                          )}
+                        </td>
+                        <td className={css`padding:6px 8px;`}>
+                          <div className={css`display:flex;gap:10px;align-items:center;`}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingQuickActionId(action.id);
+                                setNewQuickAction({
+                                  id: action.id,
+                                  label: action.label,
+                                  command: action.command,
+                                  autoExecute: action.autoExecute,
+                                  iconName: action.iconName,
+                                  color: action.color
+                                });
+                              }}
+                              className={css`background:none;border:none;cursor:pointer;color:${isEditing ? 'var(--color-brand)' : 'var(--text-secondary)'};&:hover{color:var(--color-brand);}`}
+                              title="Edit action"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isEditing) {
+                                  setEditingQuickActionId(null);
+                                  setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
+                                }
+                                setQuickActions(prev => prev.filter((_, i) => i !== idx));
+                              }}
+                              className={css`background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:14px;&:hover{color:var(--color-error);}`}
+                              title="Delete action"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -1544,29 +1576,71 @@ export const SettingsView: React.FC = () => {
                 <span className={styles.formLabel} style={{ margin: 0 }}>Auto-run</span>
               </label>
 
-              <button
-                type="button"
-                disabled={!newQuickAction.label.trim() || !newQuickAction.command.trim()}
-                onClick={() => {
-                  setQuickActions(prev => [...prev, {
-                    ...newQuickAction,
-                    id: 'qa-' + Date.now().toString(36),
-                    label: newQuickAction.label.trim(),
-                    command: newQuickAction.command.trim(),
-                    iconName: newQuickAction.iconName?.trim() || undefined,
-                    color: newQuickAction.color?.trim() || undefined,
-                  }]);
-                  setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
-                }}
-                className={css`
-                  padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
-                  cursor:pointer;border:1px solid var(--color-brand);color:var(--color-brand);background:transparent;
-                  &:hover:not(:disabled){background:rgba(123,104,238,0.1);}
-                  &:disabled{opacity:0.4;cursor:not-allowed;}
-                `}
-              >
-                + Add
-              </button>
+              {editingQuickActionId ? (
+                <div className={css`display:flex;gap:8px;`}>
+                  <button
+                    type="button"
+                    disabled={!newQuickAction.label.trim() || !newQuickAction.command.trim()}
+                    onClick={() => {
+                      setQuickActions(prev => prev.map(a => a.id === editingQuickActionId ? {
+                        ...newQuickAction,
+                        label: newQuickAction.label.trim(),
+                        command: newQuickAction.command.trim(),
+                        iconName: newQuickAction.iconName?.trim() || undefined,
+                        color: newQuickAction.color?.trim() || undefined,
+                      } : a));
+                      setEditingQuickActionId(null);
+                      setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
+                    }}
+                    className={css`
+                      padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
+                      cursor:pointer;background:var(--color-brand);color:#fff;border:1px solid var(--color-brand);
+                      &:hover:not(:disabled){filter:brightness(1.15);}
+                      &:disabled{opacity:0.4;cursor:not-allowed;}
+                    `}
+                  >
+                    Save Action
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingQuickActionId(null);
+                      setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
+                    }}
+                    className={css`
+                      padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
+                      cursor:pointer;border:1px solid var(--border-color);color:var(--text-secondary);background:transparent;
+                      &:hover{background:var(--bg-hover);}
+                    `}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!newQuickAction.label.trim() || !newQuickAction.command.trim()}
+                  onClick={() => {
+                    setQuickActions(prev => [...prev, {
+                      ...newQuickAction,
+                      id: 'qa-' + Date.now().toString(36),
+                      label: newQuickAction.label.trim(),
+                      command: newQuickAction.command.trim(),
+                      iconName: newQuickAction.iconName?.trim() || undefined,
+                      color: newQuickAction.color?.trim() || undefined,
+                    }]);
+                    setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
+                  }}
+                  className={css`
+                    padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
+                    cursor:pointer;border:1px solid var(--color-brand);color:var(--color-brand);background:transparent;
+                    &:hover:not(:disabled){background:rgba(123,104,238,0.1);}
+                    &:disabled{opacity:0.4;cursor:not-allowed;}
+                  `}
+                >
+                  + Add
+                </button>
+              )}
             </div>
           </div>
 
