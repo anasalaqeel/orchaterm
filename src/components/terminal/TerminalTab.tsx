@@ -20,6 +20,7 @@ import { terminalGainedFocus, terminalLostFocus } from '../../services/terminalF
 import { useDashboard } from '../../context/DashboardContext';
 import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey, kittyEncodeKey } from '../../utils/terminalThemes';
 import { writePtyChunked } from '../../utils/ptyUtils';
+import { QuickActionsBar } from './QuickActionsBar';
 
 // ── Public ref handle exposed to TerminalContainer ─────────────────────────
 export interface TerminalTabHandle {
@@ -596,6 +597,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       <div className={styles.wrapper} style={{ backgroundColor: themeBg }}>
         {/* Terminal canvas */}
         <div ref={containerRef} className={styles.terminalContainer} style={{ backgroundColor: themeBg }} />
+
+        <QuickActionsBar sessionId={sessionId} />
 
         {/* Floating Copy Button */}
         {hasSelection && (

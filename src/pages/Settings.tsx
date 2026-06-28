@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { css, cx } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
+import { useLocation } from 'react-router';
 import { invoke } from '@tauri-apps/api/core';
 import { useDashboard } from '../context/DashboardContext';
 import { Workspace } from '../types';
-import { DEFAULT_TERMINAL_CONFIG, TERMINAL_THEME_PRESETS } from '../utils/terminalThemes';
-import type { TerminalConfig, TerminalKeybinding } from '../types';
+import { DEFAULT_TERMINAL_CONFIG, TERMINAL_THEME_PRESETS, DEFAULT_QUICK_ACTIONS } from '../utils/terminalThemes';
+import type { TerminalConfig, TerminalKeybinding, QuickAction } from '../types';
 import { ConfirmDialog, Input, Select } from '../components/ui';
 import { createProvider } from '../services/llm';
 import type { ProviderConfig, UseCaseProviders } from '../services/llm/types';
@@ -20,6 +21,21 @@ import {
   Network,
   Terminal,
 } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
+
+const COMMON_ICONS = [
+  { value: 'Terminal', name: 'Terminal', icon: LucideIcons.Terminal as any },
+  { value: 'Play', name: 'Play', icon: LucideIcons.Play as any },
+  { value: 'GitBranch', name: 'Git Branch', icon: LucideIcons.GitBranch as any },
+  { value: 'Wand2', name: 'Magic Wand', icon: LucideIcons.Wand2 as any },
+  { value: 'Zap', name: 'Zap / Bolt', icon: LucideIcons.Zap as any },
+  { value: 'RefreshCw', name: 'Refresh', icon: LucideIcons.RefreshCw as any },
+  { value: 'Cpu', name: 'CPU', icon: LucideIcons.Cpu as any },
+  { value: 'Hammer', name: 'Hammer', icon: LucideIcons.Hammer as any },
+  { value: 'CheckCircle2', name: 'Check', icon: LucideIcons.CheckCircle2 as any },
+  { value: 'Search', name: 'Search', icon: LucideIcons.Search as any },
+  { value: 'FolderOpen', name: 'Folder', icon: LucideIcons.FolderOpen as any },
+];
 
 // ── Terminal tab helpers ────────────────────────────────────────────────────
 
@@ -270,7 +286,8 @@ export const SettingsView: React.FC = () => {
     deleteWorkspace,
     showToast,
     settings,
-    updateSettings
+    updateSettings,
+    savedPrompts
   } = useDashboard();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -304,6 +321,14 @@ export const SettingsView: React.FC = () => {
   const [newBinding, setNewBinding] = useState<TerminalKeybinding>({
     key: '', action: 'clear', text: '',
   });
+  
+  const [quickActions, setQuickActions] = useState<QuickAction[]>(
+    settings.quickActions ?? DEFAULT_QUICK_ACTIONS
+  );
+  const [newQuickAction, setNewQuickAction] = useState<QuickAction>({
+    id: '', label: '', command: '', autoExecute: false
+  });
+
   const [showCustomColors, setShowCustomColors] = useState(false);
 
   useEffect(() => {
@@ -314,6 +339,7 @@ export const SettingsView: React.FC = () => {
     setConductorTaskTimeoutMinutes(settings.conductorTaskTimeoutMinutes);
     setConductorInteractionMode(settings.conductorInteractionMode ?? 'auto');
     setTerminalConfig(settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG);
+    setQuickActions(settings.quickActions ?? DEFAULT_QUICK_ACTIONS);
     if (!useCustomPath) {
       setDefaultShell(settings.shellPath || '');
     }
@@ -328,8 +354,24 @@ export const SettingsView: React.FC = () => {
   const [confirmMessage, setConfirmMessage] = useState('');
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
 
+  const location = useLocation();
+  
   // Tabs for settings sections
-  const [activeTab, setActiveTab] = useState<'general' | 'projects' | 'terminal'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'projects' | 'terminal'>(
+    location.hash === '#terminal' ? 'terminal' : 'general'
+  );
+
+  useEffect(() => {
+    if (location.hash === '#terminal') {
+      setActiveTab('terminal');
+      setTimeout(() => {
+        const el = document.getElementById('quick-actions-section');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
+  }, [location.hash]);
 
   useEffect(() => {
     if (activeTab !== 'terminal') return;
@@ -1371,15 +1413,170 @@ export const SettingsView: React.FC = () => {
           </div>
 
           {/* ── Save ─────────────────────────────────────────────────────────── */}
+          <div id="quick-actions-section" className={styles.integrationsCard}>
+            <h3 className={styles.cardTitle}>
+              <span style={{ fontSize: 16 }}>⚡</span>
+              <span>Quick Actions</span>
+            </h3>
+            <p className={styles.cardDescription}>
+              Configure the floating action bar in each terminal. Define common commands or AI prompts you use everyday.
+            </p>
+
+            {quickActions.length > 0 && (
+              <table className={css`width:100%;font-size:12px;border-collapse:collapse;margin-bottom:16px;`}>
+                <thead>
+                  <tr className={css`color:var(--text-secondary);font-weight:700;text-transform:uppercase;font-size:10px;border-bottom:1px solid var(--border-color);`}>
+                    <th className={css`text-align:left;padding:6px 8px;`}>Label</th>
+                    <th className={css`text-align:left;padding:6px 8px;`}>Icon</th>
+                    <th className={css`text-align:left;padding:6px 8px;`}>Command</th>
+                    <th className={css`text-align:left;padding:6px 8px;`}>Auto Run</th>
+                    <th className={css`text-align:left;padding:6px 8px;`}>Color</th>
+                    <th className={css`padding:6px 8px;width:32px;`} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {quickActions.map((action, idx) => (
+                    <tr key={idx} className={css`border-bottom:1px solid var(--border-color);`}>
+                      <td className={css`padding:6px 8px;font-weight:600;color:var(--text-primary);`}>{action.label}</td>
+                      <td className={css`padding:6px 8px;color:var(--text-secondary);`}>{action.iconName || 'Terminal'}</td>
+                      <td className={css`padding:6px 8px;font-family:var(--font-family-mono);color:var(--color-brand);font-size:11px;`}>{action.command}</td>
+                      <td className={css`padding:6px 8px;color:var(--text-secondary);`}>{action.autoExecute ? 'Yes' : 'No'}</td>
+                      <td className={css`padding:6px 8px;`}>
+                        {action.color && (
+                          <div className={css`width:16px;height:16px;border-radius:50%;background:${action.color};border:1px solid rgba(255,255,255,0.1);`} />
+                        )}
+                      </td>
+                      <td className={css`padding:6px 8px;`}>
+                        <button
+                          type="button"
+                          onClick={() => setQuickActions(prev => prev.filter((_, i) => i !== idx))}
+                          className={css`background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:14px;&:hover{color:var(--color-error);}`}
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {/* Quick-fill from vault */}
+            {savedPrompts && savedPrompts.length > 0 && (
+              <div className={css`margin-bottom:16px;max-width:320px;display:flex;flex-direction:column;gap:4px;`}>
+                <label className={styles.formLabel}>Quick-Fill from Prompt Vault</label>
+                <Select
+                  value=""
+                  onChange={val => {
+                    const prompt = savedPrompts.find(p => p.id === val);
+                    if (prompt) {
+                      setNewQuickAction(a => ({
+                        ...a,
+                        label: prompt.title.substring(0, 15),
+                        command: prompt.content,
+                        iconName: 'Wand2'
+                      }));
+                    }
+                  }}
+                  options={[
+                    { value: '', name: 'Choose a prompt to copy...' },
+                    ...savedPrompts.map(p => ({
+                      value: p.id,
+                      name: p.title,
+                      description: p.content.length > 60 ? p.content.substring(0, 58) + '...' : p.content
+                    }))
+                  ]}
+                />
+              </div>
+            )}
+
+            {/* Add new quick action */}
+            <div className={css`display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;`}>
+              <div className={css`display:flex;flex-direction:column;gap:4px;min-width:110px;`}>
+                <label className={styles.formLabel}>Label</label>
+                <Input
+                  type="text"
+                  className={styles.integrationInput}
+                  value={newQuickAction.label}
+                  onChange={e => setNewQuickAction(a => ({ ...a, label: e.target.value }))}
+                  placeholder="e.g. Build"
+                />
+              </div>
+
+              <div className={css`display:flex;flex-direction:column;gap:4px;min-width:110px;`}>
+                <label className={styles.formLabel}>Icon (Lucide)</label>
+                <Select
+                  value={newQuickAction.iconName || 'Terminal'}
+                  onChange={v => setNewQuickAction(a => ({ ...a, iconName: v }))}
+                  options={COMMON_ICONS}
+                />
+              </div>
+
+              <div className={css`display:flex;flex-direction:column;gap:4px;flex:1;min-width:160px;`}>
+                <label className={styles.formLabel}>Command</label>
+                <Input
+                  type="text"
+                  className={styles.integrationInput}
+                  value={newQuickAction.command}
+                  onChange={e => setNewQuickAction(a => ({ ...a, command: e.target.value }))}
+                  placeholder="npm run build"
+                  spellCheck={false}
+                />
+              </div>
+
+              <div className={css`display:flex;flex-direction:column;gap:4px;min-width:80px;`}>
+                <label className={styles.formLabel}>Color (opt)</label>
+                <Input
+                  type="text"
+                  className={styles.integrationInput}
+                  value={newQuickAction.color || ''}
+                  onChange={e => setNewQuickAction(a => ({ ...a, color: e.target.value }))}
+                  placeholder="#3b82f6"
+                />
+              </div>
+
+              <label className={css`display:flex;align-items:center;gap:6px;cursor:pointer;padding-bottom:10px;`}>
+                <input
+                  type="checkbox"
+                  checked={newQuickAction.autoExecute}
+                  onChange={e => setNewQuickAction(a => ({ ...a, autoExecute: e.target.checked }))}
+                />
+                <span className={styles.formLabel} style={{ margin: 0 }}>Auto-run</span>
+              </label>
+
+              <button
+                type="button"
+                disabled={!newQuickAction.label.trim() || !newQuickAction.command.trim()}
+                onClick={() => {
+                  setQuickActions(prev => [...prev, {
+                    ...newQuickAction,
+                    id: 'qa-' + Date.now().toString(36),
+                    label: newQuickAction.label.trim(),
+                    command: newQuickAction.command.trim(),
+                    iconName: newQuickAction.iconName?.trim() || undefined,
+                    color: newQuickAction.color?.trim() || undefined,
+                  }]);
+                  setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
+                }}
+                className={css`
+                  padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
+                  cursor:pointer;border:1px solid var(--color-brand);color:var(--color-brand);background:transparent;
+                  &:hover:not(:disabled){background:rgba(123,104,238,0.1);}
+                  &:disabled{opacity:0.4;cursor:not-allowed;}
+                `}
+              >
+                + Add
+              </button>
+            </div>
+          </div>
+
           <div className={css`display:flex;justify-content:flex-end;padding-bottom:8px;`}>
             <button
               type="button"
               className={styles.amberButton}
               onClick={() => {
                 const path = (useCustomPath ? customShellPath : defaultShell).trim();
-                // Terminal appearance + keybindings are independent of the shell
-                // path — save them even when no shell is set (don't block on it).
-                updateSettings(path ? { shellPath: path, terminalConfig } : { terminalConfig });
+                updateSettings(path ? { shellPath: path, terminalConfig, quickActions } : { terminalConfig, quickActions });
                 showToast('Terminal settings saved', 'success');
               }}
             >
