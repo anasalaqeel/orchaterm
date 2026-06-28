@@ -1477,7 +1477,11 @@ export const SettingsView: React.FC = () => {
                                   setEditingQuickActionId(null);
                                   setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
                                 }
-                                setQuickActions(prev => prev.filter((_, i) => i !== idx));
+                                setQuickActions(prev => {
+                                  const next = prev.filter((_, i) => i !== idx);
+                                  updateSettings({ quickActions: next });
+                                  return next;
+                                });
                               }}
                               className={css`background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:14px;&:hover{color:var(--color-error);}`}
                               title="Delete action"
@@ -1582,13 +1586,17 @@ export const SettingsView: React.FC = () => {
                     type="button"
                     disabled={!newQuickAction.label.trim() || !newQuickAction.command.trim()}
                     onClick={() => {
-                      setQuickActions(prev => prev.map(a => a.id === editingQuickActionId ? {
-                        ...newQuickAction,
-                        label: newQuickAction.label.trim(),
-                        command: newQuickAction.command.trim(),
-                        iconName: newQuickAction.iconName?.trim() || undefined,
-                        color: newQuickAction.color?.trim() || undefined,
-                      } : a));
+                      setQuickActions(prev => {
+                        const next = prev.map(a => a.id === editingQuickActionId ? {
+                          ...newQuickAction,
+                          label: newQuickAction.label.trim(),
+                          command: newQuickAction.command.trim(),
+                          iconName: newQuickAction.iconName?.trim() || undefined,
+                          color: newQuickAction.color?.trim() || undefined,
+                        } : a);
+                        updateSettings({ quickActions: next });
+                        return next;
+                      });
                       setEditingQuickActionId(null);
                       setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
                     }}
@@ -1621,14 +1629,18 @@ export const SettingsView: React.FC = () => {
                   type="button"
                   disabled={!newQuickAction.label.trim() || !newQuickAction.command.trim()}
                   onClick={() => {
-                    setQuickActions(prev => [...prev, {
-                      ...newQuickAction,
-                      id: 'qa-' + Date.now().toString(36),
-                      label: newQuickAction.label.trim(),
-                      command: newQuickAction.command.trim(),
-                      iconName: newQuickAction.iconName?.trim() || undefined,
-                      color: newQuickAction.color?.trim() || undefined,
-                    }]);
+                    setQuickActions(prev => {
+                      const next = [...prev, {
+                        ...newQuickAction,
+                        id: 'qa-' + Date.now().toString(36),
+                        label: newQuickAction.label.trim(),
+                        command: newQuickAction.command.trim(),
+                        iconName: newQuickAction.iconName?.trim() || undefined,
+                        color: newQuickAction.color?.trim() || undefined,
+                      }];
+                      updateSettings({ quickActions: next });
+                      return next;
+                    });
                     setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
                   }}
                   className={css`
