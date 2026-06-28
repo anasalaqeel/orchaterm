@@ -44,6 +44,15 @@ export const DEFAULT_TERMINAL_CONFIG: TerminalConfig = {
   ],
 };
 
+import type { QuickAction } from '../types';
+
+export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
+  { id: 'git-status', label: 'Status', iconName: 'GitBranch', command: 'git status', autoExecute: true },
+  { id: 'npm-dev', label: 'Dev', iconName: 'Play', command: 'npm run dev', autoExecute: true },
+  { id: 'ai-explain', label: 'Explain Error', iconName: 'Wand2', command: 'explain the last error in detail', autoExecute: false, color: '#a855f7' },
+  { id: 'ai-refactor', label: 'Refactor', iconName: 'Zap', command: 'refactor this file to improve readability', autoExecute: false, color: '#3b82f6' },
+];
+
 export interface ThemePreset {
   name: string;
   theme: TerminalTheme;

@@ -1,5 +1,5 @@
 // ── Workspace & domain types ──────────────────────────────────────────────────
-import type { TerminalConfig } from './terminal.types';
+import type { TerminalConfig, QuickAction } from './terminal.types';
 import type { UseCaseProviders, ProviderConfig } from '../services/llm/types';
 import type { ContinuationConfig } from './continuation.types';
 
@@ -85,6 +85,8 @@ export interface AppSettings {
   anthropicApiKey?: string;
   /** @deprecated Use llmProviders.relay.model instead. */
   conductorOllamaModel?: string;
+  /** Quick actions shown in the terminal action bar */
+  quickActions?: QuickAction[];
 }
 
 // Global App Data State structure stored as flat JSON on disk
