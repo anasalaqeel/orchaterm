@@ -17,6 +17,18 @@ import { writePtyChunked } from '../utils/ptyUtils';
 import type { DetectionEvent, CheckpointSnapshot } from '../types';
 import { DEFAULT_TERMINAL_CONFIG, mergeTerminalConfig } from '../utils/terminalThemes';
 
+export const DEFAULT_TERMINAL_WORKSPACE: Workspace = {
+  id: 'global-default-terminal',
+  name: 'Terminal',
+  path: '',
+  description: 'Global scratch terminal',
+  color: '#8b5cf6',
+  status: 'active',
+  currentTask: '',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
 export interface ToastInfo {
   id: string;
   message: string;
@@ -269,7 +281,9 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setPlans(savedPlans);
 
         // Restore active workspace — validate it still exists
-        if (ui.activeWorkspaceId && ws.some(w => w.id === ui.activeWorkspaceId)) {
+        if (ui.activeWorkspaceId === DEFAULT_TERMINAL_WORKSPACE.id) {
+          setActiveWorkspaceId(ui.activeWorkspaceId);
+        } else if (ui.activeWorkspaceId && ws.some(w => w.id === ui.activeWorkspaceId)) {
           setActiveWorkspaceId(ui.activeWorkspaceId);
         } else if (ws.length > 0) {
           setActiveWorkspaceId(ws[0].id);

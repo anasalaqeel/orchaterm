@@ -294,7 +294,9 @@ fn spawn_pty(
             cmd.arg(arg);
         }
     }
-    cmd.cwd(&workspace_path);
+    if !workspace_path.trim().is_empty() {
+        cmd.cwd(&workspace_path);
+    }
     cmd.env("TERM", "xterm-256color");
 
     let child = pair
@@ -302,7 +304,9 @@ fn spawn_pty(
         .spawn_command(cmd)
         .or_else(|_| {
             let mut fallback = CommandBuilder::new(platform_fallback_shell());
-            fallback.cwd(&workspace_path);
+            if !workspace_path.trim().is_empty() {
+                fallback.cwd(&workspace_path);
+            }
             fallback.env("TERM", "xterm-256color");
             pair.slave.spawn_command(fallback)
         })
