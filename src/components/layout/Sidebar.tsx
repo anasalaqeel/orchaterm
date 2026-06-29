@@ -2,11 +2,11 @@ import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { NavLink, useNavigate, useMatch } from 'react-router';
 import { css, cx } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
-import { useDashboard } from '../../context/DashboardContext';
+import { useDashboard, DEFAULT_TERMINAL_WORKSPACE } from '../../context/DashboardContext';
 import {
   History, Sparkles, Settings,
   Sun, Moon, LayoutDashboard,
-  Plus, Trash2,
+  Plus, Trash2, Terminal,
   ChevronLeft, ChevronRight,
   ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
@@ -130,6 +130,65 @@ export function Sidebar() {
       </div>
 
       <div className={s.body}>
+
+        {/* ── Default Terminal ── */}
+        <div className={s.workspaceList} style={{ marginBottom: '12px' }}>
+          {(() => {
+            const w = DEFAULT_TERMINAL_WORKSPACE;
+            const isConsoleOpen = !!onDashboard && viewMode === 'console' && w.id === activeWorkspaceId;
+
+            return (
+              <motion.div
+                key={w.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div
+                  className={cx(s.wsRow, isConsoleOpen && s.wsRowActive, layoutCollapsed && s.wsRowCollapsed)}
+                  style={isConsoleOpen ? { '--ws-color': w.color } as CSSProperties : undefined}
+                  onMouseEnter={(e) => {
+                    setHoveredWsId(w.id);
+                    if (collapsed) {
+                      setHoveredWsRect(e.currentTarget.getBoundingClientRect());
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredWsId(null);
+                    setHoveredWsRect(null);
+                  }}
+                  title={undefined}
+                >
+                  <button
+                    className={cx(s.wsClickArea, layoutCollapsed && s.wsClickAreaCollapsed)}
+                    onClick={() => openInConsole(w.id)}
+                  >
+                    <span
+                      className={s.wsAvatar}
+                      style={{ backgroundColor: w.color + '22', borderColor: w.color + '44' }}
+                    >
+                      <Terminal size={14} color={w.color} style={{ margin: 'auto' }} />
+                    </span>
+
+                    <AnimatePresence initial={false}>
+                      {!collapsed && (
+                        <motion.span
+                          className={s.wsName}
+                          initial={{ opacity: 0, width: 0 }}
+                          animate={{ opacity: 1, width: 'auto' }}
+                          exit={{ opacity: 0, width: 0 }}
+                          transition={{ duration: 0.15 }}
+                        >
+                          {w.name}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </button>
+                </div>
+              </motion.div>
+            );
+          })()}
+        </div>
 
         {/* ── Workspaces ── */}
         <div className={cx(s.sectionHead, layoutCollapsed && s.sectionHeadCollapsed)}>

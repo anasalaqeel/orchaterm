@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { css, cx } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
-import { useDashboard } from '../context/DashboardContext';
+import { useDashboard, DEFAULT_TERMINAL_WORKSPACE } from '../context/DashboardContext';
 import { WorkspaceConsole } from '../components/workspace/WorkspaceConsole';
 import { Input } from '../components/ui';
 import {
@@ -77,7 +77,10 @@ export const DashboardView: React.FC = () => {
   }, [newWorkspaceModalOpen, setNewWorkspaceModalOpen]);
 
   const activeProject = useMemo(
-    () => workspaces.find(p => p.id === activeWorkspaceId) || workspaces[0],
+    () => {
+      if (activeWorkspaceId === DEFAULT_TERMINAL_WORKSPACE.id) return DEFAULT_TERMINAL_WORKSPACE;
+      return workspaces.find(p => p.id === activeWorkspaceId) || workspaces[0];
+    },
     [workspaces, activeWorkspaceId],
   );
 
@@ -123,7 +126,7 @@ export const DashboardView: React.FC = () => {
     <div className={s.pageRoot}>
 
       {/* ── Per-workspace consoles: lazy-mounted on first open, never unmounted ── */}
-      {workspaces.filter(w => mountedConsoleIds.has(w.id)).map(workspace => {
+      {[...workspaces, DEFAULT_TERMINAL_WORKSPACE].filter(w => mountedConsoleIds.has(w.id)).map(workspace => {
         const isThisActive = workspace.id === activeWorkspaceId;
         // Only resolve the active space for the currently visible workspace.
         // Non-active workspaces always get a stable panelKey so their
