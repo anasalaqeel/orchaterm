@@ -11,11 +11,12 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebglAddon } from 'xterm-addon-webgl';
 import { WebLinksAddon } from 'xterm-addon-web-links';
+import { SearchAddon } from 'xterm-addon-search';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { css } from '@emotion/css';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Search, X } from 'lucide-react';
 import { terminalGainedFocus, terminalLostFocus } from '../../services/terminalFocus';
 import { useDashboard } from '../../context/DashboardContext';
 import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey, kittyEncodeKey } from '../../utils/terminalThemes';
@@ -98,6 +99,20 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     const [errorMsg, setErrorMsg] = useState('');
     const [hasSelection, setHasSelection] = useState(false);
     const [hasCopied, setHasCopied] = useState(false);
+
+    // Search state
+    const [searchVisible, setSearchVisible] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState(0);
+
+    // Context menu state
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+    // Visual bell state
+    const [bellActive, setBellActive] = useState(false);
+
+    // Search addon ref
+    const searchAddonRef = useRef<SearchAddon | null>(null);
     // Guard against React StrictMode double-invocation. When StrictMode runs
     // cleanup immediately after the first effect, it sets this to true so the
     // second (redundant) invocation is a no-op. Manually triggered retries
@@ -225,6 +240,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       });
       term.loadAddon(webLinksAddon);
 
+      // Search addon for finding text in terminal
+      const searchAddon = new SearchAddon();
+      term.loadAddon(searchAddon);
+      searchAddonRef.current = searchAddon;
+
       term.open(containerRef.current);
 
       termRef.current = term;
@@ -277,12 +297,26 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       const onMouseDown = (e: MouseEvent) => {
         if (e.button === 1) e.preventDefault(); // Prevent browser autoscroll
       };
-      
+
+      // ─ Context menu (right-click) ───────────────────────────────────────
+      const onContextMenu = (e: MouseEvent) => {
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+      };
+
       term.element?.addEventListener('mouseup', onMouseUp);
       term.element?.addEventListener('mousedown', onMouseDown);
+      term.element?.addEventListener('contextmenu', onContextMenu);
 
       const selDispose = term.onSelectionChange(() => {
         setHasSelection(term.hasSelection());
+      });
+
+      // ─ Visual bell handler ────────────────────────────────────────────────
+      // Show a visual flash when the terminal emits a bell character
+      const bellDispose = term.onBell(() => {
+        setBellActive(true);
+        setTimeout(() => setBellActive(false), 200);
       });
 
       // ─ Forward keyboard input → PTY ──────────────────────────────────
@@ -347,6 +381,37 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       // (the default) return true → forwarded to the PTY like a real emulator.
       term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
         if (e.type !== 'keydown') return true;
+
+        // When search is visible, only pass through Escape to close it
+        // All other keys are handled by the search input
+        if (searchVisible) {
+          if (e.key === 'Escape') {
+            setSearchVisible(false);
+            searchAddonRef.current?.clearDecorations();
+            setSearchQuery('');
+            setSearchResults(0);
+            return false;
+          }
+          // Don't pass any other keys to terminal while search is active
+          return false;
+        }
+
+        // Ctrl+F / Cmd+F for search (overrideable via keybindings)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.shiftKey && !e.altKey) {
+          setSearchVisible(true);
+          // Focus search input after state update - use requestAnimationFrame for proper timing
+          requestAnimationFrame(() => {
+            const searchInput = document.querySelector(`[data-search-input="true"]`) as HTMLInputElement;
+            searchInput?.focus();
+          });
+          return false;
+        }
+
+        // Escape to close context menu
+        if (e.key === 'Escape' && contextMenu) {
+          setContextMenu(null);
+          return false;
+        }
 
         const binding = resolveTerminalKey(buildCombo(e), keybindingsRef.current);
         
@@ -506,6 +571,12 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         // PTY output (cursor-home / clear + first prompt) is dropped.
         dataListenerReady.then(() => {
           if (!effectActiveRef.current) return; // unmounted while awaiting
+          // If container never reached valid size, spawn with default 80x24
+          // This ensures terminal always starts even in edge cases
+          if (!dims && spawnAttempts >= 60) {
+            console.warn('[TerminalTab] Container size timeout, using default 80x24');
+            // Force-fit to default size will happen in spawnSession
+          }
           spawnSession();  // reads fitted dims, spawns PTY, then sets isSpawnedRef=true
         });
       };
@@ -526,9 +597,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         term.textarea?.removeEventListener('blur',  onFocusOut);
         term.element?.removeEventListener('mouseup', onMouseUp);
         term.element?.removeEventListener('mousedown', onMouseDown);
+        // Context menu cleanup is handled by component unmount (state resets)
         terminalLostFocus(); // ensure count stays consistent on unmount
         dataDispose.dispose();
         selDispose.dispose();
+        bellDispose.dispose();
         if (unlisten) unlisten();
         if (unlistenExit) unlistenExit();
         resizeDispose.dispose();
@@ -631,6 +704,146 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
             </div>
           </div>
         )}
+
+        {/* Search Bar */}
+        {searchVisible && (
+          <div
+            className={styles.searchBar}
+            onMouseDown={(e) => {
+              // Prevent terminal from stealing focus when clicking search bar
+              e.stopPropagation();
+            }}
+          >
+            <Search size={16} />
+            <input
+              type="text"
+              className={styles.searchInput}
+              data-search-input="true"
+              placeholder="Search in terminal..."
+              value={searchQuery}
+              autoFocus
+              onChange={(e) => {
+                const query = e.target.value;
+                setSearchQuery(query);
+                const addon = searchAddonRef.current;
+                if (addon) {
+                  if (query) {
+                    addon.findNext(query, { regex: false });
+                    setSearchResults(1);
+                  } else {
+                    addon.clearDecorations();
+                    setSearchResults(0);
+                  }
+                }
+              }}
+              onKeyDown={(e) => {
+                const addon = searchAddonRef.current;
+                if (!addon) return;
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (e.shiftKey) {
+                    addon.findPrevious(searchQuery, { regex: false });
+                  } else {
+                    addon.findNext(searchQuery, { regex: false });
+                  }
+                }
+              }}
+            />
+            {searchResults > 0 && (
+              <span className={styles.searchResults}>
+                {searchResults} result{searchResults !== 1 ? 's' : ''}
+              </span>
+            )}
+            <button
+              className={styles.searchCloseBtn}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSearchVisible(false);
+                searchAddonRef.current?.clearDecorations();
+                setSearchQuery('');
+                setSearchResults(0);
+                // Return focus to terminal
+                termRef.current?.focus();
+              }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* Visual Bell Indicator */}
+        {bellActive && <div className={styles.bellOverlay} />}
+
+        {/* Context Menu */}
+        {contextMenu && (
+          <div
+            className={styles.contextMenu}
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setContextMenu(null);
+            }}
+          >
+            <div
+              className={styles.contextMenuItem}
+              onClick={() => {
+                const term = termRef.current;
+                if (term && term.hasSelection() && navigator.clipboard) {
+                  navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+                }
+                setContextMenu(null);
+              }}
+            >
+              <Copy size={14} /> Copy
+            </div>
+            <div
+              className={styles.contextMenuItem}
+              onClick={() => {
+                const term = termRef.current;
+                if (term && navigator.clipboard) {
+                  navigator.clipboard.readText().then(text => {
+                    if (text) term.paste(text);
+                  }).catch(() => {});
+                }
+                setContextMenu(null);
+              }}
+            >
+              Paste
+            </div>
+            <div
+              className={styles.contextMenuItem}
+              onClick={() => {
+                const term = termRef.current;
+                if (term) {
+                  term.selectAll();
+                  setHasSelection(true);
+                }
+                setContextMenu(null);
+              }}
+            >
+              Select All
+            </div>
+            <div className={styles.contextMenuDivider} />
+            <div
+              className={styles.contextMenuItem}
+              onClick={() => {
+                const term = termRef.current;
+                if (term) term.clear();
+                setContextMenu(null);
+              }}
+            >
+              Clear
+            </div>
+          </div>
+        )}
+
+        {/* Click outside to close context menu */}
+        {contextMenu && (
+          <div
+            className={styles.contextMenuBackdrop}
+            onClick={() => setContextMenu(null)}
+          />
+        )}
       </div>
     );
   },
@@ -729,5 +942,101 @@ const styles = {
     &:hover {
       background: #3b82f6;
     }
+  `,
+  // Search Bar styles
+  searchBar: css`
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(11, 21, 32, 0.9);
+    backdrop-filter: blur(8px);
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 25;
+    color: #e2e8f0;
+  `,
+  searchInput: css`
+    terminal-search-input: true;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #e2e8f0;
+    font-size: 13px;
+    font-family: 'Fira Code', monospace;
+    width: 200px;
+    &::placeholder {
+      color: #64748b;
+    }
+  `,
+  searchResults: css`
+    font-size: 11px;
+    color: #64748b;
+  `,
+  searchCloseBtn: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    &:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #94a3b8;
+    }
+  `,
+  // Visual Bell styles
+  bellOverlay: css`
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.1);
+    pointer-events: none;
+    animation: bell-flash 0.2s ease-out;
+    @keyframes bell-flash {
+      0% { opacity: 0.3; }
+      100% { opacity: 0; }
+    }
+  `,
+  // Context Menu styles
+  contextMenu: css`
+    position: fixed;
+    min-width: 160px;
+    background: rgba(11, 21, 32, 0.95);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 4px;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  `,
+  contextMenuItem: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    color: #e2e8f0;
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 100ms ease;
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+  `,
+  contextMenuDivider: css`
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 4px 0;
+  `,
+  contextMenuBackdrop: css`
+    position: fixed;
+    inset: 0;
+    z-index: 999;
   `,
 };

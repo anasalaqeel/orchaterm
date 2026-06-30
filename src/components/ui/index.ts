@@ -9,3 +9,4 @@ export type { SelectOption }  from './Select';
 export { ContinuationModal }  from './ContinuationModal';
 export { ErrorBoundary }      from './ErrorBoundary';
 export { Tooltip }            from './Tooltip';
+export { HelpModal }          from './HelpModal';
