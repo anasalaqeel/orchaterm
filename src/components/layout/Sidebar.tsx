@@ -9,6 +9,7 @@ import {
   Plus, Trash2, Terminal,
   ChevronLeft, ChevronRight,
   ChevronsLeft, ChevronsRight,
+  HelpCircle,
 } from 'lucide-react';
 import logoDark from '../../assets/logos/icon-large-dark.svg';
 import logoLight from '../../assets/logos/icon-large-light.svg';
@@ -30,6 +31,7 @@ export function Sidebar() {
     deleteWorkspace,
     viewMode, setViewMode,
     setNewWorkspaceModalOpen,
+    setHelpModalOpen,
   } = useDashboard();
 
   const navigate    = useNavigate();
@@ -510,6 +512,16 @@ export function Sidebar() {
         </AnimatePresence>
 
         <div className={cx(s.footerActions, layoutCollapsed && s.footerActionsCollapsed)}>
+          <motion.button
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.92 }}
+            onClick={() => setHelpModalOpen(true)}
+            className={s.footerBtn}
+            title="Keyboard shortcuts (Ctrl+H)"
+          >
+            <HelpCircle className={s.themeIcon} />
+          </motion.button>
+
           <motion.button
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.92 }}

@@ -1,4 +1,5 @@
 import { Outlet, useMatch } from 'react-router';
+import { useEffect } from 'react';
 import { css } from '@emotion/css';
 import { motion } from 'motion/react';
 import { useDashboard } from '../../context/DashboardContext';
@@ -7,6 +8,8 @@ import { DashboardView } from '../../pages/Overview';
 import { QuickSwitcher } from '../ui/QuickSwitcher';
 import { Toast } from '../ui/Toast';
 import { ContinuationModal } from '../ui/ContinuationModal';
+import { HelpModal } from '../ui/HelpModal';
+import { registerShortcut } from '../../services/keyboardManager';
 import logoDark from '../../assets/logos/icon-large-dark.svg';
 import logoLight from '../../assets/logos/icon-large-light.svg';
 
@@ -54,8 +57,34 @@ export function AppLayout() {
     setPendingInjectionSnapshot,
     terminalSessions,
     settings,
+    helpModalOpen,
+    setHelpModalOpen,
   } = useDashboard();
   const onDashboard  = useMatch('/');
+
+  // Ctrl+H / Cmd+H — open help (skipped when terminal has focus)
+  useEffect(() => {
+    return registerShortcut({
+      key: 'h', ctrl: true,
+      context: 'non-terminal',
+      handler: () => {
+        setHelpModalOpen(true);
+      },
+    });
+  }, [setHelpModalOpen]);
+
+  // Escape to close help modal when open
+  useEffect(() => {
+    if (!helpModalOpen) return;
+    const removeEsc = registerShortcut({
+      key: 'Escape',
+      context: 'global',
+      handler: () => {
+        setHelpModalOpen(false);
+      },
+    });
+    return () => removeEsc();
+  }, [helpModalOpen, setHelpModalOpen]);
 
   if (!isLoaded) return <Loader />;
 
@@ -75,6 +104,7 @@ export function AppLayout() {
 
       <QuickSwitcher />
       <Toast />
+      <HelpModal isOpen={helpModalOpen} onClose={() => setHelpModalOpen(false)} />
       {pendingInjectionSnapshot && (
         <ContinuationModal
           snapshot={pendingInjectionSnapshot}

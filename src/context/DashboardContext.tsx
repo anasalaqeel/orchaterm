@@ -62,6 +62,9 @@ export interface DashboardContextType {
   /** Signals the Overview page to open the New Workspace modal immediately. */
   newWorkspaceModalOpen: boolean;
   setNewWorkspaceModalOpen: (open: boolean) => void;
+  /** Help/keyboard shortcuts modal state */
+  helpModalOpen: boolean;
+  setHelpModalOpen: (open: boolean) => void;
 
   // ── Workspace CRUD ──────────────────────────────────────────────────────────
   addWorkspace: (workspace: Omit<Workspace, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
@@ -222,6 +225,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [theme, setTheme]               = useState<'dark' | 'light'>('dark');
   const [isLoaded, setIsLoaded]         = useState<boolean>(false);
   const [newWorkspaceModalOpen, setNewWorkspaceModalOpen] = useState(false);
+  const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [settings, setSettings]         = useState<AppSettings>({
     shellPath: '',
     conductorTaskTimeoutMinutes: 0,
@@ -749,6 +753,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       theme, toggleTheme,
       isLoaded,
       newWorkspaceModalOpen, setNewWorkspaceModalOpen,
+      helpModalOpen, setHelpModalOpen,
       addWorkspace, updateWorkspace, deleteWorkspace,
       addSpace, updateSpace, deleteSpace,
       addTaskLog, updateTaskLog, deleteTaskLog,
