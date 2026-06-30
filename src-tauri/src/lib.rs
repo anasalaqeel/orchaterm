@@ -288,6 +288,21 @@ fn spawn_pty(
 
     let mut cmd = CommandBuilder::new(&shell_to_use);
 
+    // Make shell a login shell on macOS/Linux so it sources .zprofile/.bash_profile
+    // This ensures PATH and aliases like 'code' are available.
+    // -l flag works for bash, zsh, and most POSIX shells.
+    // Skip for shells that don't support it (like nu, elvish) or on Windows.
+    #[cfg(not(target_os = "windows"))]
+    {
+        let shell_name = shell_to_use
+            .rsplit('/')
+            .next()
+            .unwrap_or(&shell_to_use);
+        if matches!(shell_name, "zsh" | "bash" | "sh" | "dash") {
+            cmd.arg("-l");
+        }
+    }
+
     // Append any extra args (e.g. ["--", "bash"] for wsl).
     if let Some(args) = shell_args {
         for arg in args {
@@ -304,6 +319,9 @@ fn spawn_pty(
         .spawn_command(cmd)
         .or_else(|_| {
             let mut fallback = CommandBuilder::new(platform_fallback_shell());
+            // Add login flag for fallback shell too (POSIX only)
+            #[cfg(not(target_os = "windows"))]
+            fallback.arg("-l");
             if !workspace_path.trim().is_empty() {
                 fallback.cwd(&workspace_path);
             }
