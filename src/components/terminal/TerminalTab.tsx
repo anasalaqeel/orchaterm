@@ -17,7 +17,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { css } from '@emotion/css';
 import { Copy, Check, Search, X } from 'lucide-react';
-import { terminalGainedFocus, terminalLostFocus } from '../../services/terminalFocus';
 import { useDashboard } from '../../context/DashboardContext';
 import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey, kittyEncodeKey } from '../../utils/terminalThemes';
 import { writePtyChunked } from '../../utils/ptyUtils';
@@ -268,14 +267,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         webglAddonRef.current = null;
       }
 
-      // ─ Track focus so keyboardManager knows when terminal is active ───
-      // xterm's hidden textarea is the actual keyboard-capture element.
-      // We listen on it directly since onFocus/onBlur are proposed-API only.
-      const onFocusIn  = () => terminalGainedFocus();
-      const onFocusOut = () => terminalLostFocus();
-      term.textarea?.addEventListener('focus', onFocusIn);
-      term.textarea?.addEventListener('blur',  onFocusOut);
-
       // ─ Mouse shortcuts (Linux middle-click paste) ───────────────────────
       const onMouseUp = (e: MouseEvent) => {
         if (e.button === 1) {
@@ -372,6 +363,24 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       term.parser.registerCsiHandler({ prefix: '?', final: 'u' }, () => {
         invoke('write_pty', { sessionId, data: `\x1b[?${kittyFlags}u` }).catch(() => {});
         return true;
+      });
+
+      // ─ Reset kitty state when a TUI hands control back to the shell ─────
+      // Some apps (or ones killed mid-session) never pop/reset the
+      // disambiguate flag. Once it's stuck on, every Ctrl combo (Ctrl+C/D/Z/L)
+      // is sent as a CSI-u sequence that a plain shell can't read — so Ctrl+C
+      // can no longer interrupt a process until the tab is reopened. Resetting
+      // on alt-screen exit / full reset / child exit closes that leak.
+      const resetKitty = () => { kittyFlags = 0; kittyStack.length = 0; };
+      // Alt screen off (modes 47 / 1047 / 1049) — TUIs disable it on exit.
+      term.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (p: CsiParams) => {
+        if (p.some(v => v === 1049 || v === 1047 || v === 47)) resetKitty();
+        return false; // let xterm toggle the buffer normally
+      });
+      // Full terminal reset (ESC c / RIS).
+      term.parser.registerEscHandler({ final: 'c' }, () => {
+        resetKitty();
+        return false; // let xterm perform the reset
       });
 
       // ─ Single keyboard authority (bound to THIS term instance) ───────────
@@ -502,6 +511,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       let unlistenExit: UnlistenFn | null = null;
       listen(`pty-exit-${sessionId}`, () => {
         term.write('\r\n\x1b[31m[Process Exited]\x1b[0m\r\n');
+        resetKitty(); // PTY child gone — drop any leftover kitty flags
         onExitRef.current?.();
       }).then(fn => {
         if (cancelled) fn();
@@ -593,12 +603,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         cancelAnimationFrame(resizeRaf2);
         if (resizeTimer !== null) clearTimeout(resizeTimer);
         resizeObserver.disconnect();
-        term.textarea?.removeEventListener('focus', onFocusIn);
-        term.textarea?.removeEventListener('blur',  onFocusOut);
         term.element?.removeEventListener('mouseup', onMouseUp);
         term.element?.removeEventListener('mousedown', onMouseDown);
         // Context menu cleanup is handled by component unmount (state resets)
-        terminalLostFocus(); // ensure count stays consistent on unmount
         dataDispose.dispose();
         selDispose.dispose();
         bellDispose.dispose();
