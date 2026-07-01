@@ -9,6 +9,77 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+// ── Windows process-tree kill via Job Object ──────────────────────────────────
+// `child.kill()` (TerminateProcess) ends only the shell PID — grandchildren
+// (e.g. a dev server the shell spawned) survive as orphans and keep their
+// ports open. Assigning the child to a Job Object with KILL_ON_JOB_CLOSE
+// makes Windows kill the *entire* tree the instant the job handle closes — on
+// tab close, on app quit, and on crash. VS Code / Windows Terminal rely on the
+// same mechanism.
+#[cfg(target_os = "windows")]
+mod winjob {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
+
+    /// RAII handle to a kill-on-close Job Object. Dropping it closes the handle,
+    /// which tells Windows to terminate every process assigned to the job.
+    pub(crate) struct JobHandle(HANDLE);
+
+    // HANDLE wraps a raw pointer (not auto Send/Sync), but it is an opaque
+    // kernel handle — safe to move/share across threads. Access is serialized
+    // by the surrounding session Mutex; only Drop closes it.
+    unsafe impl Send for JobHandle {}
+    unsafe impl Sync for JobHandle {}
+
+    impl Drop for JobHandle {
+        fn drop(&mut self) {
+            if !self.0.is_invalid() {
+                unsafe {
+                    let _ = CloseHandle(self.0);
+                }
+            }
+        }
+    }
+
+    /// Create a kill-on-close job and assign `pid` to it. Returns `None` on any
+    /// Win32 failure — the caller proceeds without tree-kill (the direct child
+    /// is still terminated by `kill_pty`). The job handle is wrapped in
+    /// `JobHandle` immediately so every return path (including `?`) closes it.
+    pub(crate) fn create_kill_tree_job(pid: u32) -> Option<JobHandle> {
+        unsafe {
+            let job = JobHandle(CreateJobObjectW(None, PCWSTR::null()).ok()?);
+
+            let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            SetInformationJobObject(
+                job.0,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const _,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+            .ok()?;
+
+            // PROCESS_SET_QUOTA is required to assign a process to a job;
+            // PROCESS_TERMINATE lets the job kill it. On Windows 8+ a process
+            // may already belong to another job — nested jobs make this succeed.
+            let proc = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, false, pid).ok()?;
+            let assigned = AssignProcessToJobObject(job.0, proc).is_ok();
+            let _ = CloseHandle(proc); // child stays in the job after this closes
+            if assigned {
+                Some(job)
+            } else {
+                None // job drops here → handle closed, no leak
+            }
+        }
+    }
+}
+
 // ── Shell detection ────────────────────────────────────────────────────────────
 
 #[derive(Clone, Serialize)]
@@ -184,6 +255,11 @@ struct PtySession {
     child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
     /// Flipped to `true` by `kill_pty` so the reader thread exits promptly.
     shutdown: Arc<AtomicBool>,
+    /// Windows only: kill-on-close job that takes the whole process tree with
+    /// the session when it drops (tab close / app quit / crash).
+    #[cfg(target_os = "windows")]
+    #[allow(dead_code)] // never read — held purely for its Drop side-effect
+    job: Option<winjob::JobHandle>,
 }
 
 type PtyState = Mutex<HashMap<String, PtySession>>;
@@ -345,6 +421,11 @@ fn spawn_pty(
 
     let shutdown = Arc::new(AtomicBool::new(false));
 
+    // Windows: assign the child to a kill-on-close job BEFORE it can spawn
+    // grandchildren, so the whole tree dies with this session.
+    #[cfg(target_os = "windows")]
+    let job = child.process_id().and_then(winjob::create_kill_tree_job);
+
     // Child handle behind its own Arc<Mutex> so the monitor thread polls it
     // without ever touching the global session map.
     let child = Arc::new(Mutex::new(child));
@@ -354,6 +435,8 @@ fn spawn_pty(
         writer: Arc::new(Mutex::new(writer)),
         child: Arc::clone(&child),
         shutdown: Arc::clone(&shutdown),
+        #[cfg(target_os = "windows")]
+        job,
     };
 
     {
