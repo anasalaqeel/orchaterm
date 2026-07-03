@@ -8,6 +8,10 @@ export interface SelectOption {
   name: string;
   description?: string;
   icon?: LucideIcon;
+  /** Groups options under a header in the dropdown. Consecutive options sharing a group are clustered. */
+  group?: string;
+  /** Renders the option inert (no hover/click), for placeholders like "no items available". */
+  disabled?: boolean;
 }
 
 interface SelectProps {
@@ -124,29 +128,34 @@ export const Select: React.FC<SelectProps> = ({
             width: dropdownPos.width,
           }}
         >
-          {options.map((opt) => {
+          {options.map((opt, i) => {
             const isActive = opt.value === value;
             const OptIcon = opt.icon ?? Terminal;
+            const showGroupHeader = opt.group !== undefined && opt.group !== options[i - 1]?.group;
             return (
-              <button
-                key={opt.value}
-                type="button"
-                className={cx(styles.item, isActive && styles.itemActive)}
-                onMouseDown={e => {
-                  e.preventDefault(); // prevent blur before click
-                  onChange(opt.value);
-                  closeDropdown();
-                }}
-              >
-                <OptIcon className={styles.itemIcon} />
-                <div className={styles.itemText}>
-                  <span className={styles.itemName}>{opt.name}</span>
-                  {opt.description && (
-                    <span className={styles.itemDescription}>{opt.description}</span>
-                  )}
-                </div>
-                {isActive && <Check className={styles.itemCheck} />}
-              </button>
+              <React.Fragment key={opt.value}>
+                {showGroupHeader && <div className={styles.groupHeader}>{opt.group}</div>}
+                <button
+                  type="button"
+                  className={cx(styles.item, isActive && styles.itemActive, opt.disabled && styles.itemDisabled)}
+                  disabled={opt.disabled}
+                  onMouseDown={e => {
+                    if (opt.disabled) return;
+                    e.preventDefault(); // prevent blur before click
+                    onChange(opt.value);
+                    closeDropdown();
+                  }}
+                >
+                  <OptIcon className={styles.itemIcon} />
+                  <div className={styles.itemText}>
+                    <span className={styles.itemName}>{opt.name}</span>
+                    {opt.description && (
+                      <span className={styles.itemDescription}>{opt.description}</span>
+                    )}
+                  </div>
+                  {isActive && <Check className={styles.itemCheck} />}
+                </button>
+              </React.Fragment>
             );
           })}
         </div>,
@@ -278,6 +287,21 @@ const styles = {
     max-height: 200px;
     overflow-y: auto;
   `,
+  groupHeader: css`
+    padding: 8px 10px 4px;
+    font-size: 10px;
+    font-weight: var(--font-weight-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-tertiary);
+    user-select: none;
+
+    &:not(:first-child) {
+      margin-top: 4px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border-color);
+    }
+  `,
   item: css`
     display: flex;
     align-items: center;
@@ -294,6 +318,16 @@ const styles = {
     &:hover {
       background-color: var(--bg-hover);
       color: var(--text-primary);
+    }
+  `,
+  itemDisabled: css`
+    cursor: default;
+    opacity: 0.5;
+    font-style: italic;
+
+    &:hover {
+      background-color: transparent;
+      color: var(--text-secondary);
     }
   `,
   itemActive: css`

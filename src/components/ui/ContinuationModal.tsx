@@ -1,17 +1,55 @@
 // src/components/ui/ContinuationModal.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
 import { Save, X } from 'lucide-react';
 import { writePtyChunked } from '../../utils/ptyUtils';
+import { Select, type SelectOption } from './Select';
+import { useDashboard, DEFAULT_TERMINAL_WORKSPACE } from '../../context/DashboardContext';
+import { loadTerminalTabs, type TerminalTabsState, type PersistedTab } from '../../services/storage';
 import type { CheckpointSnapshot } from '../../types';
 import type { TerminalSession } from '../../types';
+import type { Workspace } from '../../types';
 
 interface ContinuationModalProps {
   snapshot: CheckpointSnapshot;
   sessions: TerminalSession[];
+  workspaces: Workspace[];
   targetSessionId: string | null;
   onDismiss: () => void;
+}
+
+/** A tab we know about from disk but that has no live PTY yet (workspace never opened this session). */
+interface LazyTab {
+  workspaceId: string;
+  /** The session ID this tab will be restored with — TerminalContainer reuses the persisted ID verbatim. */
+  sessionId: string;
+}
+
+const LAZY_PREFIX = '__lazy__:';
+const LAZY_TIMEOUT_MS = 8000;
+const WRITE_RETRY_TIMEOUT_MS = 5000;
+const POLL_INTERVAL_MS = 200;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Both segments are crypto.randomUUID() values (hyphens only, never colons),
+// so splitting on the first colon after the prefix is unambiguous.
+function encodeLazyValue(workspaceId: string, sessionId: string): string {
+  return `${LAZY_PREFIX}${workspaceId}:${sessionId}`;
+}
+
+function decodeLazyValue(value: string): LazyTab | null {
+  if (!value.startsWith(LAZY_PREFIX)) return null;
+  const rest = value.slice(LAZY_PREFIX.length);
+  const sepIdx = rest.indexOf(':');
+  if (sepIdx === -1) return null;
+  return {
+    workspaceId: rest.slice(0, sepIdx),
+    sessionId: rest.slice(sepIdx + 1),
+  };
 }
 
 const RESUME_PREFIX =
@@ -21,29 +59,126 @@ const RESUME_PREFIX =
 export const ContinuationModal: React.FC<ContinuationModalProps> = ({
   snapshot,
   sessions,
+  workspaces,
   targetSessionId,
   onDismiss,
 }) => {
+  const { setActiveWorkspaceId, setViewMode } = useDashboard();
+
   const [selectedId, setSelectedId] = useState<string>(
     targetSessionId ?? sessions[0]?.id ?? ''
   );
   const [injecting, setInjecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusText, setStatusText] = useState<string | null>(null);
+
+  // A workspace's terminals only exist as live PTYs once its console has been
+  // opened this session (lazy-mounted for perf). Tab metadata (title/shell/order)
+  // is persisted to disk regardless, so we can still list — and open on demand —
+  // terminals belonging to workspaces that haven't been visited yet.
+  const [persistedTabs, setPersistedTabs] = useState<TerminalTabsState>({});
+  useEffect(() => {
+    loadTerminalTabs().then(setPersistedTabs).catch(() => {});
+  }, []);
+
+  // Latest `sessions` value, readable from inside the async handleInject closure.
+  const sessionsRef = useRef(sessions);
+  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
+
+  const allWorkspaces = [...workspaces, DEFAULT_TERMINAL_WORKSPACE];
+  const sessionOptions: SelectOption[] = allWorkspaces.flatMap(ws => {
+    const wsSessions = sessions.filter(s => s.workspaceId === ws.id);
+    if (wsSessions.length > 0) {
+      return wsSessions.map(s => ({
+        value: s.id,
+        name: s.title,
+        group: ws.name,
+      }));
+    }
+
+    const saved = persistedTabs[`${ws.id}::workspace`];
+    const savedTabs = (Array.isArray(saved) ? saved : saved?.tabs ?? [])
+      // Only tabs with a persisted ID can be targeted deterministically after
+      // restore (TerminalContainer falls back to a fresh random ID otherwise).
+      .filter((tab): tab is PersistedTab & { id: string } => !!tab.id);
+    if (savedTabs.length === 0) {
+      return [{
+        value: `__empty__:${ws.id}`,
+        name: 'No open terminals',
+        description: 'This workspace has never had a terminal open',
+        group: ws.name,
+        disabled: true,
+      }];
+    }
+
+    return savedTabs
+      .sort((a, b) => a.order - b.order)
+      .map(tab => ({
+        value: encodeLazyValue(ws.id, tab.id),
+        name: tab.title,
+        description: 'Opens this workspace, then injects',
+        group: ws.name,
+      }));
+  });
+
+  // Waits for the given session ID to appear (registered by TerminalContainer
+  // once it restores the persisted tab) after we've asked the app to open
+  // that workspace's console.
+  async function waitForRestoredSession(sessionId: string, label: string): Promise<void> {
+    const deadline = Date.now() + LAZY_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      if (sessionsRef.current.some(s => s.id === sessionId)) return;
+      await sleep(POLL_INTERVAL_MS);
+    }
+    throw new Error(`Timed out waiting for "${label}" to open — try opening the workspace manually.`);
+  }
+
+  // The PTY may still be spawning for a moment after the session shows up in
+  // React state, so retry the write instead of failing on the first attempt.
+  async function writeWithRetry(id: string, data: string): Promise<void> {
+    const deadline = Date.now() + WRITE_RETRY_TIMEOUT_MS;
+    let lastErr: unknown;
+    while (Date.now() < deadline) {
+      try {
+        await writePtyChunked(id, data);
+        return;
+      } catch (err) {
+        lastErr = err;
+        await sleep(300);
+      }
+    }
+    throw lastErr;
+  }
 
   const handleInject = async () => {
     if (!selectedId) return;
     setInjecting(true);
     setError(null);
+    setStatusText(null);
     try {
       const message =
         `${RESUME_PREFIX}Checkpoint file: ${snapshot.filePath}\n\n` +
         `Please read the checkpoint file and continue from where the previous session stopped.`;
-      await writePtyChunked(selectedId, message + '\r');
+
+      const lazy = decodeLazyValue(selectedId);
+      if (lazy) {
+        const option = sessionOptions.find(o => o.value === selectedId);
+        const workspaceName = allWorkspaces.find(w => w.id === lazy.workspaceId)?.name ?? 'workspace';
+        setStatusText(`Opening "${option?.name ?? 'terminal'}" in ${workspaceName}…`);
+        setActiveWorkspaceId(lazy.workspaceId);
+        setViewMode('console');
+        await waitForRestoredSession(lazy.sessionId, option?.name ?? 'terminal');
+        setStatusText('Injecting…');
+        await writeWithRetry(lazy.sessionId, message + '\r');
+      } else {
+        await writePtyChunked(selectedId, message + '\r');
+      }
       onDismiss();
     } catch (err) {
       setError(String(err));
     } finally {
       setInjecting(false);
+      setStatusText(null);
     }
   };
 
@@ -97,29 +232,20 @@ export const ContinuationModal: React.FC<ContinuationModalProps> = ({
             {snapshot.sessionTitle} · {snapshot.label} · {snapshot.filePath.split('/').slice(-1)[0]}
           </div>
 
-          <label className={css`font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 8px;`}>
-            Inject resume prompt into:
-          </label>
-          <select
-            value={selectedId}
-            onChange={e => setSelectedId(e.target.value)}
-            className={css`
-              width: 100%;
-              background: var(--bg-primary);
-              border: 1px solid var(--border-color);
-              border-radius: 6px;
-              padding: 8px 10px;
-              color: var(--text-primary);
-              font-size: 13px;
-              margin-bottom: 16px;
-              outline: none;
-              &:focus { border-color: var(--color-brand); }
-            `}
-          >
-            {sessions.map(s => (
-              <option key={s.id} value={s.id}>{s.title}</option>
-            ))}
-          </select>
+          <div className={css`margin-bottom: 16px;`}>
+            <Select
+              label="Inject resume prompt into:"
+              options={sessionOptions}
+              value={selectedId}
+              onChange={setSelectedId}
+            />
+          </div>
+
+          {statusText && (
+            <div className={css`font-size: 12px; color: var(--text-tertiary); margin-bottom: 12px;`}>
+              {statusText}
+            </div>
+          )}
 
           {error && (
             <div className={css`font-size: 12px; color: var(--color-danger); margin-bottom: 12px;`}>
