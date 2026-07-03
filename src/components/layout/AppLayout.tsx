@@ -56,6 +56,7 @@ export function AppLayout() {
     pendingInjectionSnapshot,
     setPendingInjectionSnapshot,
     terminalSessions,
+    workspaces,
     settings,
     helpModalOpen,
     setHelpModalOpen,
@@ -109,6 +110,7 @@ export function AppLayout() {
         <ContinuationModal
           snapshot={pendingInjectionSnapshot}
           sessions={terminalSessions}
+          workspaces={workspaces}
           targetSessionId={settings.continuation?.targetSessionId ?? null}
           onDismiss={() => setPendingInjectionSnapshot(null)}
         />
