@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDashboard } from '../context/DashboardContext';
-import { ConfirmDialog, Input, Select, Tooltip } from '../components/ui';
+import { ConfirmDialog, Input, InfoTooltip, Select } from '../components/ui';
 import { SavedPrompt } from '../types';
 import {
   Search,
@@ -12,8 +12,7 @@ import {
   ChevronUp,
   Tag,
   Calendar,
-  X,
-  Info
+  X
 } from 'lucide-react';
 import { css, cx, keyframes } from '@emotion/css';
 
@@ -242,7 +241,7 @@ export const PromptVaultView: React.FC = () => {
         <div className={styles.searchFilterGroup}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <label className={styles.filterLabel}>Search Prompts</label>
-            <Tooltip
+            <InfoTooltip
               content={
                 <div>
                   <h5 className={styles.tooltipTitle}>Search Tips & Examples</h5>
@@ -262,9 +261,7 @@ export const PromptVaultView: React.FC = () => {
                   </ul>
                 </div>
               }
-            >
-              <Info className={styles.infoIcon} />
-            </Tooltip>
+            />
           </div>
           <div className={styles.searchWrapper}>
             <Search className={styles.iconSm} />
@@ -775,16 +772,6 @@ const styles = {
     color: var(--text-tertiary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-  `,
-  infoIcon: css`
-    width: 12px;
-    height: 12px;
-    color: var(--text-tertiary);
-    transition: color 0.2s ease;
-
-    &:hover {
-      color: var(--color-brand, #3b82f6);
-    }
   `,
   tooltipTitle: css`
     font-size: var(--font-size-xs, 12px);

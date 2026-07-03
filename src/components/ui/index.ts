@@ -1,6 +1,8 @@
 export { ConfirmDialog }      from './ConfirmDialog';
 export { Input }              from './Input';
 export type { InputProps }    from './Input';
+export { NumberField }        from './NumberField';
+export type { NumberFieldProps } from './NumberField';
 export { QuickSwitcher }      from './QuickSwitcher';
 export { Toast }              from './Toast';
 export { WorkspacePanel }     from './WorkspacePanel';
@@ -9,4 +11,6 @@ export type { SelectOption }  from './Select';
 export { ContinuationModal }  from './ContinuationModal';
 export { ErrorBoundary }      from './ErrorBoundary';
 export { Tooltip }            from './Tooltip';
+export { InfoTooltip }        from './InfoTooltip';
+export type { InfoTooltipProps } from './InfoTooltip';
 export { HelpModal }          from './HelpModal';
