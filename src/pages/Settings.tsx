@@ -7,7 +7,7 @@ import { useDashboard } from '../context/DashboardContext';
 import { Workspace } from '../types';
 import { DEFAULT_TERMINAL_CONFIG, TERMINAL_THEME_PRESETS, DEFAULT_QUICK_ACTIONS } from '../utils/terminalThemes';
 import type { TerminalConfig, TerminalKeybinding, QuickAction } from '../types';
-import { ConfirmDialog, Input, Select } from '../components/ui';
+import { ConfirmDialog, Input, InfoTooltip, NumberField, Select } from '../components/ui';
 import { createProvider } from '../services/llm';
 import type { ProviderConfig, UseCaseProviders } from '../services/llm/types';
 import {
@@ -273,6 +273,10 @@ const providerInputStyle = css`
 
 const fieldLabelStyle = css`
   font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;
+`;
+
+const fieldLabelRowStyle = css`
+  display:flex;align-items:center;gap:6px;margin-bottom:4px;
 `;
 
 export const SettingsView: React.FC = () => {
@@ -832,22 +836,23 @@ export const SettingsView: React.FC = () => {
 
               {/* Snapshot interval */}
               <div className={css`margin-bottom: 16px;`}>
-                <label className={fieldLabelStyle}>Periodic snapshot interval (chars)</label>
-                <Input
-                  type="number"
+                <div className={fieldLabelRowStyle}>
+                  <label className={css`font-size:11px;font-weight:600;color:var(--text-secondary);`}>
+                    Periodic snapshot interval (chars)
+                  </label>
+                  <InfoTooltip content="Not a timer — this counts terminal output. Every time the terminal produces this many new characters, the app writes a progress snapshot to the checkpoint file. Lower values snapshot more often (more disk writes); higher values snapshot less often but risk losing more recent output if the session ends unexpectedly." />
+                </div>
+                <NumberField
                   className={providerInputStyle}
-                  value={String(settings.continuation?.snapshotIntervalChars ?? 4000)}
+                  value={settings.continuation?.snapshotIntervalChars ?? 4000}
                   min={500}
-                  onChange={e => {
-                    const v = parseInt(e.target.value, 10);
-                    if (!isNaN(v) && v >= 500) {
-                      updateSettings({
-                        continuation: {
-                          ...(settings.continuation ?? { enabled: false, targetSessionId: null, mode: 'semi' }),
-                          snapshotIntervalChars: v,
-                        },
-                      });
-                    }
+                  onValueChange={v => {
+                    updateSettings({
+                      continuation: {
+                        ...(settings.continuation ?? { enabled: false, targetSessionId: null, mode: 'semi' }),
+                        snapshotIntervalChars: v,
+                      },
+                    });
                   }}
                 />
                 <div className={css`font-size: 11px; color: var(--text-tertiary); margin-top: 4px;`}>
@@ -857,22 +862,23 @@ export const SettingsView: React.FC = () => {
 
               {/* Max context window */}
               <div className={css`margin-bottom: 16px;`}>
-                <label className={fieldLabelStyle}>Checkpoint history sent to LLM (chars)</label>
-                <Input
-                  type="number"
+                <div className={fieldLabelRowStyle}>
+                  <label className={css`font-size:11px;font-weight:600;color:var(--text-secondary);`}>
+                    Checkpoint history sent to LLM (chars)
+                  </label>
+                  <InfoTooltip content="Caps how much of the buffered terminal output history is included in the prompt when the LLM generates a handoff checkpoint. This is separate from the snapshot interval above — it only matters when a checkpoint is actually being written. A smaller cap means faster, cheaper checkpoint generation but less context for the LLM to work from; a larger cap gives more context at the cost of slower processing." />
+                </div>
+                <NumberField
                   className={providerInputStyle}
-                  value={String(settings.continuation?.maxContextChars ?? 20000)}
+                  value={settings.continuation?.maxContextChars ?? 20000}
                   min={1000}
-                  onChange={e => {
-                    const v = parseInt(e.target.value, 10);
-                    if (!isNaN(v) && v >= 1000) {
-                      updateSettings({
-                        continuation: {
-                          ...(settings.continuation ?? { enabled: false, targetSessionId: null, mode: 'semi', snapshotIntervalChars: 4000 }),
-                          maxContextChars: v,
-                        },
-                      });
-                    }
+                  onValueChange={v => {
+                    updateSettings({
+                      continuation: {
+                        ...(settings.continuation ?? { enabled: false, targetSessionId: null, mode: 'semi', snapshotIntervalChars: 4000 }),
+                        maxContextChars: v,
+                      },
+                    });
                   }}
                 />
                 <div className={css`font-size: 11px; color: var(--text-tertiary); margin-top: 4px;`}>
@@ -910,11 +916,11 @@ export const SettingsView: React.FC = () => {
               </div>
               <div>
                 <label className={styles.formLabel}>Task Timeout (minutes, 0 = off)</label>
-                <Input
-                  type="number" min={0} max={480}
+                <NumberField
+                  min={0} max={480}
                   className={styles.integrationInput}
                   value={conductorTaskTimeoutMinutes}
-                  onChange={e => setConductorTaskTimeoutMinutes(Number(e.target.value))}
+                  onValueChange={setConductorTaskTimeoutMinutes}
                   style={{ width: 100 }}
                 />
               </div>
@@ -1200,29 +1206,29 @@ export const SettingsView: React.FC = () => {
             <div className={css`display:grid;grid-template-columns:repeat(3,1fr);gap:12px;`}>
               <div>
                 <label className={styles.formLabel}>Size (px)</label>
-                <Input
-                  type="number" min={8} max={32}
+                <NumberField
+                  min={8} max={32}
                   className={styles.integrationInput}
                   value={terminalConfig.fontSize}
-                  onChange={e => setTerminalConfig(c => ({ ...c, fontSize: Number(e.target.value) }))}
+                  onValueChange={v => setTerminalConfig(c => ({ ...c, fontSize: v }))}
                 />
               </div>
               <div>
                 <label className={styles.formLabel}>Line Height</label>
-                <Input
-                  type="number" min={0.8} max={2.0} step={0.1}
+                <NumberField
+                  min={0.8} max={2.0} step={0.1}
                   className={styles.integrationInput}
                   value={terminalConfig.lineHeight}
-                  onChange={e => setTerminalConfig(c => ({ ...c, lineHeight: Number(e.target.value) }))}
+                  onValueChange={v => setTerminalConfig(c => ({ ...c, lineHeight: v }))}
                 />
               </div>
               <div>
                 <label className={styles.formLabel}>Letter Spacing (px)</label>
-                <Input
-                  type="number" min={-2} max={10} step={0.5}
+                <NumberField
+                  min={-2} max={10} step={0.5}
                   className={styles.integrationInput}
                   value={terminalConfig.letterSpacing}
-                  onChange={e => setTerminalConfig(c => ({ ...c, letterSpacing: Number(e.target.value) }))}
+                  onValueChange={v => setTerminalConfig(c => ({ ...c, letterSpacing: v }))}
                 />
               </div>
             </div>
@@ -1276,11 +1282,11 @@ export const SettingsView: React.FC = () => {
 
             <div style={{ maxWidth: 200 }}>
               <label className={styles.formLabel}>Scrollback Lines</label>
-              <Input
-                type="number" min={100} max={100000}
+              <NumberField
+                min={100} max={100000}
                 className={styles.integrationInput}
                 value={terminalConfig.scrollback}
-                onChange={e => setTerminalConfig(c => ({ ...c, scrollback: Number(e.target.value) }))}
+                onValueChange={v => setTerminalConfig(c => ({ ...c, scrollback: v }))}
               />
             </div>
 
