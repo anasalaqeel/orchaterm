@@ -277,6 +277,136 @@ fn clamp_dims(cols: u16, rows: u16) -> (u16, u16) {
     (cols.max(1), rows.max(1))
 }
 
+/// Converts as much of `buf` to valid UTF-8 as possible and returns it,
+/// leaving any trailing incomplete multi-byte sequence in `buf` for the next
+/// call.
+///
+/// PTY output is a raw byte stream with no message framing, so a multi-byte
+/// UTF-8 character (box-drawing glyphs, emoji, spinner characters — exactly
+/// what TUI/AI-agent output uses) can land split across two separate
+/// `read()` calls. Converting each read independently with
+/// `String::from_utf8_lossy` corrupts both halves into U+FFFD. Buffering the
+/// incomplete tail across reads avoids that; genuinely invalid byte
+/// sequences (not just truncated ones) are still replaced with U+FFFD,
+/// matching `from_utf8_lossy`'s behavior everywhere else.
+fn drain_valid_utf8(buf: &mut Vec<u8>) -> String {
+    let mut out = String::new();
+    loop {
+        match std::str::from_utf8(buf) {
+            Ok(s) => {
+                out.push_str(s);
+                buf.clear();
+                return out;
+            }
+            Err(e) => {
+                let valid_up_to = e.valid_up_to();
+                out.push_str(std::str::from_utf8(&buf[..valid_up_to]).unwrap());
+                match e.error_len() {
+                    // The buffer ends mid-sequence — it may complete on the next
+                    // read. Keep only the incomplete tail and stop.
+                    None => {
+                        buf.drain(..valid_up_to);
+                        // A UTF-8 sequence is at most 4 bytes. A tail that's
+                        // still "incomplete" at that length isn't going to
+                        // complete (this only happens on raw binary output,
+                        // not real text) — flush it lossily instead of
+                        // holding it forever.
+                        if buf.len() >= 4 {
+                            out.push_str(&String::from_utf8_lossy(buf));
+                            buf.clear();
+                        }
+                        return out;
+                    }
+                    // Genuinely invalid bytes (not a truncation) — replace and
+                    // keep scanning the remainder of the buffer.
+                    Some(bad_len) => {
+                        out.push('\u{FFFD}');
+                        buf.drain(..valid_up_to + bad_len);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod drain_valid_utf8_tests {
+    use super::drain_valid_utf8;
+
+    #[test]
+    fn passes_through_plain_ascii() {
+        let mut buf = b"hello world".to_vec();
+        assert_eq!(drain_valid_utf8(&mut buf), "hello world");
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn passes_through_complete_multibyte_chars() {
+        let mut buf = "héllo 世界 🎉".as_bytes().to_vec();
+        assert_eq!(drain_valid_utf8(&mut buf), "héllo 世界 🎉");
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn holds_back_a_sequence_split_across_two_reads() {
+        // "🎉" (U+1F389) is 4 bytes in UTF-8: F0 9F 8E 89.
+        let full = "🎉".as_bytes().to_vec();
+        assert_eq!(full.len(), 4);
+
+        // First "read" delivers only the first 2 bytes of the character.
+        let mut buf = full[..2].to_vec();
+        assert_eq!(drain_valid_utf8(&mut buf), "");
+        assert_eq!(buf, full[..2]); // held back, not corrupted into U+FFFD
+
+        // Second "read" delivers the rest — buf now completes the character.
+        buf.extend_from_slice(&full[2..]);
+        assert_eq!(drain_valid_utf8(&mut buf), "🎉");
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn split_char_with_valid_text_before_and_after() {
+        let emoji = "🎉".as_bytes().to_vec();
+        let mut first_chunk = b"before ".to_vec();
+        first_chunk.extend_from_slice(&emoji[..3]); // 3 of 4 bytes
+
+        let out1 = drain_valid_utf8(&mut first_chunk);
+        assert_eq!(out1, "before ");
+        assert_eq!(first_chunk, emoji[..3]);
+
+        let mut second_chunk = first_chunk;
+        second_chunk.push(emoji[3]);
+        second_chunk.extend_from_slice(b" after");
+        let out2 = drain_valid_utf8(&mut second_chunk);
+        assert_eq!(out2, "🎉 after");
+        assert!(second_chunk.is_empty());
+    }
+
+    #[test]
+    fn genuinely_invalid_byte_becomes_replacement_char_and_scanning_continues() {
+        let mut buf = vec![b'a', 0xFF, b'b'];
+        assert_eq!(drain_valid_utf8(&mut buf), "a\u{FFFD}b");
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn does_not_hold_a_tail_forever_on_raw_binary_garbage() {
+        // 4+ trailing high bytes that never form valid UTF-8 must eventually
+        // flush (lossily) rather than growing the carry buffer forever.
+        let mut buf = vec![0xF0, 0x9F, 0x8E, 0xFF, 0xFF];
+        let out = drain_valid_utf8(&mut buf);
+        assert!(!out.is_empty());
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn empty_input_returns_empty_string() {
+        let mut buf: Vec<u8> = Vec::new();
+        assert_eq!(drain_valid_utf8(&mut buf), "");
+        assert!(buf.is_empty());
+    }
+}
+
 /// Recover data from a potentially poisoned mutex.
 fn lock_sessions(
     state: &PtyState,
@@ -511,6 +641,11 @@ fn spawn_pty(
         .name(format!("pty-reader-{sid}"))
         .spawn(move || {
             let mut buffer = [0u8; 8192];
+            // Holds any UTF-8 sequence left incomplete at the end of a read —
+            // see drain_valid_utf8 for why (a multi-byte char can straddle
+            // two separate read() calls; this stops that from corrupting into
+            // U+FFFD on both sides).
+            let mut carry: Vec<u8> = Vec::new();
             loop {
                 // Check shutdown flag before each read.
                 if shutdown.load(Ordering::SeqCst) {
@@ -520,10 +655,13 @@ fn spawn_pty(
                 match reader.read(&mut buffer) {
                     Ok(0) => break, // EOF
                     Ok(n) => {
-                        // Use lossy conversion — terminal escape sequences are
-                        // almost always valid UTF-8.  For the rare raw byte this
-                        // is better than crashing or losing the whole chunk.
-                        let text = String::from_utf8_lossy(&buffer[..n]).into_owned();
+                        carry.extend_from_slice(&buffer[..n]);
+                        let text = drain_valid_utf8(&mut carry);
+                        if text.is_empty() {
+                            // Nothing decodable yet — still waiting on the rest
+                            // of a split character. Don't emit an empty event.
+                            continue;
+                        }
                         let payload = PtyPayload {
                             session_id: sid.clone(),
                             data: text,
