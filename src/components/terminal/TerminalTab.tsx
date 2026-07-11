@@ -18,7 +18,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { css } from '@emotion/css';
 import { Copy, Check, Search, X } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
-import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey, kittyEncodeKey } from '../../utils/terminalThemes';
+import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey, kittyEncodeKey, attachKittyProtocol } from '../../utils/terminalThemes';
 import { writePtyChunked } from '../../utils/ptyUtils';
 import { QuickActionsBar } from './QuickActionsBar';
 
@@ -326,61 +326,18 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         }
       });
 
-      // ─ Kitty keyboard protocol (minimal) ─────────────────────────────────
+      // ─ Kitty keyboard protocol ────────────────────────────────────────────
       // xterm 5.3 has no kitty keyboard support, so apps that enable it (e.g.
-      // Antigravity CLI / agy) get no reply to their query and their keys stay
-      // legacy C0 bytes — desyncing their input parser (the double-Ctrl+D exit
-      // silently failed). We track the requested flags here and report Ctrl
-      // combos as CSI-u below (see kittyEncodeKey). Stack supports push/pop used
-      // by other TUIs (nvim, fzf). https://sw.kovidgoyal.net/kitty/keyboard-protocol/
-      let kittyFlags = 0;
-      const kittyStack: number[] = [];
-      type CsiParams = (number | number[])[];
-      const num = (p: CsiParams, i: number, dflt: number) =>
-        (typeof p[i] === 'number' ? (p[i] as number) : undefined) ?? dflt;
-      // CSI = flags ; mode u — set flags (mode 1=set, 2=set bits, 3=clear bits)
-      term.parser.registerCsiHandler({ prefix: '=', final: 'u' }, (p: CsiParams) => {
-        const flags = num(p, 0, 0);
-        const mode = num(p, 1, 1);
-        kittyFlags = mode === 2 ? kittyFlags | flags
-                   : mode === 3 ? kittyFlags & ~flags
-                   : flags;
-        return true;
-      });
-      // CSI > flags u — push current flags, then set new
-      term.parser.registerCsiHandler({ prefix: '>', final: 'u' }, (p: CsiParams) => {
-        kittyStack.push(kittyFlags);
-        kittyFlags = num(p, 0, 0);
-        return true;
-      });
-      // CSI < n u — pop n levels (default 1)
-      term.parser.registerCsiHandler({ prefix: '<', final: 'u' }, (p: CsiParams) => {
-        let n = num(p, 0, 1);
-        while (n-- > 0 && kittyStack.length) kittyFlags = kittyStack.pop()!;
-        return true;
-      });
-      // CSI ? u — query active flags. Reply CSI ? <flags> u.
-      term.parser.registerCsiHandler({ prefix: '?', final: 'u' }, () => {
-        invoke('write_pty', { sessionId, data: `\x1b[?${kittyFlags}u` }).catch(() => {});
-        return true;
-      });
-
-      // ─ Reset kitty state when a TUI hands control back to the shell ─────
-      // Some apps (or ones killed mid-session) never pop/reset the
-      // disambiguate flag. Once it's stuck on, every Ctrl combo (Ctrl+C/D/Z/L)
-      // is sent as a CSI-u sequence that a plain shell can't read — so Ctrl+C
-      // can no longer interrupt a process until the tab is reopened. Resetting
-      // on alt-screen exit / full reset / child exit closes that leak.
-      const resetKitty = () => { kittyFlags = 0; kittyStack.length = 0; };
-      // Alt screen off (modes 47 / 1047 / 1049) — TUIs disable it on exit.
-      term.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (p: CsiParams) => {
-        if (p.some(v => v === 1049 || v === 1047 || v === 47)) resetKitty();
-        return false; // let xterm toggle the buffer normally
-      });
-      // Full terminal reset (ESC c / RIS).
-      term.parser.registerEscHandler({ final: 'c' }, () => {
-        resetKitty();
-        return false; // let xterm perform the reset
+      // Claude Code, aider, Antigravity CLI, nvim) get no reply to their query
+      // and their keys stay legacy-encoded — desyncing their input parser
+      // (Antigravity's double-Ctrl+D exit silently failed; Shift+Enter is
+      // indistinguishable from Enter). attachKittyProtocol tracks the
+      // requested flags and auto-resets them when a TUI hands control back to
+      // the shell; kittyEncodeKey (below) reports Ctrl/Alt combos plus
+      // Escape/Enter/Tab/Backspace as CSI-u while flags are active.
+      // https://sw.kovidgoyal.net/kitty/keyboard-protocol/
+      const kitty = attachKittyProtocol(term, (data) => {
+        invoke('write_pty', { sessionId, data }).catch(() => {});
       });
 
       // ─ Single keyboard authority (bound to THIS term instance) ───────────
@@ -449,7 +406,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
         // Unbound or explicit passthrough → PTY
         if (!binding || binding.action === 'passthrough') {
-          const kittySeq = kittyEncodeKey(e, kittyFlags);
+          const kittySeq = kittyEncodeKey(e, kitty.getFlags());
           if (kittySeq) {
             invoke('write_pty', { sessionId, data: kittySeq }).catch(() => {});
             return false; // consume; don't let xterm send the legacy byte
@@ -511,7 +468,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       let unlistenExit: UnlistenFn | null = null;
       listen(`pty-exit-${sessionId}`, () => {
         term.write('\r\n\x1b[31m[Process Exited]\x1b[0m\r\n');
-        resetKitty(); // PTY child gone — drop any leftover kitty flags
+        kitty.reset(); // PTY child gone — drop any leftover kitty flags
         onExitRef.current?.();
       }).then(fn => {
         if (cancelled) fn();
