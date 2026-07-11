@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { buildCombo, resolveTerminalKey, mergeTerminalConfig, DEFAULT_TERMINAL_CONFIG, kittyEncodeKey } from '../utils/terminalThemes';
+import { describe, it, expect, vi } from 'vitest';
+import { Terminal } from 'xterm';
+import { buildCombo, resolveTerminalKey, mergeTerminalConfig, DEFAULT_TERMINAL_CONFIG, kittyEncodeKey, attachKittyProtocol } from '../utils/terminalThemes';
 import type { TerminalKeybinding } from '../types';
 
 function makeEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
@@ -93,16 +94,179 @@ describe('kittyEncodeKey', () => {
     expect(kittyEncodeKey(makeEvent({ key: 'd' }), 1)).toBeNull();
   });
 
-  it('Ctrl+Alt (AltGr) → null (Windows AltGr typing preserved)', () => {
+  it('Ctrl+Alt with no getModifierState (AltGr on Windows) → null, conservatively', () => {
     expect(kittyEncodeKey(makeEvent({ ctrlKey: true, altKey: true, key: 'd' }), 1)).toBeNull();
   });
 
-  it('non-character key (Enter) → null (legacy encoding kept)', () => {
-    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, key: 'Enter' }), 1)).toBeNull();
+  it('Ctrl+Alt confirmed NOT AltGraph → encodes (mods 7: shift0+alt2+ctrl4, +1)', () => {
+    const e = makeEvent({ ctrlKey: true, altKey: true, key: 'd' });
+    (e as any).getModifierState = (name: string) => name === 'AltGraph' ? false : false;
+    expect(kittyEncodeKey(e, 1)).toBe('\x1b[100;7u');
+  });
+
+  it('Ctrl+Alt confirmed AltGraph via getModifierState → null', () => {
+    const e = makeEvent({ ctrlKey: true, altKey: true, key: 'd' });
+    (e as any).getModifierState = (name: string) => name === 'AltGraph';
+    expect(kittyEncodeKey(e, 1)).toBeNull();
   });
 
   it('meta held → null', () => {
     expect(kittyEncodeKey(makeEvent({ ctrlKey: true, metaKey: true, key: 'd' }), 1)).toBeNull();
+  });
+
+  it('plain Enter (no modifiers) → null (legacy \\r is unambiguous)', () => {
+    expect(kittyEncodeKey(makeEvent({ key: 'Enter' }), 1)).toBeNull();
+  });
+
+  it('Shift+Enter → CSI-u (codepoint 13, mods 2) — the actual AI-agent bug', () => {
+    expect(kittyEncodeKey(makeEvent({ shiftKey: true, key: 'Enter' }), 1)).toBe('\x1b[13;2u');
+  });
+
+  it('Ctrl+Enter → CSI-u (codepoint 13, mods 5)', () => {
+    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, key: 'Enter' }), 1)).toBe('\x1b[13;5u');
+  });
+
+  it('Alt+Enter → CSI-u (codepoint 13, mods 3)', () => {
+    expect(kittyEncodeKey(makeEvent({ altKey: true, key: 'Enter' }), 1)).toBe('\x1b[13;3u');
+  });
+
+  it('Shift+Tab → CSI-u (codepoint 9, mods 2)', () => {
+    expect(kittyEncodeKey(makeEvent({ shiftKey: true, key: 'Tab' }), 1)).toBe('\x1b[9;2u');
+  });
+
+  it('Ctrl+Backspace → CSI-u (codepoint 127, mods 5)', () => {
+    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, key: 'Backspace' }), 1)).toBe('\x1b[127;5u');
+  });
+
+  it('plain Tab/Backspace (no modifiers) → null (legacy byte is unambiguous)', () => {
+    expect(kittyEncodeKey(makeEvent({ key: 'Tab' }), 1)).toBeNull();
+    expect(kittyEncodeKey(makeEvent({ key: 'Backspace' }), 1)).toBeNull();
+  });
+
+  it('plain Escape (no modifiers) → CSI-u (codepoint 27, mods 1) — always disambiguated', () => {
+    // A bare \x1b is inherently ambiguous with "start of an escape sequence"
+    // (the classic vim Escape-key-lag problem). Unlike Enter/Tab/Backspace,
+    // the disambiguate flag requires Escape to always be CSI-u encoded.
+    expect(kittyEncodeKey(makeEvent({ key: 'Escape' }), 1)).toBe('\x1b[27;1u');
+  });
+
+  it('Ctrl+Escape → CSI-u (codepoint 27, mods 5)', () => {
+    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, key: 'Escape' }), 1)).toBe('\x1b[27;5u');
+  });
+});
+
+describe('attachKittyProtocol', () => {
+  // Feeds a raw escape sequence through xterm.js's real VT parser and waits
+  // for it to finish — this exercises the actual production CSI-handler
+  // registrations (not a re-implementation), the same way a PTY-side app
+  // enabling the protocol would. Runs headless: no .open()/DOM needed since
+  // parsing is independent of rendering.
+  function write(term: Terminal, data: string): Promise<void> {
+    return new Promise((resolve) => term.write(data, resolve));
+  }
+
+  it('starts at flags 0', () => {
+    const term = new Terminal();
+    const kitty = attachKittyProtocol(term, () => {});
+    expect(kitty.getFlags()).toBe(0);
+    term.dispose();
+  });
+
+  it('CSI > flags u sets flags', async () => {
+    const term = new Terminal();
+    const kitty = attachKittyProtocol(term, () => {});
+    await write(term, '\x1b[>1u');
+    expect(kitty.getFlags()).toBe(1);
+    term.dispose();
+  });
+
+  it('CSI = flags u (mode 1, default) replaces flags outright', async () => {
+    const term = new Terminal();
+    const kitty = attachKittyProtocol(term, () => {});
+    await write(term, '\x1b[=5u');
+    expect(kitty.getFlags()).toBe(5);
+    term.dispose();
+  });
+
+  it('CSI = flags ; 2 u ORs bits into the current flags', async () => {
+    const term = new Terminal();
+    const kitty = attachKittyProtocol(term, () => {});
+    await write(term, '\x1b[=1u');
+    await write(term, '\x1b[=2;2u');
+    expect(kitty.getFlags()).toBe(3);
+    term.dispose();
+  });
+
+  it('CSI = flags ; 3 u clears bits from the current flags', async () => {
+    const term = new Terminal();
+    const kitty = attachKittyProtocol(term, () => {});
+    await write(term, '\x1b[=3u');
+    await write(term, '\x1b[=1;3u');
+    expect(kitty.getFlags()).toBe(2);
+    term.dispose();
+  });
+
+  it('CSI > u pushes, CSI < u pops back to the prior value (nvim/fzf pattern)', async () => {
+    const term = new Terminal();
+    const kitty = attachKittyProtocol(term, () => {});
+    await write(term, '\x1b[>1u');
+    await write(term, '\x1b[>3u');
+    expect(kitty.getFlags()).toBe(3);
+    await write(term, '\x1b[<u');
+    expect(kitty.getFlags()).toBe(1);
+    await write(term, '\x1b[<u');
+    expect(kitty.getFlags()).toBe(0);
+    term.dispose();
+  });
+
+  it('CSI ? u queries the active flags via writeReply', async () => {
+    const term = new Terminal();
+    const writeReply = vi.fn();
+    attachKittyProtocol(term, writeReply);
+    await write(term, '\x1b[>5u');
+    await write(term, '\x1b[?u');
+    expect(writeReply).toHaveBeenCalledWith('\x1b[?5u');
+    term.dispose();
+  });
+
+  it('alt-screen exit (CSI ? 1049 l) resets flags — prevents Ctrl+C from getting stuck', async () => {
+    const term = new Terminal();
+    const kitty = attachKittyProtocol(term, () => {});
+    await write(term, '\x1b[>1u');
+    expect(kitty.getFlags()).toBe(1);
+    await write(term, '\x1b[?1049l');
+    expect(kitty.getFlags()).toBe(0);
+    term.dispose();
+  });
+
+  it('alt-screen entry (CSI ? 1049 h) does NOT reset flags', async () => {
+    const term = new Terminal();
+    const kitty = attachKittyProtocol(term, () => {});
+    await write(term, '\x1b[>1u');
+    await write(term, '\x1b[?1049h');
+    expect(kitty.getFlags()).toBe(1);
+    term.dispose();
+  });
+
+  it('full reset (ESC c / RIS) resets flags', async () => {
+    const term = new Terminal();
+    const kitty = attachKittyProtocol(term, () => {});
+    await write(term, '\x1b[>1u');
+    await write(term, '\x1bc');
+    expect(kitty.getFlags()).toBe(0);
+    term.dispose();
+  });
+
+  it('reset() clears flags and the push/pop stack', async () => {
+    const term = new Terminal();
+    const kitty = attachKittyProtocol(term, () => {});
+    await write(term, '\x1b[>1u');
+    await write(term, '\x1b[>3u');
+    kitty.reset();
+    expect(kitty.getFlags()).toBe(0);
+    await write(term, '\x1b[<u'); // pop with an empty stack — must stay at 0
+    expect(kitty.getFlags()).toBe(0);
+    term.dispose();
   });
 });
 

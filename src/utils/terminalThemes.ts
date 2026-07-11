@@ -1,3 +1,4 @@
+import type { Terminal } from 'xterm';
 import type { TerminalConfig, TerminalKeybinding, TerminalTheme } from '../types';
 
 export const DEFAULT_TERMINAL_CONFIG: TerminalConfig = {
@@ -208,33 +209,156 @@ export function resolveTerminalKey(
   return keybindings.find((b) => b.key === combo) ?? null;
 }
 
+export interface KittyProtocolHandle {
+  /** Currently active kitty keyboard flags (0 = protocol not in use). */
+  getFlags: () => number;
+  /** Drops any active flags/stack. Call when the PTY child exits so a flag
+   * a TUI never popped doesn't survive into the next process. */
+  reset: () => void;
+}
+
 /**
- * Encodes a Ctrl+<key> event as a kitty keyboard protocol CSI-u sequence, or
- * returns `null` when the legacy encoding should be used instead.
+ * Wires up the kitty keyboard protocol's query/set side on an xterm.js
+ * Terminal: tracks the flags a PTY-side app requests via CSI ?/=/>/< u, and
+ * auto-resets them when that app hands control back to the shell (alt-screen
+ * exit or a full terminal reset). Without the reset, a TUI that never pops
+ * its flags leaves every Ctrl combo CSI-u encoded forever, so Ctrl+C stops
+ * interrupting the plain shell prompt once the TUI exits.
  *
- * xterm 5.3 has no kitty keyboard support, so when an app enables the
- * "disambiguate escape codes" flag (bit 1) we must report Ctrl combos as
- * `CSI <codepoint> ; <mods> u` — sending the legacy C0 byte (e.g. \x04 for
- * Ctrl+D) desyncs kitty-aware TUIs, which silently dropped keys (Antigravity
- * CLI's double-Ctrl+D-to-exit failed). Bit 1 is the only flag that changes the
- * legacy Ctrl-code encoding; other bits (e.g. 4 = report alternate keys) leave
- * unambiguous keys legacy, so we don't encode for those.
+ * `writeReply` sends the query response (`CSI ? <flags> u`) back to the PTY;
+ * the caller owns the actual transport (Tauri `invoke` in production, a
+ * plain capture callback in tests) so this stays framework-free and
+ * testable against a real (headless) xterm.js `Terminal` instance.
  *
- * Only pure Ctrl (optionally +Shift) combos on single printable keys are
- * encoded. Alt is excluded so Windows AltGr typing is unaffected, and
- * non-character keys (Enter/Tab/Esc/arrows) keep their legacy encoding — which
- * is correct for the disambiguate flag.
+ * @see https://sw.kovidgoyal.net/kitty/keyboard-protocol/
+ */
+export function attachKittyProtocol(
+  term: Terminal,
+  writeReply: (data: string) => void,
+): KittyProtocolHandle {
+  let kittyFlags = 0;
+  const kittyStack: number[] = [];
+  type CsiParams = (number | number[])[];
+  // An omitted CSI numeric parameter arrives as the literal value 0 (standard
+  // ANSI convention — e.g. bare `CSI < u` reports params as [0], not []), not
+  // as a missing array slot. So 0 must fall back to `dflt` here, same as a
+  // truly-absent trailing param — otherwise the single most common form of
+  // the pop sequence (`CSI < u`, no explicit count) silently pops nothing.
+  const num = (p: CsiParams, i: number, dflt: number) => {
+    const v = p[i];
+    return typeof v === 'number' && v !== 0 ? v : dflt;
+  };
+
+  // CSI = flags ; mode u — set flags (mode 1=set, 2=set bits, 3=clear bits)
+  term.parser.registerCsiHandler({ prefix: '=', final: 'u' }, (p: CsiParams) => {
+    const flags = num(p, 0, 0);
+    const mode = num(p, 1, 1);
+    kittyFlags = mode === 2 ? kittyFlags | flags
+               : mode === 3 ? kittyFlags & ~flags
+               : flags;
+    return true;
+  });
+  // CSI > flags u — push current flags, then set new
+  term.parser.registerCsiHandler({ prefix: '>', final: 'u' }, (p: CsiParams) => {
+    kittyStack.push(kittyFlags);
+    kittyFlags = num(p, 0, 0);
+    return true;
+  });
+  // CSI < n u — pop n levels (default 1)
+  term.parser.registerCsiHandler({ prefix: '<', final: 'u' }, (p: CsiParams) => {
+    let n = num(p, 0, 1);
+    while (n-- > 0 && kittyStack.length) kittyFlags = kittyStack.pop()!;
+    return true;
+  });
+  // CSI ? u — query active flags. Reply CSI ? <flags> u.
+  term.parser.registerCsiHandler({ prefix: '?', final: 'u' }, () => {
+    writeReply(`\x1b[?${kittyFlags}u`);
+    return true;
+  });
+
+  const reset = () => { kittyFlags = 0; kittyStack.length = 0; };
+  // Alt screen off (modes 47 / 1047 / 1049) — TUIs disable it on exit.
+  term.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (p: CsiParams) => {
+    if (p.some((v) => v === 1049 || v === 1047 || v === 47)) reset();
+    return false; // let xterm toggle the buffer normally
+  });
+  // Full terminal reset (ESC c / RIS).
+  term.parser.registerEscHandler({ final: 'c' }, () => {
+    reset();
+    return false; // let xterm perform the reset
+  });
+
+  return { getFlags: () => kittyFlags, reset };
+}
+
+// Escape/Enter/Tab/Backspace are the only Char-class keys whose legacy byte
+// collides with a Ctrl combo (Ctrl+[ / M / I / H) *and* which have no legacy
+// way to carry Shift/Alt at all — plain Enter and Shift+Enter are both just
+// "\r". These are exactly the keys the kitty spec's disambiguate flag exists
+// to fix, and exactly what kitty-aware AI-agent TUIs (Claude Code, aider,
+// Antigravity CLI) rely on for things like Shift+Enter = newline vs
+// Enter = submit. Everything else (arrows, Home/End, PageUp/PageDown,
+// F-keys) already has an unambiguous legacy encoding with modifiers in
+// xterm.js and is left untouched.
+const KITTY_CONTROL_CODEPOINT: Record<string, number> = {
+  Escape: 27,
+  Enter: 13,
+  Tab: 9,
+  Backspace: 127,
+};
+
+// Windows synthesizes AltGr (used to type e.g. @ / € on many European
+// keyboard layouts) as ctrlKey=true AND altKey=true together. getModifierState
+// reports the real AltGraph state so we can tell it apart from a genuine
+// Ctrl+Alt combo; when it's unavailable (or on platforms without AltGr) we
+// conservatively treat any simultaneous Ctrl+Alt as AltGr so we never swallow
+// a keyboard-layout character.
+function isAltGraphCombo(e: KeyboardEvent): boolean {
+  if (!e.ctrlKey || !e.altKey) return false;
+  return typeof e.getModifierState !== 'function' || e.getModifierState('AltGraph');
+}
+
+/**
+ * Encodes a key event as a kitty keyboard protocol CSI-u sequence, or
+ * returns `null` when xterm's legacy encoding should be used instead.
+ *
+ * xterm 5.3 has no kitty keyboard support, so once an app enables the
+ * "disambiguate escape codes" flag (bit 1) we must report Ctrl/Alt combos —
+ * and the four ambiguous control keys above — as `CSI <codepoint> ; <mods> u`.
+ * Sending the legacy byte instead (e.g. \x04 for Ctrl+D, plain \r for
+ * Shift+Enter) desyncs kitty-aware TUIs, which either drop keys silently
+ * (Antigravity CLI's double-Ctrl+D-to-exit failed) or can't tell Shift+Enter
+ * from Enter.
  *
  * @see https://sw.kovidgoyal.net/kitty/keyboard-protocol/
  */
 export function kittyEncodeKey(e: KeyboardEvent, flags: number): string | null {
   if ((flags & 1) === 0) return null; // bit 1 = disambiguate escape codes
-  if (!e.ctrlKey || e.altKey || e.metaKey) return null;
-  if (e.key.length !== 1) return null;
-  const codepoint = e.key.toLowerCase().charCodeAt(0);
-  if (codepoint < 0x20 || codepoint > 0x7e) return null; // printable ASCII base
-  const mods = 1 + (e.shiftKey ? 1 : 0) + 4; // bit 4 = Ctrl
-  return `\x1b[${codepoint};${mods}u`;
+  if (e.metaKey) return null; // leave OS/Cmd shortcuts alone
+  if (isAltGraphCombo(e)) return null; // Windows AltGr typing preserved
+
+  const mods = (e.shiftKey ? 1 : 0) + (e.altKey ? 2 : 0) + (e.ctrlKey ? 4 : 0);
+  const modsField = mods + 1;
+
+  const controlCodepoint = KITTY_CONTROL_CODEPOINT[e.key];
+  if (controlCodepoint !== undefined) {
+    // Unmodified Enter/Tab/Backspace: xterm's default raw byte is already
+    // unambiguous, so leave it alone. Escape is the one exception — a bare
+    // \x1b is inherently ambiguous with "start of an escape sequence" (the
+    // classic vim Escape-key-lag problem), so the disambiguate flag requires
+    // it to always be CSI-u encoded, even with zero modifiers.
+    if (mods === 0 && e.key !== 'Escape') return null;
+    return `\x1b[${controlCodepoint};${modsField}u`;
+  }
+
+  // General Ctrl/Alt combos on a printable key.
+  if (e.key.length === 1 && (e.ctrlKey || e.altKey)) {
+    const codepoint = e.key.toLowerCase().charCodeAt(0);
+    if (codepoint < 0x20 || codepoint > 0x7e) return null; // printable ASCII base
+    return `\x1b[${codepoint};${modsField}u`;
+  }
+
+  return null;
 }
 
 /**
