@@ -121,6 +121,18 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // True once the PTY is alive — allows the term.onResize handler to call
     // resize_pty without racing a spawn that hasn't returned yet.
     const isSpawnedRef = useRef(false);
+    // Container pixel size (not char-grid cols/rows) as of the last resize_pty
+    // call we actually sent. xterm.js can recompute a slightly different
+    // cols/rows for the SAME container size — font-metric/sub-pixel
+    // measurement noise settling across the handful of corrective re-fits
+    // scheduled shortly after mount (see TerminalContainer's post-animation
+    // re-fit). Forwarding one of those as a live PTY resize makes shells with
+    // readline-style redraw-on-resize (MSYS2 Git Bash in particular) redraw
+    // their prompt line as a NEW line instead of overwriting it — a visible
+    // duplicate "$" once the shell has already printed a prompt. Gating
+    // term.onResize on an actual pixel-size change (a genuine resize) avoids
+    // that without blocking real resizes.
+    const lastPtyPixelSizeRef = useRef<{ w: number; h: number } | null>(null);
 
     // Live refs read inside the (long-lived) main effect so it never closes over
     // a stale value. keybindings: lets the custom key handler stay on THIS term
@@ -182,6 +194,12 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         // Mark PTY as live so the onResize handler starts forwarding size changes.
         isSpawnedRef.current = true;
         setSpawnState('running');
+        // Baseline for the onResize pixel-size guard below — the PTY was just
+        // spawned at the container's current pixel size.
+        const spawnRect = containerRef.current?.getBoundingClientRect();
+        lastPtyPixelSizeRef.current = spawnRect
+          ? { w: Math.round(spawnRect.width), h: Math.round(spawnRect.height) }
+          : null;
 
         // Focus xterm now that the PTY is alive and ready for input.
         termRef.current?.focus();
@@ -421,11 +439,19 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       // whether from fit() after a container resize or from switchTab.
       // This is the most direct path: no polling, no comparison bugs.
       // We guard on isSpawnedRef so we never call resize_pty before the
-      // PTY process exists.
+      // PTY process exists, and on an actual container pixel-size change so
+      // measurement-noise re-fits don't reach the PTY (see
+      // lastPtyPixelSizeRef above — this is what stops the Git Bash
+      // duplicate-prompt-line bug).
       const resizeDispose = term.onResize(({ cols, rows }) => {
-        if (isSpawnedRef.current) {
-          invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
-        }
+        if (!isSpawnedRef.current) return;
+        const rect = containerRef.current?.getBoundingClientRect();
+        const w = rect ? Math.round(rect.width) : -1;
+        const h = rect ? Math.round(rect.height) : -1;
+        const last = lastPtyPixelSizeRef.current;
+        if (last && last.w === w && last.h === h) return;
+        lastPtyPixelSizeRef.current = { w, h };
+        invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
       });
 
       // ─ Listen to session-scoped event from Rust ──────────────────────
@@ -554,6 +580,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         // Reset the guard so a genuine re-run (deps change) works correctly.
         effectActiveRef.current = false;
         isSpawnedRef.current = false;
+        lastPtyPixelSizeRef.current = null;
         cancelled = true;
         cancelAnimationFrame(rafId);
         cancelAnimationFrame(resizeRaf1);
