@@ -7,11 +7,11 @@ import {
   forwardRef,
   useMemo,
 } from 'react';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import { WebglAddon } from 'xterm-addon-webgl';
-import { WebLinksAddon } from 'xterm-addon-web-links';
-import { SearchAddon } from 'xterm-addon-search';
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { WebglAddon } from '@xterm/addon-webgl';
+import { WebLinksAddon } from '@xterm/addon-web-links';
+import { SearchAddon } from '@xterm/addon-search';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
@@ -39,6 +39,13 @@ interface TerminalTabProps {
   shellArgs?: string[];
   /** Called when the PTY child process exits. */
   onExit?: () => void;
+  /**
+   * Whether this tab is actually on-screen right now (its workspace console
+   * is showing AND it's the active/split-visible tab within it). The xterm
+   * instance itself stays mounted regardless — this only gates the WebGL
+   * renderer, see the "GPU renderer" effect below.
+   */
+  isVisible?: boolean;
 }
 
 type SpawnState = 'idle' | 'spawning' | 'running' | 'error';
@@ -83,7 +90,7 @@ function stripLeadingPromptNewline(data: string): { out: string; resolved: boole
 }
 
 export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
-  ({ sessionId, workspacePath, shell, shellArgs, onExit }, ref) => {
+  ({ sessionId, workspacePath, shell, shellArgs, onExit, isVisible = true }, ref) => {
     const { settings } = useDashboard();
     const terminalConfig = useMemo(
       () => settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG,
@@ -267,23 +274,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       termRef.current = term;
       fitAddonRef.current = fitAddon;
 
-      // GPU renderer — far faster than xterm's default DOM renderer for heavy
-      // TUI output (Claude Code, vim, spinners, large logs). Falls back to the
-      // DOM renderer automatically if WebGL is unavailable or the context is lost.
-      try {
-        const webglAddon = new WebglAddon();
-        webglAddon.onContextLoss(() => {
-          // Dispose once and forget it — re-disposing (here or via term.dispose)
-          // hits an already-torn-down RenderService and throws.
-          try { webglAddon.dispose(); } catch { /* already gone */ }
-          webglAddonRef.current = null;
-        });
-        term.loadAddon(webglAddon);
-        webglAddonRef.current = webglAddon;
-      } catch {
-        /* WebGL unsupported — xterm keeps its DOM renderer */
-        webglAddonRef.current = null;
-      }
+      // GPU renderer attachment lives in its own effect, gated on `isVisible`
+      // (see below) — Chromium caps concurrent WebGL contexts at ~16, and
+      // every tab/pane's xterm instance stays mounted indefinitely so PTY
+      // output keeps flowing while hidden, so we can't just attach on mount.
 
       // ─ Mouse shortcuts (Linux middle-click paste) ───────────────────────
       const onMouseUp = (e: MouseEvent) => {
@@ -614,6 +608,53 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       };
       }, [sessionId, workspacePath, shell, shellArgs]);
 
+    // ── GPU renderer lifecycle — attach/detach with visibility ───────────
+    // Far faster than xterm's default DOM renderer for heavy TUI output
+    // (Claude Code, vim, spinners, large logs), but Chromium caps concurrent
+    // WebGL contexts at ~16 and every tab/pane keeps its xterm instance
+    // mounted (so PTY output keeps streaming) even while hidden. So only the
+    // on-screen tab(s) hold a live context: attach when shown, dispose when
+    // hidden, re-attach on the next show. Falls back to xterm's DOM renderer
+    // whenever WebGL is unavailable, lost, or the tab isn't visible.
+    //
+    // Deps mirror the main effect's below (sessionId/workspacePath/shell/
+    // shellArgs) in addition to isVisible: when any of those change, the main
+    // effect tears down and recreates `term` entirely (e.g. editing a
+    // workspace's path while its console is open respawns every open tab's
+    // PTY). This effect must re-run in lockstep — termRef.current is a plain
+    // ref, so it can't itself be a dependency — or a visible tab whose
+    // terminal gets recreated would silently keep the DOM renderer until the
+    // user happens to toggle its visibility again.
+    useEffect(() => {
+      const term = termRef.current;
+      if (!term || !isVisible) return;
+
+      let addon: WebglAddon | null = null;
+      try {
+        addon = new WebglAddon();
+        addon.onContextLoss(() => {
+          // Dispose once and forget it — re-disposing (here or via term.dispose)
+          // hits an already-torn-down RenderService and throws.
+          try { addon?.dispose(); } catch { /* already gone */ }
+          if (webglAddonRef.current === addon) webglAddonRef.current = null;
+        });
+        term.loadAddon(addon);
+        webglAddonRef.current = addon;
+        term.refresh(0, term.rows - 1);
+      } catch {
+        /* WebGL unsupported — xterm keeps its DOM renderer */
+        addon = null;
+        webglAddonRef.current = null;
+      }
+
+      return () => {
+        if (addon) {
+          try { addon.dispose(); } catch { /* already gone (context loss, or term.dispose() beat us to it) */ }
+        }
+        if (webglAddonRef.current === addon) webglAddonRef.current = null;
+      };
+    }, [isVisible, sessionId, workspacePath, shell, shellArgs]);
+
     // Apply config changes live to existing terminal instances.
     useEffect(() => {
       const term = termRef.current;
@@ -861,7 +902,6 @@ const styles = {
     /* xterm renders its own canvas; this colour shows only in any gap
        before the canvas is attached or while transitioning. */
     background-color: #070d14;
-    margin-bottom: 80px;
   `,
   floatingCopyBtn: css`
     position: absolute;

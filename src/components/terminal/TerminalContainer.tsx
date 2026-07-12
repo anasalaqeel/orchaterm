@@ -1330,6 +1330,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       shell={session.shell}
                       shellArgs={session.shellArgs}
                       onExit={() => closeTab(session.id)}
+                      isVisible={active && !!pane}
                     />
                   </ErrorBoundary>
                   {isSplit && pane && (

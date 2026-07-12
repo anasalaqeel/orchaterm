@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { Terminal } from 'xterm';
+import { Terminal } from '@xterm/xterm';
 import { buildCombo, resolveTerminalKey, mergeTerminalConfig, DEFAULT_TERMINAL_CONFIG, kittyEncodeKey, attachKittyProtocol } from '../utils/terminalThemes';
 import type { TerminalKeybinding } from '../types';
 
