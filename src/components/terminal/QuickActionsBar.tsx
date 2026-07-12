@@ -138,25 +138,22 @@ export const QuickActionsBar: React.FC<{ sessionId: string }> = ({ sessionId }) 
 
 const styles = {
   container: css`
-    position: absolute;
-    bottom: 32px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 20;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 6px;
-    pointer-events: none; /* Let clicks pass through empty space */
-    width: max-content;
-    max-width: calc(100% - 32px); /* Prevent touching terminal window edges */
+    width: 100%;
+    padding: 8px 16px 12px;
+    box-sizing: border-box;
+    z-index: 20;
+    flex-shrink: 0;
     
     /* Animation for initial mount */
     animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     
     @keyframes slideUp {
-      from { opacity: 0; transform: translate(-50%, 16px); }
-      to { opacity: 1; transform: translate(-50%, 0); }
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
     }
   `,
   bar: css`
