@@ -66,3 +66,4 @@ src-tauri/gen/schemas/
 # Temporary and Agent Files
 .fallow/
 
+.orchaterm

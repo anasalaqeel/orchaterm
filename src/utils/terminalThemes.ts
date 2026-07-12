@@ -1,4 +1,4 @@
-import type { Terminal } from 'xterm';
+import type { Terminal } from '@xterm/xterm';
 import type { TerminalConfig, TerminalKeybinding, TerminalTheme } from '../types';
 
 export const DEFAULT_TERMINAL_CONFIG: TerminalConfig = {
