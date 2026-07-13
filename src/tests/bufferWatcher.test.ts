@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { listen } from '@tauri-apps/api/event';
 import { bufferWatcher } from '../services/bufferWatcher';
 
@@ -53,6 +53,58 @@ describe('bufferWatcher buffer cap', () => {
 
     feed(sid, 'hello world');
     expect(bufferWatcher.getBuffer(sid)).toBe('hello world');
+
+    bufferWatcher.unwatch(sid);
+  });
+});
+
+describe('bufferWatcher sentinel scan throttle', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('detects a sentinel that arrives in a single chunk immediately (no throttle wait)', async () => {
+    const sid = nextSid('immediate');
+    const onSentinel = vi.fn();
+    await bufferWatcher.watchForSentinel(sid, onSentinel, undefined, 0);
+
+    feed(
+      sid,
+      '###ORCHATERM_DONE###\ntask_id: t1\nsummary: Did the thing.\n' +
+      'files_modified: none\nneeds: none\n###ORCHATERM_END###\n',
+    );
+
+    expect(onSentinel).toHaveBeenCalledTimes(1);
+    expect(onSentinel.mock.calls[0][0].taskId).toBe('t1');
+
+    bufferWatcher.unwatch(sid);
+  });
+
+  it('still detects a sentinel completed within the throttle window via the trailing scan', async () => {
+    vi.useFakeTimers();
+    const sid = nextSid('throttle');
+    const onSentinel = vi.fn();
+    await bufferWatcher.watchForSentinel(sid, onSentinel, undefined, 0);
+
+    // First chunk: no sentinel yet — runs an immediate (unthrottled) scan that misses,
+    // and marks this instant as the last-scan time.
+    feed(sid, 'building...\n');
+    expect(onSentinel).not.toHaveBeenCalled();
+
+    // Second chunk arrives in the same tick and completes the sentinel, but the scan
+    // is throttled since it's within SENTINEL_SCAN_THROTTLE_MS of the first — it must
+    // not be silently dropped, only deferred to a trailing timer.
+    feed(
+      sid,
+      '###ORCHATERM_DONE###\ntask_id: t2\nsummary: Did the thing.\n' +
+      'files_modified: none\nneeds: none\n###ORCHATERM_END###\n',
+    );
+    expect(onSentinel).not.toHaveBeenCalled();
+
+    // Advance past the throttle window — the trailing scan must fire and detect it.
+    await vi.advanceTimersByTimeAsync(50);
+    expect(onSentinel).toHaveBeenCalledTimes(1);
+    expect(onSentinel.mock.calls[0][0].taskId).toBe('t2');
 
     bufferWatcher.unwatch(sid);
   });

@@ -630,60 +630,112 @@ fn spawn_pty(
         }
     });
 
-    // ── Reader thread ──────────────────────────────────────────────────────
-    // Reads output from the PTY master and emits a session-scoped Tauri event.
-    // The event name is `pty-data-{session_id}` so each TerminalTab only
-    // listens to its own stream — no O(N) filtering on the frontend.
+    // ── Reader thread with coalescing ──────────────────────────────────────
+    // Reads output from the PTY master on a dedicated I/O thread, passes it to
+    // a coalescer thread over a channel, and debounces/accumulates updates for
+    // up to 10ms. This prevents high-throughput PTY streams (build logs, npm,
+    // etc.) from saturating the WebView IPC channel with thousands of tiny events.
     let sid = session_id.clone();
-    let event_name = format!("pty-data-{sid}");
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    let reader_shutdown = Arc::clone(&shutdown);
 
+    // 1. Spawns I/O reader thread that blocks on read() and forwards raw bytes
+    let io_sid = sid.clone();
     thread::Builder::new()
-        .name(format!("pty-reader-{sid}"))
+        .name(format!("pty-reader-io-{io_sid}"))
         .spawn(move || {
             let mut buffer = [0u8; 8192];
-            // Holds any UTF-8 sequence left incomplete at the end of a read —
-            // see drain_valid_utf8 for why (a multi-byte char can straddle
-            // two separate read() calls; this stops that from corrupting into
-            // U+FFFD on both sides).
-            let mut carry: Vec<u8> = Vec::new();
             loop {
-                // Check shutdown flag before each read.
-                if shutdown.load(Ordering::SeqCst) {
+                if reader_shutdown.load(Ordering::SeqCst) {
                     break;
                 }
-
                 match reader.read(&mut buffer) {
                     Ok(0) => break, // EOF
                     Ok(n) => {
-                        carry.extend_from_slice(&buffer[..n]);
-                        let text = drain_valid_utf8(&mut carry);
-                        if text.is_empty() {
-                            // Nothing decodable yet — still waiting on the rest
-                            // of a split character. Don't emit an empty event.
-                            continue;
-                        }
-                        let payload = PtyPayload {
-                            session_id: sid.clone(),
-                            data: text,
-                        };
-                        if app_handle.emit(&event_name, payload).is_err() {
-                            // App window closed — stop the thread.
+                        if tx.send(buffer[..n].to_vec()).is_err() {
                             break;
                         }
                     }
                     Err(e) => {
-                        // On Windows, ERROR_BROKEN_PIPE (code 109) is normal when
-                        // the shell exits.  Other errors are unexpected.
                         let code = e.raw_os_error().unwrap_or(0);
                         if code != 109 {
-                            eprintln!("[pty-reader-{sid}] read error: {e}");
+                            eprintln!("[pty-reader-io-{io_sid}] read error: {e}");
                         }
                         break;
                     }
                 }
             }
         })
-        .map_err(|e| format!("Failed to spawn reader thread: {e}"))?;
+        .map_err(|e| format!("Failed to spawn PTY I/O reader thread: {e}"))?;
+
+    // 2. Spawns coalescer thread that drains the channel, coalescing small chunks
+    // for up to 10ms (or 32KB buffer) before emitting to the WebView.
+    let coalescer_sid = sid.clone();
+    let coalescer_shutdown = Arc::clone(&shutdown);
+    let event_name = format!("pty-data-{coalescer_sid}");
+
+    thread::Builder::new()
+        .name(format!("pty-reader-coalesce-{coalescer_sid}"))
+        .spawn(move || {
+            use std::time::{Duration, Instant};
+            let mut carry: Vec<u8> = Vec::new();
+            loop {
+                if coalescer_shutdown.load(Ordering::SeqCst) {
+                    break;
+                }
+
+                // Block until at least one chunk is available
+                match rx.recv() {
+                    Ok(first_chunk) => {
+                        let mut accumulated = first_chunk;
+                        let start = Instant::now();
+                        let max_coalesce_duration = Duration::from_millis(10);
+                        let max_accumulated_size = 32768; // 32KB
+
+                        loop {
+                            if coalescer_shutdown.load(Ordering::SeqCst) {
+                                break;
+                            }
+                            let elapsed = start.elapsed();
+                            if elapsed >= max_coalesce_duration || accumulated.len() >= max_accumulated_size {
+                                break;
+                            }
+                            let timeout = max_coalesce_duration - elapsed;
+                            match rx.recv_timeout(timeout) {
+                                Ok(next_chunk) => {
+                                    accumulated.extend(next_chunk);
+                                }
+                                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                                    break;
+                                }
+                                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                                    break;
+                                }
+                            }
+                        }
+
+                        carry.extend_from_slice(&accumulated);
+                        let text = drain_valid_utf8(&mut carry);
+                        if text.is_empty() {
+                            continue;
+                        }
+
+                        let payload = PtyPayload {
+                            session_id: coalescer_sid.clone(),
+                            data: text,
+                        };
+                        if app_handle.emit(&event_name, payload).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => {
+                        // Channel sender dropped (reader thread exited)
+                        break;
+                    }
+                }
+            }
+        })
+        .map_err(|e| format!("Failed to spawn PTY coalescer thread: {e}"))?;
 
     Ok(())
 }

@@ -58,6 +58,14 @@ const NEEDS_SCAN_TAIL     =   8 * 1024; // runs on EVERY chunk — keep small
 const SENTINEL_SCAN_TAIL  =  32 * 1024;
 const PLAN_SCAN_TAIL      =  96 * 1024; // plan JSON arrays can be large
 
+// ── Scan throttle windows ────────────────────────────────────────────────────────
+// Caps how often each mode's (bounded but non-trivial) ANSI-strip + marker scan
+// re-runs during a burst of chunks. All well under the 400-500ms echo-suppress
+// windows below, so they add no perceptible detection latency.
+const NEEDS_SCAN_THROTTLE_MS    = 30;
+const SENTINEL_SCAN_THROTTLE_MS = 40;
+const PLAN_SCAN_THROTTLE_MS     = 60;
+
 // ── Internal entry ─────────────────────────────────────────────────────────────
 
 interface WatchEntry {
@@ -83,6 +91,17 @@ interface WatchEntry {
   summaryDebounceTimer?: ReturnType<typeof setTimeout>;
   /** Buffer length at the last debounce fire — we only send the new delta. */
   summaryLastLength?: number;
+
+  // Scan throttling — a chatty command can emit many chunks within a few ms;
+  // these bound how often the (ANSI-strip + marker search) scans re-run. Each
+  // pair is a leading-edge throttle with a guaranteed trailing call, so a
+  // burst that never fully quiesces still gets scanned periodically.
+  lastSentinelScanAt?: number;
+  sentinelScanTimer?: ReturnType<typeof setTimeout>;
+  lastPlanScanAt?: number;
+  planScanTimer?: ReturnType<typeof setTimeout>;
+  lastNeedsScanAt?: number;
+  needsScanTimer?: ReturnType<typeof setTimeout>;
 }
 
 // ── PTY event payload shape emitted by Rust ────────────────────────────────────
@@ -227,6 +246,18 @@ class BufferWatcher {
       entry.ignoreUntil = undefined;
     }
 
+    const now = Date.now();
+    if (now - (entry.lastSentinelScanAt ?? 0) < SENTINEL_SCAN_THROTTLE_MS) {
+      if (!entry.sentinelScanTimer) {
+        entry.sentinelScanTimer = setTimeout(() => {
+          entry.sentinelScanTimer = undefined;
+          if (entry.buffer.mode === 'sentinel') this.checkSentinel(entry);
+        }, SENTINEL_SCAN_THROTTLE_MS);
+      }
+      return;
+    }
+    entry.lastSentinelScanAt = now;
+
     const result = parseSentinel(entry.buffer.buffer.slice(-SENTINEL_SCAN_TAIL));
     if (!result) return;
 
@@ -258,6 +289,18 @@ class BufferWatcher {
       // first response chunk (often the one containing PLAN_START).
       entry.ignoreUntil = undefined;
     }
+
+    const now = Date.now();
+    if (now - (entry.lastPlanScanAt ?? 0) < PLAN_SCAN_THROTTLE_MS) {
+      if (!entry.planScanTimer) {
+        entry.planScanTimer = setTimeout(() => {
+          entry.planScanTimer = undefined;
+          if (entry.buffer.mode === 'plan') this.checkPlan(entry);
+        }, PLAN_SCAN_THROTTLE_MS);
+      }
+      return;
+    }
+    entry.lastPlanScanAt = now;
 
     const rawJson = parsePlanBlock(entry.buffer.buffer.slice(-PLAN_SCAN_TAIL));
     if (rawJson === null) return;
@@ -307,6 +350,18 @@ class BufferWatcher {
   // ── Internal: needs check ──────────────────────────────────────────────────
 
   private checkNeeds(entry: WatchEntry): void {
+    const now = Date.now();
+    if (now - (entry.lastNeedsScanAt ?? 0) < NEEDS_SCAN_THROTTLE_MS) {
+      if (!entry.needsScanTimer) {
+        entry.needsScanTimer = setTimeout(() => {
+          entry.needsScanTimer = undefined;
+          if (entry.onNeedsRequest) this.checkNeeds(entry);
+        }, NEEDS_SCAN_THROTTLE_MS);
+      }
+      return;
+    }
+    entry.lastNeedsScanAt = now;
+
     const request = parseNeedsBlock(entry.buffer.buffer.slice(-NEEDS_SCAN_TAIL));
     if (!request) return;
 
@@ -342,6 +397,9 @@ class BufferWatcher {
     entry.onPlan = undefined;
     entry.onPlanError = undefined;
     entry.ignoreUntil = echoSuppressMs > 0 ? Date.now() + echoSuppressMs : undefined;
+    if (entry.sentinelScanTimer) clearTimeout(entry.sentinelScanTimer);
+    entry.sentinelScanTimer = undefined;
+    entry.lastSentinelScanAt = undefined;
   }
 
   /**
@@ -369,6 +427,9 @@ class BufferWatcher {
     entry.onPlanError = onPlanError;
     entry.onSentinel = undefined;
     entry.ignoreUntil = echoSuppressMs > 0 ? Date.now() + echoSuppressMs : undefined;
+    if (entry.planScanTimer) clearTimeout(entry.planScanTimer);
+    entry.planScanTimer = undefined;
+    entry.lastPlanScanAt = undefined;
   }
 
   /**
@@ -454,6 +515,8 @@ class BufferWatcher {
     (entry as any)._lastNeedsAsk = undefined; // reset dedup state
     return () => {
       entry.onNeedsRequest = undefined;
+      if (entry.needsScanTimer) clearTimeout(entry.needsScanTimer);
+      entry.needsScanTimer = undefined;
     };
   }
 
@@ -479,6 +542,12 @@ class BufferWatcher {
     entry.onPlan = undefined;
     entry.onPlanError = undefined;
     entry.ignoreUntil = undefined;
+    if (entry.sentinelScanTimer) clearTimeout(entry.sentinelScanTimer);
+    if (entry.planScanTimer) clearTimeout(entry.planScanTimer);
+    entry.sentinelScanTimer = undefined;
+    entry.planScanTimer = undefined;
+    entry.lastSentinelScanAt = undefined;
+    entry.lastPlanScanAt = undefined;
   }
 
   /**
@@ -489,6 +558,9 @@ class BufferWatcher {
     const entry = this.entries.get(sessionId);
     if (!entry) return;
     entry.unlisten();
+    if (entry.sentinelScanTimer) clearTimeout(entry.sentinelScanTimer);
+    if (entry.planScanTimer) clearTimeout(entry.planScanTimer);
+    if (entry.needsScanTimer) clearTimeout(entry.needsScanTimer);
     this.entries.delete(sessionId);
     // Also remove any in-flight pending promise for this session so a future
     // ensureListening() call starts fresh.
