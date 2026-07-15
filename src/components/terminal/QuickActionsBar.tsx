@@ -1,8 +1,6 @@
 import React from 'react';
 import { css, cx } from '@emotion/css';
 import { Settings2 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
-
 import { useDashboard } from '../../context/DashboardContext';
 import { DEFAULT_QUICK_ACTIONS } from '../../utils/terminalThemes';
 import type { QuickAction } from '../../types';
@@ -10,7 +8,7 @@ import * as LucideIcons from 'lucide-react';
 
 import { useNavigate } from 'react-router';
 
-export const QuickActionsBar: React.FC<{ sessionId: string }> = ({ sessionId }) => {
+export const QuickActionsBar: React.FC<{ onRunCommand: (command: string, autoExecute: boolean) => void }> = ({ onRunCommand }) => {
   const { settings } = useDashboard();
   const navigate = useNavigate();
   const actions = settings.quickActions && settings.quickActions.length > 0 
@@ -78,11 +76,7 @@ export const QuickActionsBar: React.FC<{ sessionId: string }> = ({ sessionId }) 
   }, [actions, updateScrollIndicator]);
 
   const handleAction = (action: QuickAction) => {
-    // Send the command to the PTY
-    const data = action.autoExecute ? `${action.command}\r` : action.command;
-    invoke('write_pty', { sessionId, data }).catch((err) =>
-      console.error('[QuickActionsBar] write_pty failed:', err)
-    );
+    onRunCommand(action.command, action.autoExecute);
   };
 
   return (

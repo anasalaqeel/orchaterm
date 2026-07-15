@@ -171,6 +171,33 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       },
     }));
 
+    // ── Quick Actions bar → PTY ───────────────────────────────────────────
+    // Wrap in bracketed-paste markers ourselves (same escape sequences and
+    // condition xterm.js's own term.paste() uses — see Clipboard.ts's
+    // bracketTextForPaste) so the shell/app sees this as one pasted blob,
+    // not fast synthetic keystrokes exposed to per-character shell-side side
+    // effects (autosuggestion accept, magic-space history expansion, etc.)
+    // that can execute the command early and leak trailing text into
+    // whatever starts next. We build the whole payload (markers + trailing
+    // Enter) as ONE string and send it in a single call rather than calling
+    // term.paste() and then a separate write_pty for '\r': write_pty is an
+    // async Tauri command, so two independent invokes here would have no
+    // guaranteed ordering — a single combined write does.
+    //
+    // Enter must sit outside the closing marker: bracketed paste treats an
+    // embedded \r as a literal newline in the line buffer, not "run this
+    // now" (that's what stops a pasted multi-line script from
+    // auto-executing), so it has to be appended after `\x1b[201~`.
+    const runQuickActionCommand = useCallback((command: string, autoExecute: boolean) => {
+      const term = termRef.current;
+      if (!term) return;
+      const bracketed = term.modes.bracketedPasteMode ? `\x1b[200~${command}\x1b[201~` : command;
+      const data = autoExecute ? `${bracketed}\r` : bracketed;
+      writePtyChunked(sessionId, data).catch((err) =>
+        console.error('[TerminalTab] write_pty failed:', err),
+      );
+    }, [sessionId]);
+
     // ── Spawn helper (used for initial spawn AND retry) ──────────────────
     const spawnSession = useCallback(async () => {
       const term = termRef.current;
@@ -703,7 +730,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         {/* Terminal canvas */}
         <div ref={containerRef} className={styles.terminalContainer} style={{ backgroundColor: themeBg }} />
 
-        <QuickActionsBar sessionId={sessionId} />
+        <QuickActionsBar onRunCommand={runQuickActionCommand} />
 
         {/* Floating Copy Button */}
         {hasSelection && (
