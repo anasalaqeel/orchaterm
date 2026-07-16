@@ -280,6 +280,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   const [buildTitle,     setBuildTitle]     = useState('');
   const [buildSessionId, setBuildSessionId] = useState('');
   const [buildTasks,     setBuildTasks]     = useState<OrchestratorTask[]>([]);
+  const [draggedIndex,   setDraggedIndex]   = useState<number | null>(null);
+  const [dragOver,       setDragOver]       = useState<{ index: number; position: 'top' | 'bottom' } | null>(null);
 
 
 
@@ -580,21 +582,52 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     if (!buildTitle.trim() || !buildSessionId) return;
     const session = groupSessions.find(s => s.id === buildSessionId);
     if (!session) return;
-    setBuildTasks(prev => [...prev, {
-      id:                   crypto.randomUUID(),
-      title:                buildTitle.trim(),
-      description:          buildTitle.trim(),
-      assignedSessionId:    session.id,
-      assignedSessionTitle: session.title,
-      dependsOn:            [],
-      status:               'pending' as const,
-    }]);
+    setBuildTasks(prev => {
+      const newTask: OrchestratorTask = {
+        id:                   crypto.randomUUID(),
+        title:                buildTitle.trim(),
+        description:          buildTitle.trim(),
+        assignedSessionId:    session.id,
+        assignedSessionTitle: session.title,
+        dependsOn:            prev.length > 0 ? [prev[prev.length - 1].id] : [],
+        status:               'pending' as const,
+      };
+      return [...prev, newTask];
+    });
     setBuildTitle('');
   }, [buildTitle, buildSessionId, groupSessions]);
 
   const handleRemoveBuildTask = useCallback((id: string) => {
-    setBuildTasks(prev => prev.filter(t => t.id !== id));
+    setBuildTasks(prev => {
+      const filtered = prev.filter(t => t.id !== id);
+      return filtered.map((t, idx) => ({
+        ...t,
+        dependsOn: idx > 0 ? [filtered[idx - 1].id] : [],
+      }));
+    });
   }, []);
+
+  const handleDropBuildTask = useCallback((targetIndex: number, position: 'top' | 'bottom') => {
+    if (draggedIndex === null) return;
+    const insertAt = position === 'top' ? targetIndex : targetIndex + 1;
+    const finalIndex = draggedIndex < insertAt ? insertAt - 1 : insertAt;
+    if (finalIndex === draggedIndex) {
+      setDraggedIndex(null);
+      setDragOver(null);
+      return;
+    }
+    setBuildTasks(prev => {
+      const items = [...prev];
+      const [moved] = items.splice(draggedIndex, 1);
+      items.splice(finalIndex, 0, moved);
+      return items.map((t, idx) => ({
+        ...t,
+        dependsOn: idx > 0 ? [items[idx - 1].id] : [],
+      }));
+    });
+    setDraggedIndex(null);
+    setDragOver(null);
+  }, [draggedIndex]);
 
   const handleRunBuildPlan = useCallback(() => {
     if (!aiEnabled || buildTasks.length === 0) return;
@@ -1303,7 +1336,48 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
           {buildTasks.length > 0 && (
             <div className={s.pipelineTaskList}>
               {buildTasks.map((task, i) => (
-                <div key={task.id} className={s.pipelineTaskItem}>
+                <div
+                  key={task.id}
+                  className={cx(
+                    s.pipelineTaskItem,
+                    draggedIndex === i && s.pipelineTaskItemDragging,
+                    dragOver?.index === i && dragOver.position === 'top' && s.pipelineTaskItemDragTop,
+                    dragOver?.index === i && dragOver.position === 'bottom' && s.pipelineTaskItemDragBottom,
+                  )}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedIndex(i);
+                    e.dataTransfer.effectAllowed = 'move';
+                  }}
+                  onDragEnd={() => {
+                    setDraggedIndex(null);
+                    setDragOver(null);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (draggedIndex === null) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const midY = rect.top + rect.height / 2;
+                    const pos = e.clientY < midY ? 'top' : 'bottom';
+                    if (dragOver?.index !== i || dragOver?.position !== pos) {
+                      setDragOver({ index: i, position: pos });
+                    }
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      if (dragOver?.index === i) {
+                        setDragOver(null);
+                      }
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const pos = dragOver?.index === i ? dragOver.position : 'top';
+                    handleDropBuildTask(i, pos);
+                  }}
+                >
+                  <span className={s.pipelineTaskGrip} title="Drag to reorder">⋮⋮</span>
                   <span className={s.pipelineTaskNum}>{i + 1}</span>
                   <span className={s.pipelineTaskTitle}>{task.title}</span>
                   <span className={s.pipelineTaskAgent}>{task.assignedSessionTitle}</span>
@@ -1588,11 +1662,59 @@ const s = {
     max-height: 100px; overflow-y: auto;
   `,
   pipelineTaskItem: css`
+    position: relative;
     display: flex; align-items: center; gap: 6px;
-    padding: 4px 8px;
+    padding: 5px 8px;
     border-radius: 6px;
     background: var(--bg-input);
     border: 1px solid var(--border-color);
+    cursor: grab;
+    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+    user-select: none;
+    &:active { cursor: grabbing; }
+  `,
+  pipelineTaskItemDragging: css`
+    opacity: 0.45;
+    border-style: dashed;
+  `,
+  pipelineTaskItemDragTop: css`
+    &::before {
+      content: '';
+      position: absolute;
+      top: -3px;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--color-brand);
+      border-radius: 3px;
+      box-shadow: 0 0 6px rgba(var(--color-brand-rgb), 0.6);
+      pointer-events: none;
+      z-index: 10;
+    }
+  `,
+  pipelineTaskItemDragBottom: css`
+    &::after {
+      content: '';
+      position: absolute;
+      bottom: -3px;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--color-brand);
+      border-radius: 3px;
+      box-shadow: 0 0 6px rgba(var(--color-brand-rgb), 0.6);
+      pointer-events: none;
+      z-index: 10;
+    }
+  `,
+  pipelineTaskGrip: css`
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: -1px;
+    color: var(--text-tertiary);
+    cursor: grab;
+    flex-shrink: 0;
+    &:hover { color: var(--text-secondary); }
   `,
   pipelineTaskNum: css`
     font-size: 10px; color: var(--text-tertiary); font-weight: 700;
