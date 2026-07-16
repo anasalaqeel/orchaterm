@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AutonomousOrchestrator } from '../services/autonomousOrchestrator';
 
-vi.mock('../services/ollamaRelay', () => ({
+vi.mock('../services/orchestratorPrompts', () => ({
   buildRoutingPrompt: vi.fn().mockReturnValue({ system: '', userContent: 'route?' }),
 }));
 

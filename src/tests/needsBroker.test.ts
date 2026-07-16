@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NeedsBroker } from '../services/needsBroker';
 
-// Mock ollamaRelay
-vi.mock('../services/ollamaRelay', () => ({
+// Mock orchestratorPrompts
+vi.mock('../services/orchestratorPrompts', () => ({
   buildNeedsPrompt: vi.fn().mockReturnValue({ system: '', userContent: 'needs?' }),
 }));
 
