@@ -19,7 +19,7 @@ import { css, cx } from '@emotion/css';
 import {
   Send, Bot, User, WifiOff, RefreshCw, Users,
   ChevronDown, BookmarkPlus, Download, X as XIcon, SlidersHorizontal, Check,
-  MessageSquare, Network, Copy, Square, Sparkles, Edit2,
+  MessageSquare, Network, Copy, Square, Sparkles, Edit2, ListOrdered, Zap,
 } from 'lucide-react';
 import { Select } from './Select';
 import { Input } from './Input';
@@ -277,6 +277,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
   // ── Input mode (chat vs manual pipeline builder) ──────────────────────────
   const [inputMode,      setInputMode]      = useState<'chat' | 'pipeline'>('chat');
+  const [executionMode,  setExecutionMode]  = useState<'sequential' | 'parallel'>('sequential');
   const [buildTitle,     setBuildTitle]     = useState('');
   const [buildSessionId, setBuildSessionId] = useState('');
   const [buildTasks,     setBuildTasks]     = useState<OrchestratorTask[]>([]);
@@ -540,10 +541,15 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       return;
     }
 
+    const finalTasks = pendingPlan.tasks.map((t, idx) => ({
+      ...t,
+      dependsOn: executionMode === 'sequential' ? (idx > 0 ? [pendingPlan.tasks[idx - 1].id] : []) : [],
+    }));
+
     const plan: OrchestratorPlan = {
       id:          crypto.randomUUID(),
       goal:        pendingPlan.goal,
-      tasks:       pendingPlan.tasks,
+      tasks:       finalTasks,
       status:      'approved',
       createdAt:   Date.now(),
       workspaceId,
@@ -565,10 +571,10 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
     setMessages(prev => [...prev, {
       id: crypto.randomUUID(), role: 'system',
-      content: `▶ Plan started — ${plan.tasks.length} task${plan.tasks.length !== 1 ? 's' : ''} dispatched`,
+      content: `▶ Plan started (${executionMode} mode) — ${plan.tasks.length} task${plan.tasks.length !== 1 ? 's' : ''} dispatched`,
     }]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingPlan, activeSpaceId, workspaceId, groupSessions, settings, addPlan, llmProviders]);
+  }, [pendingPlan, executionMode, activeSpaceId, workspaceId, groupSessions, settings, addPlan, llmProviders]);
 
   const handleDiscardPlan = useCallback(() => {
     setPendingPlan(null);
@@ -669,10 +675,15 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       return;
     }
 
+    const finalTasks = buildTasks.map((t, idx) => ({
+      ...t,
+      dependsOn: executionMode === 'sequential' ? (idx > 0 ? [buildTasks[idx - 1].id] : []) : [],
+    }));
+
     const plan: OrchestratorPlan = {
       id:          crypto.randomUUID(),
       goal:        buildTasks.map(t => t.title).join(' → '),
-      tasks:       buildTasks,
+      tasks:       finalTasks,
       status:      'approved',
       createdAt:   Date.now(),
       workspaceId,
@@ -693,10 +704,10 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
     setMessages(prev => [...prev, {
       id: crypto.randomUUID(), role: 'system',
-      content: `▶ Pipeline started — ${plan.tasks.length} task${plan.tasks.length !== 1 ? 's' : ''} dispatched`,
+      content: `▶ Pipeline started (${executionMode} mode) — ${plan.tasks.length} task${plan.tasks.length !== 1 ? 's' : ''} dispatched`,
     }]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buildTasks, activeSpaceId, workspaceId, groupSessions, settings, addPlan, llmProviders]);
+  }, [buildTasks, executionMode, activeSpaceId, workspaceId, groupSessions, settings, addPlan, llmProviders]);
 
   const handleClearBuild = useCallback(() => {
     setBuildTasks([]);
@@ -744,19 +755,27 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
           const idMap = new Map<string, string>();
           rawTasks.forEach(t => idMap.set(t.title, crypto.randomUUID()));
 
-          const tasks: OrchestratorTask[] = rawTasks.map((t: RawPlanTask) => {
+          const tasks: OrchestratorTask[] = rawTasks.map((t: RawPlanTask, idx: number) => {
             const session = groupSessions.find(s =>
               s.title.toLowerCase() === t.assignedSessionTitle.toLowerCase()
             ) ?? groupSessions[0];
+            let dependsOn = t.dependsOn
+              .map(depTitle => idMap.get(depTitle) ?? '')
+              .filter(Boolean);
+
+            // If AI left dependsOn empty for step 2+ but user prompt implies sequential steps or answering, chain to prior step
+            if (idx > 0 && dependsOn.length === 0 && /\b(then|after|next|second|follow|->|answer|reply|respond|afterwards)\b/i.test(text)) {
+              const prevId = idMap.get(rawTasks[idx - 1].title);
+              if (prevId) dependsOn = [prevId];
+            }
+
             return {
               id:                   idMap.get(t.title)!,
               title:                t.title,
               description:          t.description,
               assignedSessionId:    session?.id    ?? '',
               assignedSessionTitle: session?.title ?? t.assignedSessionTitle,
-              dependsOn:            t.dependsOn
-                .map(depTitle => idMap.get(depTitle) ?? '')
-                .filter(Boolean),
+              dependsOn,
               status: 'pending' as const,
             };
           });
@@ -1109,9 +1128,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             </div>
             <div className={s.planTaskList}>
               {pendingPlan.tasks.map((task, i) => {
-                const depNames = task.dependsOn
-                  .map(id => pendingPlan.tasks.find(t => t.id === id)?.title ?? '?')
-                  .filter(Boolean);
+                const depNames = executionMode === 'sequential'
+                  ? (i > 0 ? [pendingPlan.tasks[i - 1].title] : [])
+                  : [];
                 return (
                   <div key={task.id} className={s.planTask}>
                     <span className={s.planTaskNum}>{i + 1}</span>
@@ -1127,6 +1146,27 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
                   </div>
                 );
               })}
+            </div>
+            <div className={s.modeControlBar}>
+              <span className={s.modeControlLabel}>Execution Mode</span>
+              <div className={s.modeToggleGroup}>
+                <button
+                  className={cx(s.modeToggleBtn, executionMode === 'sequential' && s.modeToggleBtnActive)}
+                  onClick={() => setExecutionMode('sequential')}
+                  title="Run steps one after another (Step 1 → Step 2)"
+                >
+                  <ListOrdered size={12} />
+                  Sequential
+                </button>
+                <button
+                  className={cx(s.modeToggleBtn, executionMode === 'parallel' && s.modeToggleBtnActive)}
+                  onClick={() => setExecutionMode('parallel')}
+                  title="Run all steps concurrently at the same time"
+                >
+                  <Zap size={12} />
+                  Parallel
+                </button>
+              </div>
             </div>
             <div className={s.planPreviewActions}>
               <button
@@ -1525,15 +1565,38 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
           {/* Run / Clear — only displayed after at least one step is added */}
           {buildTasks.length > 0 && (
-            <div className={s.pipelineActions}>
-              <button
-                className={s.pipelineRunBtn}
-                onClick={handleRunBuildPlan}
-                title={`Execute ${buildTasks.length} pipeline step${buildTasks.length !== 1 ? 's' : ''}`}
-              >
-                ▶ Execute Pipeline ({buildTasks.length} {buildTasks.length === 1 ? 'step' : 'steps'})
-              </button>
-              <button className={s.pipelineClearBtn} onClick={handleClearBuild}>Clear</button>
+            <div className={s.pipelineFooterArea}>
+              <div className={s.modeControlBar}>
+                <span className={s.modeControlLabel}>Execution Mode</span>
+                <div className={s.modeToggleGroup}>
+                  <button
+                    className={cx(s.modeToggleBtn, executionMode === 'sequential' && s.modeToggleBtnActive)}
+                    onClick={() => setExecutionMode('sequential')}
+                    title="Run steps one after another (Step 1 → Step 2)"
+                  >
+                    <ListOrdered size={12} />
+                    Sequential
+                  </button>
+                  <button
+                    className={cx(s.modeToggleBtn, executionMode === 'parallel' && s.modeToggleBtnActive)}
+                    onClick={() => setExecutionMode('parallel')}
+                    title="Run all steps concurrently at the same time"
+                  >
+                    <Zap size={12} />
+                    Parallel
+                  </button>
+                </div>
+              </div>
+              <div className={s.pipelineActions}>
+                <button
+                  className={s.pipelineRunBtn}
+                  onClick={handleRunBuildPlan}
+                  title={`Execute ${buildTasks.length} pipeline step${buildTasks.length !== 1 ? 's' : ''}`}
+                >
+                  ▶ Execute Pipeline ({buildTasks.length} {buildTasks.length === 1 ? 'step' : 'steps'})
+                </button>
+                <button className={s.pipelineClearBtn} onClick={handleClearBuild}>Clear</button>
+              </div>
             </div>
           )}
         </div>
@@ -1885,9 +1948,7 @@ const s = {
   `,
   pipelineActions: css`
     display: flex; align-items: center; gap: 7px;
-    margin-top: 6px;
-    padding-top: 8px;
-    border-top: 1px dashed var(--border-color);
+    padding-top: 2px;
   `,
   pipelineRunBtn: css`
     flex: 1;
@@ -2212,6 +2273,38 @@ const s = {
     background: transparent; color: var(--text-tertiary); font-size: 12px;
     cursor: pointer; transition: all 150ms ease;
     &:hover { border-color: var(--color-error); color: var(--color-error); }
+  `,
+  pipelineFooterArea: css`
+    display: flex; flex-direction: column; gap: 8px;
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px dashed var(--border-color);
+  `,
+  modeControlBar: css`
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--bg-canvas);
+    border: 1px solid rgba(var(--color-info-rgb), 0.15);
+    border-radius: 8px;
+  `,
+  modeControlLabel: css`
+    font-size: 11px; font-weight: 600; color: var(--text-secondary);
+  `,
+  modeToggleGroup: css`
+    display: flex; align-items: center; gap: 2px;
+    background: var(--bg-input); border: 1px solid var(--border-color);
+    border-radius: 6px; padding: 2px;
+  `,
+  modeToggleBtn: css`
+    display: flex; align-items: center; gap: 4px;
+    border: none; background: transparent; color: var(--text-tertiary);
+    font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 4px;
+    cursor: pointer; transition: all 0.15s ease;
+    &:hover { color: var(--text-primary); }
+  `,
+  modeToggleBtnActive: css`
+    background: var(--color-brand); color: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+    &:hover { color: #fff; }
   `,
 
   // ── Mode badge (header) ──────────────────────────────────────────────────

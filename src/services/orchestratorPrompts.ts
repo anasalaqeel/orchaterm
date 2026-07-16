@@ -62,15 +62,17 @@ JSON format:
 
 Dependency rules — this is critical:
 - dependsOn: [] means the task starts immediately. Tasks with no dependsOn run IN PARALLEL with each other.
-- Add a dependency ONLY when the task cannot start without the other task's output — e.g. it needs to call an API the other task defines, import a module the other task writes, or build on a schema the other task designs.
-- Do NOT add a dependency just because tasks are logically related or touch the same area of the codebase.
-- Do NOT chain tasks sequentially by default. Prefer parallel execution.
+- Add a dependency (dependsOn: ["Previous Task Title"]) when:
+  1. The task requires the output, summary, or result from a previous task before it can start (e.g. answering a previous step, building upon code/schema created by a previous step, or verifying a previous step).
+  2. The user explicitly requests sequential execution (e.g. using words like "first X then Y", "step 1 -> step 2", or "after that").
+- Only use dependsOn: [] (parallel execution) when tasks are completely independent and can run simultaneously without needing anything from each other.
 
 Parallelism examples (dependsOn: []):
-  - "Write backend auth endpoints" and "Write frontend login form" can start at the same time if the API contract is specified in the task description.
+  - "Write backend auth endpoints" and "Write frontend login form" can start at the same time if the API contract is already fixed and independent.
   - "Add unit tests for module A" and "Add unit tests for module B" have no dependency on each other.
 
 Dependency examples (dependsOn required):
+  - "Answer the agent" depends on "Say hi" because it must know what the previous agent said.
   - "Implement payment checkout" depends on "Design payment API schema" because it must import the schema.
   - "Deploy to staging" depends on "Build production bundle" because it needs the built artifact.
 
