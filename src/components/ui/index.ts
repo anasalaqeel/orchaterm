@@ -5,7 +5,6 @@ export { NumberField }        from './NumberField';
 export type { NumberFieldProps } from './NumberField';
 export { QuickSwitcher }      from './QuickSwitcher';
 export { Toast }              from './Toast';
-export { WorkspacePanel }     from './WorkspacePanel';
 export { Select }             from './Select';
 export type { SelectOption }  from './Select';
 export { ContinuationModal }  from './ContinuationModal';
