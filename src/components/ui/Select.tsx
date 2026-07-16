@@ -7,7 +7,7 @@ export interface SelectOption {
   value: string;
   name: string;
   description?: string;
-  icon?: LucideIcon;
+  icon?: LucideIcon | null;
   /** Groups options under a header in the dropdown. Consecutive options sharing a group are clustered. */
   group?: string;
   /** Renders the option inert (no hover/click), for placeholders like "no items available". */
@@ -113,7 +113,7 @@ export const Select: React.FC<SelectProps> = ({
   }, [isOpen, calculatePos]);
 
   const selectedOption = options.find((opt) => opt.value === value) ?? options[0];
-  const ActiveIcon = selectedOption?.icon ?? Terminal;
+  const ActiveIcon = selectedOption?.icon ?? (selectedOption?.value === '' ? null : Terminal);
 
   const dropdown = isOpen && dropdownPos
     ? ReactDOM.createPortal(
@@ -130,7 +130,7 @@ export const Select: React.FC<SelectProps> = ({
         >
           {options.map((opt, i) => {
             const isActive = opt.value === value;
-            const OptIcon = opt.icon ?? Terminal;
+            const OptIcon = opt.icon ?? (opt.value === '' ? null : Terminal);
             const showGroupHeader = opt.group !== undefined && opt.group !== options[i - 1]?.group;
             return (
               <React.Fragment key={opt.value}>
@@ -146,7 +146,7 @@ export const Select: React.FC<SelectProps> = ({
                     closeDropdown();
                   }}
                 >
-                  <OptIcon className={styles.itemIcon} />
+                  {OptIcon && <OptIcon className={styles.itemIcon} />}
                   <div className={styles.itemText}>
                     <span className={styles.itemName}>{opt.name}</span>
                     {opt.description && (
@@ -173,7 +173,7 @@ export const Select: React.FC<SelectProps> = ({
         onClick={() => (isOpen ? closeDropdown() : openDropdown())}
         disabled={disabled}
       >
-        <ActiveIcon className={styles.triggerIcon} />
+        {ActiveIcon && <ActiveIcon className={styles.triggerIcon} />}
         <div className={styles.textContainer}>
           <span className={styles.activeName}>
             {selectedOption?.name ?? 'Select option...'}
