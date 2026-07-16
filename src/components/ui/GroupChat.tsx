@@ -31,7 +31,7 @@ import {
   buildIntentClassifyPrompt,
   parsePlanGenResponse,
   RawPlanTask,
-} from '../../services/ollamaRelay';
+} from '../../services/orchestratorPrompts';
 import type { ChatMessage } from '../../services/llm/types';
 import { bufferWatcher } from '../../services/bufferWatcher';
 import { stripAnsiCodes } from '../../services/sentinelParser';

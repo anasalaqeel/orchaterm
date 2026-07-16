@@ -19,7 +19,7 @@
 
 import { InterruptPolicy, RoutingEvent } from '../types';
 import { bufferWatcher } from './bufferWatcher';
-import { buildRoutingPrompt } from './ollamaRelay';
+import { buildRoutingPrompt } from './orchestratorPrompts';
 import { LLMProvider, createProvider } from './llm';
 import { canInjectNow } from '../utils/interruptPolicy';
 import { writePtyChunked } from '../utils/ptyUtils';

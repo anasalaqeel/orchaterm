@@ -12,7 +12,7 @@
  */
 
 import { AgentNeedsRequest, InterruptPolicy, RoutingEvent } from '../types';
-import { buildNeedsPrompt } from './ollamaRelay';
+import { buildNeedsPrompt } from './orchestratorPrompts';
 import { LLMProvider, createProvider } from './llm';
 import { bufferWatcher } from './bufferWatcher';
 import { canInjectNow } from '../utils/interruptPolicy';

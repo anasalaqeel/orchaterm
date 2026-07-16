@@ -33,7 +33,7 @@ import {
   buildPassThroughBrief,
   buildAutoAnswerPrompt,
   CompletedTaskContext,
-} from './ollamaRelay';
+} from './orchestratorPrompts';
 import { LLMProvider, createProvider } from './llm';
 import { SENTINEL_START, SENTINEL_END, NEEDS_START, NEEDS_END } from './sentinelParser';
 
@@ -310,34 +310,52 @@ export class OrchestratorEngine {
 
       const nextSessionTitle = this.config.sessionTitles.get(task.assignedSessionId) ?? task.assignedSessionTitle;
 
-      try {
-        if (parentTasks.length === 1) {
-          const { system, userContent } = buildRelayPrompt(
-            this.plan.goal, completedContexts[0], task.description, nextSessionTitle,
-          );
-          contextBrief = await this.config.relayProvider.complete(
-            [{ role: 'user', content: userContent }], system,
-          );
-        } else {
-          const { system, userContent } = buildMergeRelayPrompt(
-            this.plan.goal, completedContexts, task.description, nextSessionTitle,
-          );
-          contextBrief = await this.config.relayProvider.complete(
-            [{ role: 'user', content: userContent }], system,
-          );
-        }
+      const allNeedsNoneOrSimple = parentTasks.every(
+        t => !t.output?.needs || t.output.needs.trim().toLowerCase() === 'none'
+      );
 
-        this.log('relay', `Relay complete for task "${task.title}"`, task.id);
+      if (allNeedsNoneOrSimple && parentTasks.length === 1) {
+        // Skip slow LLM relay when previous task explicitly stated needs: none — pass through instantly (<50ms)!
+        const p = parentTasks[0];
+        const pAgent = this.config.sessionTitles.get(p.assignedSessionId) ?? p.assignedSessionTitle;
+        contextBrief = `Task "${p.title}" completed by ${pAgent}.\nSummary: ${p.output?.summary || 'Completed as requested.'}\nPrerequisites needed: none.`;
+        this.log('relay', `Instant relay (needs: none) for "${task.title}"`, task.id);
 
-        const lastParent = parentTasks[parentTasks.length - 1];
-        if (lastParent.output) {
-          this.updateTask(lastParent.id, {
-            output: { ...lastParent.output, relayedBrief: contextBrief },
+        if (p.output) {
+          this.updateTask(p.id, {
+            output: { ...p.output, relayedBrief: contextBrief },
           });
         }
-      } catch {
-        contextBrief = buildPassThroughBrief(completedContexts, task.description);
-        this.log('info', `Provider unavailable — pass-through relay used for "${task.title}"`, task.id);
+      } else {
+        try {
+          if (parentTasks.length === 1) {
+            const { system, userContent } = buildRelayPrompt(
+              this.plan.goal, completedContexts[0], task.description, nextSessionTitle,
+            );
+            contextBrief = await this.config.relayProvider.complete(
+              [{ role: 'user', content: userContent }], system,
+            );
+          } else {
+            const { system, userContent } = buildMergeRelayPrompt(
+              this.plan.goal, completedContexts, task.description, nextSessionTitle,
+            );
+            contextBrief = await this.config.relayProvider.complete(
+              [{ role: 'user', content: userContent }], system,
+            );
+          }
+
+          this.log('relay', `Relay complete for task "${task.title}"`, task.id);
+
+          const lastParent = parentTasks[parentTasks.length - 1];
+          if (lastParent.output) {
+            this.updateTask(lastParent.id, {
+              output: { ...lastParent.output, relayedBrief: contextBrief },
+            });
+          }
+        } catch {
+          contextBrief = buildPassThroughBrief(completedContexts, task.description);
+          this.log('info', `Provider unavailable — pass-through relay used for "${task.title}"`, task.id);
+        }
       }
     }
 
