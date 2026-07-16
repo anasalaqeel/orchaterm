@@ -30,8 +30,8 @@ function formatDuration(ms: number): string {
   return `${(ms / 3_600_000).toFixed(1)}h`;
 }
 
-/* ── ConductorStatus ── */
-const ConductorStatus: React.FC<{ plan: OrchestratorPlan | null }> = ({ plan }) => {
+/* ── OrchestratorStatus ── */
+const OrchestratorStatus: React.FC<{ plan: OrchestratorPlan | null }> = ({ plan }) => {
   if (!plan) return <p className={s.muted}>No plan running</p>;
 
   const counts = { pending: 0, running: 0, done: 0, failed: 0 };
@@ -237,7 +237,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => 
         </AnimatePresence>
       </motion.div>
 
-      {/* Conductor */}
+      {/* Orchestrator */}
       <motion.div
         className={s.section}
         variants={sectionVariants}
@@ -247,9 +247,9 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => 
       >
         <div className={s.sectionHead}>
           <Activity size={12} className={s.sectionIcon} />
-          <span className={s.sectionLabel}>Conductor</span>
+          <span className={s.sectionLabel}>Orchestrator</span>
         </div>
-        <ConductorStatus plan={livePlan} />
+        <OrchestratorStatus plan={livePlan} />
       </motion.div>
 
       {/* Recent logs */}
@@ -443,7 +443,7 @@ const s = {
     font-family: var(--font-family-mono);
   `,
 
-  /* Conductor plan */
+  /* Orchestrator plan */
   planWrap: css`display: flex; flex-direction: column; gap: 7px;`,
   planTop:  css`display: flex; align-items: flex-start; gap: 8px;`,
   planGoal: css`font-size: 12px; color: var(--text-secondary); flex: 1; line-height: 1.4;`,
