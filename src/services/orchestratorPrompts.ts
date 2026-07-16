@@ -1,7 +1,7 @@
 /**
- * ollamaRelay.ts
+ * orchestratorPrompts.ts
  *
- * Pure prompt-building functions for the orchestrator. No HTTP calls.
+ * Pure prompt-building functions for the orchestrator. Agnostic to API provider.
  * All LLM calls go through LLMProvider implementations in src/services/llm/.
  *
  * Each buildXxxPrompt function returns { system, userContent } ready to pass to
@@ -31,15 +31,16 @@ export interface RawPlanTask {
 // ── System prompts ────────────────────────────────────────────────────────────
 
 export const RELAY_SYSTEM_PROMPT = `You are a message relay for a multi-agent coding workflow.
-Your only job is to reformat completed task output into a clear brief for the next agent.
+Your only job is to reformat completed task output into a factual, concise brief for the next agent.
 
 Rules you must follow:
-1. Extract only meaningful results. Ignore shell prompts, file listings, build output, and status messages.
-2. Keep your output under 200 words.
-3. Do NOT add implementation suggestions or technical opinions.
-4. Do NOT explain what you are doing — just write the brief.
-5. Write in direct, imperative style addressed to the next agent.
-6. Preserve specific identifiers: function names, file paths, API contracts, variable names.`;
+1. Extract only meaningful factual results. Ignore shell prompts, file listings, build output, and status messages.
+2. Keep your output under 150 words. Be concise and direct.
+3. Do NOT add implementation suggestions, architectural advice, or technical opinions.
+4. Do NOT invent code requirements or software development tasks if the completed work or next task is simple/conversational (like answering a greeting, running a shell command, or reporting status).
+5. Do NOT explain what you are doing — just write the brief.
+6. Write in direct, imperative style addressed to the next agent without exaggerating the scope of the task.
+7. Preserve specific identifiers: function names, file paths, API contracts, variable names when present.`;
 
 export const PLAN_GEN_SYSTEM_PROMPT = `You are a task planner for a multi-agent terminal orchestration system.
 Given a user request and a list of available terminal agents, extract the core technical goal and break it into a minimal set of concrete tasks.
@@ -87,6 +88,10 @@ export function buildRelayPrompt(
   nextTaskDescription: string,
   nextAgentName: string,
 ): { system: string; userContent: string } {
+  const needsNote = !completedTask.output.needs || completedTask.output.needs.toLowerCase() === 'none'
+    ? 'No specific technical prerequisites were requested by the previous agent.'
+    : completedTask.output.needs;
+
   return {
     system: RELAY_SYSTEM_PROMPT,
     userContent: `Overall goal: ${goal}
@@ -96,13 +101,13 @@ Task: ${completedTask.taskTitle}
 Done by: ${completedTask.agentName}
 Summary: ${completedTask.output.summary}
 Files modified: ${completedTask.output.filesModified.join(', ') || 'none'}
-What is needed next: ${completedTask.output.needs}
+What is needed next: ${needsNote}
 
 NEXT TASK:
 Task: ${nextTaskDescription}
 Next agent: ${nextAgentName}
 
-Write a clear, direct brief for the next agent that gives them everything they need:`,
+Write a clear, direct brief for the next agent that gives them what they need without inventing complex code implementation requirements:`,
   };
 }
 
@@ -112,13 +117,18 @@ export function buildMergeRelayPrompt(
   nextTaskDescription: string,
   nextAgentName: string,
 ): { system: string; userContent: string } {
-  const blocks = completedTasks.map((t, i) => `
+  const blocks = completedTasks.map((t, i) => {
+    const needsNote = !t.output.needs || t.output.needs.toLowerCase() === 'none'
+      ? 'No specific technical prerequisites requested.'
+      : t.output.needs;
+    return `
 --- Completed Work ${i + 1} ---
 Task: ${t.taskTitle}
 Done by: ${t.agentName}
 Summary: ${t.output.summary}
 Files modified: ${t.output.filesModified.join(', ') || 'none'}
-What is needed next: ${t.output.needs}`).join('\n');
+What is needed next: ${needsNote}`;
+  }).join('\n');
 
   return {
     system: RELAY_SYSTEM_PROMPT,
@@ -131,7 +141,7 @@ NEXT TASK:
 Task: ${nextTaskDescription}
 Next agent: ${nextAgentName}
 
-Synthesize all completed work into a single unified brief for the next agent:`,
+Synthesize all completed work into a single unified brief for the next agent without inventing complex code implementation requirements:`,
   };
 }
 
