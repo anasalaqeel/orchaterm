@@ -268,6 +268,10 @@ export class OrchestratorEngine {
       );
       if (sessionBusy) continue;
 
+      // Mark running immediately so concurrent loop iterations or async dispatches see sessionBusy or status !== 'pending'
+      this.updateTask(task.id, { status: 'running', startedAt: Date.now() });
+      this.emitState();
+
       // Fire and forget — async dispatch runs independently
       this.dispatch(task);
     }
@@ -345,21 +349,7 @@ PROJECT: ${this.plan.goal}
 YOUR TASK:
 ${task.description}${buildAgentProtocol(task.id)}`;
 
-    // Inject into the terminal — '\n' is mandatory to execute
-    try {
-      await writePtyChunked(task.assignedSessionId, prompt + '\r');
-    } catch (err: unknown) {
-      this.log('error', `Failed to inject task "${task.title}" into session: ${err}`, task.id, task.assignedSessionId);
-      this.updateTask(task.id, { status: 'failed' });
-      this.emitState();
-      this.checkPlanCompletion();
-      return;
-    }
-
-    this.updateTask(task.id, { status: 'running', startedAt: Date.now() });
-    this.log('dispatch', `Task "${task.title}" dispatched`, task.id, task.assignedSessionId);
-    this.emitState();
-
+    // Start watching for sentinel before writing prompt so PTY echo is cleanly suppressed
     await bufferWatcher.watchForSentinel(
       task.assignedSessionId,
       (output) => {
@@ -397,8 +387,23 @@ ${task.description}${buildAgentProtocol(task.id)}`;
           task.id,
           task.assignedSessionId
         );
-      }
+      },
+      800 // 800ms echo suppression window
     );
+
+    // Inject into the terminal — '\n' is mandatory to execute
+    try {
+      await writePtyChunked(task.assignedSessionId, prompt + '\r');
+    } catch (err: unknown) {
+      this.log('error', `Failed to inject task "${task.title}" into session: ${err}`, task.id, task.assignedSessionId);
+      this.updateTask(task.id, { status: 'failed' });
+      this.emitState();
+      this.checkPlanCompletion();
+      return;
+    }
+
+    this.log('dispatch', `Task "${task.title}" dispatched`, task.id, task.assignedSessionId);
+    this.emitState();
 
     // Start timeout timer (0 = disabled)
     if (this.config.taskTimeoutMinutes > 0) {
