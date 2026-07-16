@@ -19,7 +19,7 @@ import { css, cx } from '@emotion/css';
 import {
   Send, Bot, User, WifiOff, RefreshCw, Users,
   ChevronDown, BookmarkPlus, Download, X as XIcon, SlidersHorizontal, Check,
-  MessageSquare, Network, Copy, Square, Sparkles,
+  MessageSquare, Network, Copy, Square, Sparkles, Edit2,
 } from 'lucide-react';
 import { Select } from './Select';
 import { Input } from './Input';
@@ -282,6 +282,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   const [buildTasks,     setBuildTasks]     = useState<OrchestratorTask[]>([]);
   const [draggedIndex,   setDraggedIndex]   = useState<number | null>(null);
   const [dragOver,       setDragOver]       = useState<{ index: number; position: 'top' | 'bottom' } | null>(null);
+  const [editingTaskId,  setEditingTaskId]  = useState<string | null>(null);
+  const [editTitle,      setEditTitle]      = useState('');
+  const [editSessionId,  setEditSessionId]  = useState('');
 
 
 
@@ -518,11 +521,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     return () => { unsubLog(); unsubState(); };
   }, []);
 
-  // Auto-dismiss livePlan 8s after it reaches a terminal state
+  // Keep livePlan visible indefinitely once reached a terminal state until explicitly dismissed
   useEffect(() => {
-    if (!livePlan || livePlan.status === 'running' || livePlan.status === 'paused') return;
-    const timer = setTimeout(() => setLivePlan(null), 8000);
-    return () => clearTimeout(timer);
+    // No-op: do not auto-dismiss completed or stopped plans
   }, [livePlan]);
 
   // ── Plan: confirm and start ───────────────────────────────────────────────
@@ -607,6 +608,33 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     });
   }, []);
 
+  const startEditingTask = useCallback((task: OrchestratorTask) => {
+    setEditingTaskId(task.id);
+    setEditTitle(task.title);
+    setEditSessionId(task.assignedSessionId);
+  }, []);
+
+  const saveEditingTask = useCallback(() => {
+    if (!editingTaskId || !editTitle.trim() || !editSessionId) return;
+    const session = groupSessions.find(s => s.id === editSessionId);
+    if (!session) return;
+    setBuildTasks(prev => prev.map(t => {
+      if (t.id !== editingTaskId) return t;
+      return {
+        ...t,
+        title: editTitle.trim(),
+        description: editTitle.trim(),
+        assignedSessionId: session.id,
+        assignedSessionTitle: session.title,
+      };
+    }));
+    setEditingTaskId(null);
+  }, [editingTaskId, editTitle, editSessionId, groupSessions]);
+
+  const cancelEditingTask = useCallback(() => {
+    setEditingTaskId(null);
+  }, []);
+
   const handleDropBuildTask = useCallback((targetIndex: number, position: 'top' | 'bottom') => {
     if (draggedIndex === null) return;
     const insertAt = position === 'top' ? targetIndex : targetIndex + 1;
@@ -662,7 +690,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
     orchestratorEngine.start(plan);
     addPlan(plan);
-    setBuildTasks([]);
 
     setMessages(prev => [...prev, {
       id: crypto.randomUUID(), role: 'system',
@@ -1244,7 +1271,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             {(livePlan.status === 'done' || livePlan.status === 'failed' || livePlan.status === 'stopped') && (
               <button
                 title="Dismiss"
-                onClick={() => setLivePlan(null)}
+                onClick={() => { setLivePlan(null); orchestratorEngine.clearPlan(); }}
                 className={css`background:none;border:none;color:var(--text-secondary);
                   padding:1px 4px;font-size:12px;cursor:pointer;line-height:1;
                   &:hover{color:var(--text-primary);}`}
@@ -1335,61 +1362,129 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
           {/* Task list */}
           {buildTasks.length > 0 && (
             <div className={s.pipelineTaskList}>
-              {buildTasks.map((task, i) => (
-                <div
-                  key={task.id}
-                  className={cx(
-                    s.pipelineTaskItem,
-                    draggedIndex === i && s.pipelineTaskItemDragging,
-                    dragOver?.index === i && dragOver.position === 'top' && s.pipelineTaskItemDragTop,
-                    dragOver?.index === i && dragOver.position === 'bottom' && s.pipelineTaskItemDragBottom,
-                  )}
-                  draggable
-                  onDragStart={(e) => {
-                    setDraggedIndex(i);
-                    e.dataTransfer.effectAllowed = 'move';
-                  }}
-                  onDragEnd={() => {
-                    setDraggedIndex(null);
-                    setDragOver(null);
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                    if (draggedIndex === null) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const midY = rect.top + rect.height / 2;
-                    const pos = e.clientY < midY ? 'top' : 'bottom';
-                    if (dragOver?.index !== i || dragOver?.position !== pos) {
-                      setDragOver({ index: i, position: pos });
-                    }
-                  }}
-                  onDragLeave={(e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                      if (dragOver?.index === i) {
-                        setDragOver(null);
+              {buildTasks.map((task, i) => {
+                const isEditing = editingTaskId === task.id;
+                return (
+                  <div
+                    key={task.id}
+                    className={cx(
+                      s.pipelineTaskItem,
+                      draggedIndex === i && s.pipelineTaskItemDragging,
+                      dragOver?.index === i && dragOver.position === 'top' && s.pipelineTaskItemDragTop,
+                      dragOver?.index === i && dragOver.position === 'bottom' && s.pipelineTaskItemDragBottom,
+                    )}
+                    draggable={!isEditing}
+                    onDragStart={(e) => {
+                      if (isEditing) { e.preventDefault(); return; }
+                      setDraggedIndex(i);
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragEnd={() => {
+                      setDraggedIndex(null);
+                      setDragOver(null);
+                    }}
+                    onDragOver={(e) => {
+                      if (isEditing) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (draggedIndex === null) return;
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const midY = rect.top + rect.height / 2;
+                      const pos = e.clientY < midY ? 'top' : 'bottom';
+                      if (dragOver?.index !== i || dragOver?.position !== pos) {
+                        setDragOver({ index: i, position: pos });
                       }
-                    }
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const pos = dragOver?.index === i ? dragOver.position : 'top';
-                    handleDropBuildTask(i, pos);
-                  }}
-                >
-                  <span className={s.pipelineTaskGrip} title="Drag to reorder">⋮⋮</span>
-                  <span className={s.pipelineTaskNum}>{i + 1}</span>
-                  <span className={s.pipelineTaskTitle}>{task.title}</span>
-                  <span className={s.pipelineTaskAgent}>{task.assignedSessionTitle}</span>
-                  <button
-                    className={s.pipelineTaskRemove}
-                    onClick={() => handleRemoveBuildTask(task.id)}
-                    title="Remove task"
+                    }}
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        if (dragOver?.index === i) {
+                          setDragOver(null);
+                        }
+                      }
+                    }}
+                    onDrop={(e) => {
+                      if (isEditing) return;
+                      e.preventDefault();
+                      const pos = dragOver?.index === i ? dragOver.position : 'top';
+                      handleDropBuildTask(i, pos);
+                    }}
                   >
-                    <XIcon size={10} />
-                  </button>
-                </div>
-              ))}
+                    <span className={s.pipelineTaskGrip} title="Drag to reorder">⋮⋮</span>
+                    <span className={s.pipelineTaskNum}>{i + 1}.</span>
+                    {isEditing ? (
+                      <div className={css`display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;`}>
+                        <Input
+                          type="text"
+                          className={s.pipelineTitleInput}
+                          value={editTitle}
+                          onChange={e => setEditTitle(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') saveEditingTask();
+                            if (e.key === 'Escape') cancelEditingTask();
+                          }}
+                          autoFocus
+                        />
+                        <div className={css`width: 130px; flex-shrink: 0;`}>
+                          <Select
+                            compact
+                            value={editSessionId}
+                            onChange={setEditSessionId}
+                            options={[
+                              ...groupSessions.map(sess => ({ value: sess.id, name: sess.title })),
+                            ]}
+                          />
+                        </div>
+                        <button
+                          className={s.pipelineTaskEditSave}
+                          onClick={saveEditingTask}
+                          disabled={!editTitle.trim() || !editSessionId}
+                          title="Save step (Enter)"
+                        >
+                          <Check size={11} />
+                        </button>
+                        <button
+                          className={s.pipelineTaskRemove}
+                          onClick={cancelEditingTask}
+                          title="Cancel (Esc)"
+                        >
+                          <XIcon size={11} />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span
+                          className={s.pipelineTaskTitle}
+                          onDoubleClick={() => startEditingTask(task)}
+                          title="Double-click to edit step"
+                        >
+                          {task.title}
+                        </span>
+                        <span
+                          className={s.pipelineTaskAgent}
+                          onDoubleClick={() => startEditingTask(task)}
+                          title="Double-click to edit step"
+                        >
+                          → {task.assignedSessionTitle}
+                        </span>
+                        <button
+                          className={s.pipelineTaskEditBtn}
+                          onClick={() => startEditingTask(task)}
+                          title="Edit step (or double-click)"
+                        >
+                          <Edit2 size={11} />
+                        </button>
+                        <button
+                          className={s.pipelineTaskRemove}
+                          onClick={() => handleRemoveBuildTask(task.id)}
+                          title="Remove step"
+                        >
+                          <XIcon size={11} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -1413,7 +1508,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
                 value={buildSessionId}
                 onChange={setBuildSessionId}
                 options={[
-                  { value: '', name: 'Agent…' },
+                  { value: '', name: 'Select tab…', disabled: true },
                   ...groupSessions.map(sess => ({ value: sess.id, name: sess.title })),
                 ]}
               />
@@ -1422,26 +1517,25 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
               className={s.pipelineAddBtn}
               onClick={handleAddBuildTask}
               disabled={!buildTitle.trim() || !buildSessionId}
-              title="Add task (Enter)"
+              title="Add step to pipeline (Enter)"
             >
-              +
+              + Add Step
             </button>
           </div>
 
-          {/* Run / Clear */}
-          <div className={s.pipelineActions}>
-            <button
-              className={s.pipelineRunBtn}
-              onClick={handleRunBuildPlan}
-              disabled={buildTasks.length === 0}
-              title={`Run ${buildTasks.length} task${buildTasks.length !== 1 ? 's' : ''}`}
-            >
-              ▶ Run Pipeline
-            </button>
-            {buildTasks.length > 0 && (
+          {/* Run / Clear — only displayed after at least one step is added */}
+          {buildTasks.length > 0 && (
+            <div className={s.pipelineActions}>
+              <button
+                className={s.pipelineRunBtn}
+                onClick={handleRunBuildPlan}
+                title={`Execute ${buildTasks.length} pipeline step${buildTasks.length !== 1 ? 's' : ''}`}
+              >
+                ▶ Execute Pipeline ({buildTasks.length} {buildTasks.length === 1 ? 'step' : 'steps'})
+              </button>
               <button className={s.pipelineClearBtn} onClick={handleClearBuild}>Clear</button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1737,6 +1831,23 @@ const s = {
     transition: color 0.12s, background 0.12s;
     &:hover { color: var(--color-error); background: rgba(var(--color-error-rgb), 0.12); }
   `,
+  pipelineTaskEditBtn: css`
+    display: flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 3px;
+    background: transparent; border: none;
+    color: var(--text-tertiary); cursor: pointer; flex-shrink: 0;
+    transition: color 0.12s, background 0.12s;
+    &:hover { color: var(--color-brand); background: rgba(123, 104, 238, 0.12); }
+  `,
+  pipelineTaskEditSave: css`
+    display: flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 4px;
+    background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3);
+    color: var(--color-success); cursor: pointer; flex-shrink: 0;
+    transition: all 0.12s;
+    &:hover:not(:disabled) { background: var(--color-success); color: #fff; }
+    &:disabled { opacity: 0.35; cursor: default; }
+  `,
   pipelineEmpty: css`
     font-size: 11px; color: var(--text-tertiary);
     text-align: center; padding: 4px 0; font-style: italic;
@@ -1760,19 +1871,23 @@ const s = {
     &::placeholder { color: var(--text-tertiary); }
   `,
   pipelineAddBtn: css`
-    width: 28px; height: 28px; flex-shrink: 0;
+    height: 28px; flex-shrink: 0;
+    padding: 0 10px;
     display: flex; align-items: center; justify-content: center;
     border-radius: 6px;
     background: var(--bg-input);
     border: 1px solid var(--border-color-hover);
-    color: var(--text-secondary); font-size: 16px; font-weight: 400;
+    color: var(--text-secondary); font-size: 11px; font-weight: 600;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
-    &:hover { background: var(--color-brand); border-color: var(--color-brand); color: #fff; }
+    &:hover:not(:disabled) { background: var(--color-brand); border-color: var(--color-brand); color: #fff; }
     &:disabled { opacity: 0.35; cursor: default; }
   `,
   pipelineActions: css`
     display: flex; align-items: center; gap: 7px;
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border-color);
   `,
   pipelineRunBtn: css`
     flex: 1;

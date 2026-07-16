@@ -148,19 +148,29 @@ export class OrchestratorEngine {
       clearTimeout(timer);
       this.taskTimers.delete(taskId);
     }
-    // Send Ctrl+C to all running task sessions so agents stop, then unwatch.
-    // Using unwatch() (not clearBuffer()) ensures the listeners are torn down
-    // and don't accumulate if the engine is stopped and restarted.
+    // Send two Ctrl+C interrupts with a brief delay so stuck/streaming agents stop reliably
     for (const task of this.plan.tasks) {
       if (task.status === 'running') {
-        writePtyChunked(task.assignedSessionId, '\x03').catch(() => {});
+        writePtyChunked(task.assignedSessionId, '\x03')
+          .then(() => new Promise(r => setTimeout(r, 100)))
+          .then(() => writePtyChunked(task.assignedSessionId, '\x03\r'))
+          .catch(() => {});
         bufferWatcher.unwatch(task.assignedSessionId);
+        task.status = 'failed';
       }
     }
     this.mutatePlan({ status: 'stopped' });
     this.log('info', 'Orchestration stopped by user');
     this.emitState();
+  }
+
+  clearPlan(): void {
+    if (!this.plan) return;
+    if (this.plan.status === 'running' || this.plan.status === 'paused') {
+      this.stop();
+    }
     this.plan = null;
+    this.emitState();
   }
 
   /** Returns a read-only snapshot of the current plan, or null. */
