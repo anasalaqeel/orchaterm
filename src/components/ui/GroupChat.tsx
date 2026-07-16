@@ -19,9 +19,8 @@ import { css, cx } from '@emotion/css';
 import {
   Send, Bot, User, WifiOff, RefreshCw, Users,
   ChevronDown, BookmarkPlus, Download, X as XIcon, SlidersHorizontal, Check,
-  MessageSquare, Network, Info, Copy, Square, Sparkles,
+  MessageSquare, Network, Copy, Square, Sparkles,
 } from 'lucide-react';
-import { WorkspacePanel } from './WorkspacePanel';
 import { Select } from './Select';
 import { Input } from './Input';
 import { useDashboard } from '../../context/DashboardContext';
@@ -282,8 +281,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   const [buildSessionId, setBuildSessionId] = useState('');
   const [buildTasks,     setBuildTasks]     = useState<OrchestratorTask[]>([]);
 
-  // ── Workspace info panel ──────────────────────────────────────────────────
-  const [showWorkspaceInfo, setShowWorkspaceInfo] = useState(false);
+
 
   // ── Features popover ─────────────────────────────────────────────────────
   const [featuresOpen,   setFeaturesOpen]   = useState(false);
@@ -534,7 +532,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
       setMessages(prev => [...prev, {
         id: crypto.randomUUID(), role: 'system',
-        content: '⚠ A plan is already running. Stop it first via the Conductor.',
+        content: '⚠ A plan is already running. Stop it first via the Orchestrator.',
       }]);
       return;
     }
@@ -605,7 +603,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
       setMessages(prev => [...prev, {
         id: crypto.randomUUID(), role: 'system',
-        content: '⚠ A plan is already running. Stop it first via the Conductor.',
+        content: '⚠ A plan is already running. Stop it first via the Orchestrator.',
       }]);
       return;
     }
@@ -874,20 +872,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  // Workspace info overlay — shows WorkspacePanel when user clicks ℹ
-  if (showWorkspaceInfo && workspace) {
-    return (
-      <div className={s.root}>
-        <div className={s.infoPanelHeader}>
-          <span className={s.infoPanelTitle}>Workspace Info</span>
-          <button className={s.infoPanelClose} onClick={() => setShowWorkspaceInfo(false)} title="Back to chat">
-            <XIcon size={12} />
-          </button>
-        </div>
-        <WorkspacePanel workspace={workspace} />
-      </div>
-    );
-  }
+
 
   return (
     <div className={s.root}>
@@ -956,16 +941,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
           >
             <RefreshCw size={11} className={cx(checking && s.spin)} />
           </button>
-          {/* Workspace info */}
-          {workspace && (
-            <button
-              className={s.headerIconBtn}
-              onClick={() => setShowWorkspaceInfo(true)}
-              title="Workspace info"
-            >
-              <Info size={12} />
-            </button>
-          )}
+
         </div>
       </div>
 
@@ -1542,25 +1518,7 @@ const s = {
     background: var(--bg-canvas); overflow: hidden; position: relative;
   `,
 
-  /* ── Workspace info overlay ── */
-  infoPanelHeader: css`
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    flex-shrink: 0;
-  `,
-  infoPanelTitle: css`
-    font-size: 12px; font-weight: 700; color: var(--text-primary);
-  `,
-  infoPanelClose: css`
-    display: flex; align-items: center; justify-content: center;
-    width: 24px; height: 24px; border-radius: 6px;
-    background: transparent; border: none;
-    color: var(--text-tertiary); cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-    &:hover { background: var(--bg-hover); color: var(--text-primary); }
-  `,
+
 
   /* ── Input mode bar ── */
   inputModeBar: css`

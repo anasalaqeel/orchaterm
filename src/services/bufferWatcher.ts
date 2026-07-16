@@ -91,6 +91,7 @@ interface WatchEntry {
   summaryDebounceTimer?: ReturnType<typeof setTimeout>;
   /** Buffer length at the last debounce fire — we only send the new delta. */
   summaryLastLength?: number;
+  hasNewOutputSinceIdle?: boolean;
 
   // Scan throttling — a chatty command can emit many chunks within a few ms;
   // these bound how often the (ANSI-strip + marker search) scans re-run. Each
@@ -172,6 +173,7 @@ class BufferWatcher {
       }
     }
     entry.buffer.lastActivity = Date.now();
+    entry.hasNewOutputSinceIdle = true;
 
     // NEEDS detection runs regardless of mode — agents can request help at any time
     if (entry.onNeedsRequest) {
@@ -219,15 +221,13 @@ class BufferWatcher {
   private checkIdleShell(entry: WatchEntry): void {
     if (!entry.onIdleShell) return;
     if (entry.buffer.mode === 'sentinel' || entry.buffer.mode === 'plan') return;
-
-    const now = Date.now();
-    const lastFired = entry._lastIdleShellAt ?? 0;
-    if (now - lastFired < 10_000) return; // 10 s cooldown per session
+    if (!entry.hasNewOutputSinceIdle) return;
 
     const tail = stripAnsiCodes(entry.buffer.buffer.slice(-600));
     if (!SHELL_PROMPT_REGEX.test(tail)) return;
 
-    entry._lastIdleShellAt = now;
+    entry._lastIdleShellAt = Date.now();
+    entry.hasNewOutputSinceIdle = false;
     entry.onIdleShell();
   }
 
@@ -494,6 +494,7 @@ class BufferWatcher {
     const entry = await this.ensureListening(sessionId);
     entry.onIdleShell = onIdle;
     entry._lastIdleShellAt = undefined; // reset cooldown on (re-)subscribe
+    entry.hasNewOutputSinceIdle = false; // do not fire immediately on subscription if no new data was output
     return () => {
       if (entry.onIdleShell === onIdle) {
         entry.onIdleShell = undefined;
@@ -542,6 +543,7 @@ class BufferWatcher {
     entry.onPlan = undefined;
     entry.onPlanError = undefined;
     entry.ignoreUntil = undefined;
+    entry.hasNewOutputSinceIdle = false;
     if (entry.sentinelScanTimer) clearTimeout(entry.sentinelScanTimer);
     if (entry.planScanTimer) clearTimeout(entry.planScanTimer);
     entry.sentinelScanTimer = undefined;
