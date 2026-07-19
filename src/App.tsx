@@ -4,6 +4,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { DashboardProvider } from './context/DashboardContext';
 import { AppRoutes } from './routes/AppRoutes';
 import { registerShortcut } from './services/keyboardManager';
+import { isTauri } from './services/storage';
 
 const ZOOM_STEP = 0.1;
 const ZOOM_MIN  = 0.5;
@@ -20,6 +21,12 @@ export default function App() {
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    // Window-zoom control is a native Tauri webview feature — running the app
+    // outside the Tauri shell (e.g. `vite dev`/`vite preview` in a browser)
+    // has no window to zoom, and getCurrentWebviewWindow() throws immediately
+    // in that context, which would otherwise blank the entire app at boot.
+    if (!isTauri()) return;
+
     const win = getCurrentWebviewWindow();
 
     // Restore persisted zoom on launch.

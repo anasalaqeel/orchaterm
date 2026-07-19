@@ -1178,13 +1178,9 @@ const s = {
     &:hover { color: var(--text-secondary); border-color: var(--border-color); }
   `,
   inputModeIconBtnActive: css`
-    color: var(--color-brand) !important;
-    background: rgba(var(--color-brand-rgb), 0.12) !important;
-    border-color: rgba(var(--color-brand-rgb), 0.3) !important;
-  `,
-  featuresPopoverUp: css`
-    top: auto !important;
-    bottom: calc(100% + 6px) !important;
+    color: var(--color-brand);
+    background: rgba(var(--color-brand-rgb), 0.12);
+    border-color: rgba(var(--color-brand-rgb), 0.3);
   `,
 
   header: css`
@@ -1401,10 +1397,10 @@ const s = {
     &:disabled { opacity: 0.35; cursor: not-allowed; }
   `,
   stopBtn: css`
-    background: transparent !important;
-    border: 1px solid var(--color-error) !important;
-    color: var(--color-error) !important;
-    &:hover { background: rgba(var(--color-error-rgb), 0.12) !important; filter: none; }
+    background: transparent;
+    border: 1px solid var(--color-error);
+    color: var(--color-error);
+    &:hover { background: rgba(var(--color-error-rgb), 0.12); filter: none; }
   `,
 
   // ── Conductor event row ──────────────────────────────────────────────────
@@ -1438,6 +1434,12 @@ const s = {
     box-shadow: var(--shadow-lg);
     overflow: hidden; z-index: 50;
   `,
+  /* Declared after featuresPopover so its top/bottom override wins the
+   * cascade naturally (equal specificity, later insertion) — no !important. */
+  featuresPopoverUp: css`
+    top: auto;
+    bottom: calc(100% + 6px);
+  `,
   featureSection: css`
     padding: 10px 0 6px;
     & + & { border-top: 1px solid var(--border-color); }
@@ -1454,8 +1456,8 @@ const s = {
     transition: background 120ms ease;
     &:hover { background: var(--bg-hover); }
   `,
-  featureOptionActiveGreen: css`background: rgba(var(--color-success-rgb), 0.08) !important;`,
-  featureOptionActiveYellow: css`background: rgba(var(--color-warning-rgb), 0.08) !important;`,
+  featureOptionActiveGreen: css`background: rgba(var(--color-success-rgb), 0.08);`,
+  featureOptionActiveYellow: css`background: rgba(var(--color-warning-rgb), 0.08);`,
   featureOptionCheck: css`
     width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; margin-top: 1px;
     border: 1px solid var(--border-color-hover); background: var(--bg-input);

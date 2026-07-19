@@ -371,8 +371,8 @@ const s = {
     &:hover { color: var(--text-secondary); }
   `,
   tabActive: css`
-    background: var(--color-brand) !important;
-    color: #fff !important;
+    background: var(--color-brand);
+    color: #fff;
     box-shadow: 0 2px 6px rgba(var(--color-brand-rgb), 0.3);
     &:hover { color: #fff; }
   `,
