@@ -12,9 +12,12 @@ import {
   Plus, Edit2, Trash2, Search, X, ListOrdered, Zap, Tag, Play, Workflow,
 } from 'lucide-react';
 import { useDashboard } from '../context/DashboardContext';
-import { ConfirmDialog, Input } from '../components/ui';
+import { ConfirmDialog, Input, Select } from '../components/ui';
 import { orchestratorEngine } from '../services/orchestratorEngine';
-import type { OrchestratorPlan, PipelineTemplate, PipelineTemplateTask } from '../types';
+import type {
+  OrchestratorPlan, PipelineTemplate, PipelineTemplateTask,
+  Workspace, Space, TerminalSession,
+} from '../types';
 
 export const PipelineTemplatesView: React.FC = () => {
   const navigate = useNavigate();
@@ -443,7 +446,7 @@ const TemplateEditor: React.FC<{
                       .split(',').map(v => parseInt(v.trim(), 10) - 1).filter(v => !isNaN(v) && v >= 0 && v < tasks.length),
                   })}
                   placeholder="deps"
-                  className={styles.depsInput}
+                  className={cx(styles.input, styles.depsInput)}
                 />
                 <button type="button" onClick={() => moveTask(i, -1)} disabled={i === 0} className={styles.moveBtn} title="Move up">↑</button>
                 <button type="button" onClick={() => moveTask(i, 1)} disabled={i === tasks.length - 1} className={styles.moveBtn} title="Move down">↓</button>
@@ -476,9 +479,9 @@ const TemplateEditor: React.FC<{
 
 const RunTemplateModal: React.FC<{
   template: PipelineTemplate;
-  workspaces: { id: string; name: string }[];
-  spaces: { id: string; name: string; workspaceId: string; sessionIds: string[] }[];
-  terminalSessions: { id: string; title: string; color: string | null; workspaceId: string }[];
+  workspaces: Workspace[];
+  spaces: Space[];
+  terminalSessions: TerminalSession[];
   onCancel: () => void;
   onRun: (
     template: PipelineTemplate,
@@ -526,32 +529,24 @@ const RunTemplateModal: React.FC<{
         </div>
         <div className={styles.modalBody}>
           <div className={styles.formGrid2}>
-            <div className={styles.formRow}>
-              <label className={styles.fieldLabel}>Workspace</label>
-              <select
-                className={styles.selectInput}
-                value={workspaceId}
-                onChange={e => {
-                  setWorkspaceId(e.target.value);
-                  setSpaceId(spaces.find(sp => sp.workspaceId === e.target.value)?.id ?? null);
-                }}
-              >
-                {workspaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </select>
-            </div>
-            <div className={styles.formRow}>
-              <label className={styles.fieldLabel}>Space (optional)</label>
-              <select
-                className={styles.selectInput}
-                value={spaceId ?? ''}
-                onChange={e => setSpaceId(e.target.value || null)}
-              >
-                <option value="">— No space —</option>
-                {spaces.filter(sp => sp.workspaceId === workspaceId).map(sp => (
-                  <option key={sp.id} value={sp.id}>{sp.name}</option>
-                ))}
-              </select>
-            </div>
+            <Select
+              label="Workspace"
+              value={workspaceId}
+              onChange={(value) => {
+                setWorkspaceId(value);
+                setSpaceId(spaces.find(sp => sp.workspaceId === value)?.id ?? null);
+              }}
+              options={workspaces.map(w => ({ value: w.id, name: w.name }))}
+            />
+            <Select
+              label="Space (optional)"
+              value={spaceId ?? ''}
+              onChange={(value) => setSpaceId(value || null)}
+              options={[
+                { value: '', name: '— No space —' },
+                ...spaces.filter(sp => sp.workspaceId === workspaceId).map(sp => ({ value: sp.id, name: sp.name })),
+              ]}
+            />
           </div>
 
           {scopeSessions.length === 0 && (
@@ -568,16 +563,17 @@ const RunTemplateModal: React.FC<{
               <div key={task.id} className={styles.editTaskRow}>
                 <span className={styles.taskNum}>{template.tasks.indexOf(task) + 1}</span>
                 <span className={styles.taskTitle}>{task.title}</span>
-                <select
-                  className={cx(styles.selectInput, styles.agentSelect)}
-                  value={assignments[task.id] ?? ''}
-                  onChange={e => setAssignments(prev => ({ ...prev, [task.id]: e.target.value }))}
-                >
-                  <option value="">— Assign —</option>
-                  {scopeSessions.map(s => (
-                    <option key={s.id} value={s.id}>{s.title}</option>
-                  ))}
-                </select>
+                <div className={styles.agentSelect}>
+                  <Select
+                    compact
+                    value={assignments[task.id] ?? ''}
+                    onChange={(value) => setAssignments(prev => ({ ...prev, [task.id]: value }))}
+                    options={[
+                      { value: '', name: '— Assign —', disabled: true },
+                      ...scopeSessions.map(s => ({ value: s.id, name: s.title })),
+                    ]}
+                  />
+                </div>
               </div>
             ))}
           </div>
@@ -702,9 +698,9 @@ const styles = {
     &:hover { color: var(--text-primary); border-color: var(--border-color-hover); }
   `,
   tagChipActive: css`
-    background: rgba(var(--color-brand-rgb), 0.15) !important;
-    border-color: var(--color-brand) !important;
-    color: var(--color-brand) !important;
+    background: rgba(var(--color-brand-rgb), 0.15);
+    border-color: var(--color-brand);
+    color: var(--color-brand);
   `,
   clearTagsBtn: css`
     background: transparent; border: none; cursor: pointer;
@@ -796,7 +792,7 @@ const styles = {
     &:hover { color: var(--text-primary); border-color: var(--border-color-hover); }
   `,
   iconBtnDanger: css`
-    &:hover { color: var(--color-error) !important; border-color: var(--color-error) !important; background: rgba(var(--color-error-rgb), 0.1) !important; }
+    &:hover { color: var(--color-error); border-color: var(--color-error); background: rgba(var(--color-error-rgb), 0.1); }
   `,
 
   taskList: css`
@@ -913,15 +909,6 @@ const styles = {
     &:focus { border-color: var(--color-brand); }
     &::placeholder { color: var(--text-tertiary); }
   `,
-  selectInput: css`
-    background: var(--bg-input); border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
-    padding: 6px 10px;
-    font-size: var(--font-size-sm); color: var(--text-primary);
-    outline: none; cursor: pointer;
-    &:focus { border-color: var(--color-brand); }
-  `,
-
   modeToggle: css`
     display: flex; gap: 2px;
     background: var(--bg-input); border: 1px solid var(--border-color);
@@ -966,9 +953,9 @@ const styles = {
     border: 1px solid var(--border-color);
   `,
   depsInput: css`
-    width: 80px !important; flex: none !important;
+    width: 80px; flex: none;
   `,
-  agentSelect: css`width: auto !important; flex: 1 !important;`,
+  agentSelect: css`flex: 1; min-width: 0;`,
   moveBtn: css`
     background: transparent; border: 1px solid var(--border-color);
     color: var(--text-tertiary); cursor: pointer;

@@ -255,9 +255,9 @@ const s = {
     &:hover { color: var(--text-primary); border-color: var(--border-color-hover); }
   `,
   chipActive: css`
-    background: var(--color-brand) !important;
-    color: #fff !important;
-    border-color: var(--color-brand) !important;
+    background: var(--color-brand);
+    color: #fff;
+    border-color: var(--color-brand);
   `,
   chipCount: css`
     font-size: 9px;
