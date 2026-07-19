@@ -3,6 +3,7 @@ import { AppLayout }    from '../components/layout/AppLayout';
 import { TaskLogView }   from '../pages/TaskLog';
 import { PromptVaultView } from '../pages/PromptVault';
 import { SettingsView }  from '../pages/Settings';
+import { PipelineTemplatesView } from '../pages/PipelineTemplates';
 
 // ── All application routes live here ─────────────────────────────────────────
 // App.tsx stays thin (provider + router only).
@@ -17,6 +18,7 @@ export function AppRoutes() {
 
         <Route path="/logs"      element={<TaskLogView />} />
         <Route path="/prompts"   element={<PromptVaultView />} />
+        <Route path="/pipelines" element={<PipelineTemplatesView />} />
         <Route path="/settings"  element={<SettingsView />} />
       </Route>
     </Routes>

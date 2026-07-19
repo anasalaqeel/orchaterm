@@ -7,3 +7,4 @@ export * from './conductor.types';
 export * from './chat.types';
 export * from './autonomous.types';
 export * from './continuation.types';
+export * from './pipeline.types';

@@ -17,7 +17,7 @@ import { css } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowLeft } from 'lucide-react';
 import { TerminalContainer } from '../terminal/TerminalContainer';
-import { GroupChat } from '../ui/GroupChat';
+import { RightPanel } from './RightPanel';
 import { ConsoleSplit } from './ConsoleSplit';
 import type { Workspace, Space } from '../../types/workspace.types';
 
@@ -85,7 +85,7 @@ export const WorkspaceConsole = memo(function WorkspaceConsole({
             active={active}
           />
         }
-        chat={active && <GroupChat key={panelKey} workspaceId={project.id} />}
+        right={active && <RightPanel key={panelKey} workspaceId={project.id} />}
       />
     </div>
   );
