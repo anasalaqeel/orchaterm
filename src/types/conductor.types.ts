@@ -49,6 +49,10 @@ export interface OrchestratorPlan {
   workspaceId: string;
   /** Scopes this plan to a specific Space. null = not scoped to any space. */
   spaceId: string | null;
+  /** How `tasks[].dependsOn` was derived at run time. Undefined = pre-existing
+   *  persisted plan from before this field was added, or a custom dependency
+   *  graph (e.g. loaded from a template) that isn't purely one or the other. */
+  executionMode?: 'sequential' | 'parallel';
 }
 
 // ── Per-session Buffer (in-memory only) ───────────────────────────────────────

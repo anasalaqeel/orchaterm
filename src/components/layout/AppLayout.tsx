@@ -60,6 +60,9 @@ export function AppLayout() {
     settings,
     helpModalOpen,
     setHelpModalOpen,
+    setActiveWorkspaceId,
+    setActiveSpaceId,
+    setViewMode,
   } = useDashboard();
   const onDashboard  = useMatch('/');
 
@@ -86,6 +89,20 @@ export function AppLayout() {
     });
     return () => removeEsc();
   }, [helpModalOpen, setHelpModalOpen]);
+
+  // Listen for requests to switch the active workspace/space from elsewhere
+  // in the app (e.g. running a template from the Pipelines page).
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const detail = (e as CustomEvent<{ workspaceId: string; spaceId?: string | null }>).detail;
+      if (!detail?.workspaceId) return;
+      setActiveWorkspaceId(detail.workspaceId);
+      setActiveSpaceId(detail.spaceId ?? null);
+      setViewMode('console');
+    };
+    window.addEventListener('orchaterm:open-workspace', onOpen as EventListener);
+    return () => window.removeEventListener('orchaterm:open-workspace', onOpen as EventListener);
+  }, [setActiveWorkspaceId, setActiveSpaceId, setViewMode]);
 
   if (!isLoaded) return <Loader />;
 

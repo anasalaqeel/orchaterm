@@ -53,12 +53,18 @@ JSON format:
   "tasks": [
     {
       "title": "Short task name",
-      "description": "Precise, self-contained instructions for the agent. Be specific and direct.",
+      "description": "Precise, self-contained instructions for the agent — ONLY the actual work to perform. Be specific and direct.",
       "assignedSessionTitle": "<MUST match one of the available agent names exactly>",
       "dependsOn": []
     }
   ]
 }
+
+CRITICAL — description must contain ONLY the work itself, never routing/meta language:
+The description is typed directly into the assigned agent's terminal as its instructions. It must read like a task you'd hand a person, NOT like a sentence about the orchestration system. Routing information (which tab/agent handles this) already lives in "assignedSessionTitle" — never repeat it inside "description".
+  - User says "make agy say hi" → description: "Say hi" (NOT "make the agent in this tab say hi" / NOT "tell agy to say hi").
+  - User says "have agy2 answer agy's greeting" → description: "Reply to the greeting you received." (NOT "make the agent in this tab answer agy").
+  - Strip phrases like "in this tab", "tell X to...", "make the agent...", "have Y do...", "ask Z to..." — these describe orchestration, not the task.
 
 Dependency rules — this is critical:
 - dependsOn: [] means the task starts immediately. Tasks with no dependsOn run IN PARALLEL with each other.
