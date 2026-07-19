@@ -1,10 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
-import { AppData, AppSettings, OrchestratorPlan } from '../types';
+import { AppData, AppSettings, OrchestratorPlan, PipelineTemplate } from '../types';
 
-const FILE_DATA  = 'orchaterm_data.json';
-const FILE_PLANS = 'orchaterm_plans.json';
-const FILE_UI    = 'orchaterm_ui.json';
-const FILE_TERMS = 'orchaterm_terminals.json';
+const FILE_DATA      = 'orchaterm_data.json';
+const FILE_PLANS     = 'orchaterm_plans.json';
+const FILE_PIPELINES = 'orchaterm_pipelines.json';
+const FILE_UI        = 'orchaterm_ui.json';
+const FILE_TERMS     = 'orchaterm_terminals.json';
 
 // ── Tauri detection ────────────────────────────────────────────────────────────
 
@@ -217,5 +218,25 @@ export async function savePlans(plans: OrchestratorPlan[]): Promise<void> {
     await writeFile(FILE_PLANS, JSON.stringify(plans, null, 2));
   } catch (err) {
     console.error('[storage] savePlans failed:', err);
+  }
+}
+
+export async function loadPipelineTemplates(): Promise<PipelineTemplate[]> {
+  try {
+    const raw = await readFile(FILE_PIPELINES);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error('[storage] loadPipelineTemplates failed:', err);
+    return [];
+  }
+}
+
+export async function savePipelineTemplates(templates: PipelineTemplate[]): Promise<void> {
+  try {
+    await writeFile(FILE_PIPELINES, JSON.stringify(templates, null, 2));
+  } catch (err) {
+    console.error('[storage] savePipelineTemplates failed:', err);
   }
 }

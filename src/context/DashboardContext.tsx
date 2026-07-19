@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   Workspace, Space, TaskLog, SavedPrompt, AppData, AppSettings,
-  OrchestratorPlan, TerminalSession,
+  OrchestratorPlan, TerminalSession, PipelineTemplate,
 } from '../types';
 import {
   loadData, saveData, loadPlans, savePlans,
+  loadPipelineTemplates, savePipelineTemplates,
   loadUIState, saveUIState,
 } from '../services/storage';
 import { createProvider, LLMProvider } from '../services/llm';
@@ -108,6 +109,13 @@ export interface DashboardContextType {
   addPlan: (plan: OrchestratorPlan) => Promise<void>;
   updatePlan: (id: string, updates: Partial<OrchestratorPlan>) => Promise<void>;
   deletePlan: (id: string) => Promise<void>;
+
+  // ── Pipeline templates (persisted) ──────────────────────────────────────────
+  pipelineTemplates: PipelineTemplate[];
+  addPipelineTemplate: (template: Omit<PipelineTemplate, 'id' | 'createdAt' | 'usedAt' | 'useCount'>) => Promise<void>;
+  updatePipelineTemplate: (id: string, updates: Partial<PipelineTemplate>) => Promise<void>;
+  deletePipelineTemplate: (id: string) => Promise<void>;
+  incrementTemplateUse: (id: string) => Promise<void>;
 
   // ── Terminal sessions (ephemeral — not persisted, reset each launch) ────────
   terminalSessions: TerminalSession[];
@@ -249,6 +257,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     },
   });
   const [plans, setPlans]                       = useState<OrchestratorPlan[]>([]);
+  const [pipelineTemplates, setPipelineTemplates] = useState<PipelineTemplate[]>([]);
   const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
   const [lastCheckpoint, setLastCheckpoint] = useState<CheckpointSnapshot | null>(null);
   const [pendingInjectionSnapshot, setPendingInjectionSnapshot] = useState<CheckpointSnapshot | null>(null);
@@ -268,10 +277,11 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     const init = async () => {
       try {
-        const [data, ui, savedPlans] = await Promise.all([
+        const [data, ui, savedPlans, savedTemplates] = await Promise.all([
           loadData(),
           loadUIState(),
           loadPlans(),
+          loadPipelineTemplates(),
         ]);
 
         const ws  = data.workspaces || [];
@@ -283,6 +293,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setSavedPrompts(data.savedPrompts || []);
         if (data.settings) setSettings(migrateSettings(data.settings));
         setPlans(savedPlans);
+        setPipelineTemplates(savedTemplates);
 
         // Restore active workspace — validate it still exists
         if (ui.activeWorkspaceId === DEFAULT_TERMINAL_WORKSPACE.id) {
@@ -619,6 +630,43 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     await savePlans(next);
   };
 
+  // ── Pipeline Template CRUD ────────────────────────────────────────────────────
+  const addPipelineTemplate = async (t: Omit<PipelineTemplate, 'id' | 'createdAt' | 'usedAt' | 'useCount'>) => {
+    const next: PipelineTemplate = {
+      ...t,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      usedAt: null,
+      useCount: 0,
+    };
+    const nextList = [next, ...pipelineTemplates];
+    setPipelineTemplates(nextList);
+    await savePipelineTemplates(nextList);
+    showToast(`Template "${t.title}" saved`, 'success');
+  };
+
+  const updatePipelineTemplate = async (id: string, updates: Partial<PipelineTemplate>) => {
+    const next = pipelineTemplates.map(t => t.id === id ? { ...t, ...updates } : t);
+    setPipelineTemplates(next);
+    await savePipelineTemplates(next);
+  };
+
+  const deletePipelineTemplate = async (id: string) => {
+    const next = pipelineTemplates.filter(t => t.id !== id);
+    setPipelineTemplates(next);
+    await savePipelineTemplates(next);
+    showToast('Template removed', 'info');
+  };
+
+  const incrementTemplateUse = async (id: string) => {
+    const next = pipelineTemplates.map(t => t.id === id
+      ? { ...t, useCount: t.useCount + 1, usedAt: new Date().toISOString() }
+      : t,
+    );
+    setPipelineTemplates(next);
+    await savePipelineTemplates(next);
+  };
+
   const addTerminalSession = (session: TerminalSession) => {
     setTerminalSessions(prev =>
       prev.some(s => s.id === session.id)
@@ -761,6 +809,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       settings, updateSettings, exportSettings, importSettings,
       llmProviders,
       plans, addPlan, updatePlan, deletePlan,
+      pipelineTemplates, addPipelineTemplate, updatePipelineTemplate, deletePipelineTemplate, incrementTemplateUse,
       terminalSessions, addTerminalSession, removeTerminalSession, updateTerminalSession,
       lastCheckpoint,
       pendingInjectionSnapshot,

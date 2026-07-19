@@ -9,15 +9,16 @@ import {
   Plus, Trash2, Terminal,
   ChevronLeft, ChevronRight,
   ChevronsLeft, ChevronsRight,
-  HelpCircle,
+  HelpCircle, Workflow,
 } from 'lucide-react';
 import logoDark from '../../assets/logos/icon-large-dark.svg';
 import logoLight from '../../assets/logos/icon-large-light.svg';
 
 const NAV_ITEMS = [
-  { to: '/logs',     label: 'Task Log',     icon: History },
-  { to: '/prompts',  label: 'Prompt Vault', icon: Sparkles },
-  { to: '/settings', label: 'Settings',     icon: Settings },
+  { to: '/logs',      label: 'Task Log',          icon: History },
+  { to: '/prompts',   label: 'Prompt Vault',      icon: Sparkles },
+  { to: '/pipelines', label: 'Pipelines',         icon: Workflow },
+  { to: '/settings',  label: 'Settings',          icon: Settings },
 ] as const;
 
 const W_EXPANDED  = 248;
@@ -32,6 +33,7 @@ export function Sidebar() {
     viewMode, setViewMode,
     setNewWorkspaceModalOpen,
     setHelpModalOpen,
+    pipelineTemplates,
   } = useDashboard();
 
   const navigate    = useNavigate();
@@ -90,6 +92,24 @@ export function Sidebar() {
     setActiveWorkspaceId(id);
     setViewMode('console');
     navigate('/');
+  };
+
+  /**
+   * Open the active workspace's Pipeline tab and ask the RightPanel to load
+   * the given template into the Builder. If no workspace is active, pick the
+   * first one so the console view is meaningful.
+   */
+  const loadTemplateIntoConsole = (templateId: string) => {
+    const targetWs = activeWorkspaceId ?? workspaces[0]?.id;
+    if (!targetWs) return;
+    setActiveWorkspaceId(targetWs);
+    setViewMode('console');
+    navigate('/');
+    // Defer the event so RightPanel (mounted inside the console) is up-to-date
+    // before it tries to handle the event. requestAnimationFrame is enough.
+    requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent('orchaterm:load-template', { detail: { templateId } }));
+    });
   };
 
   const isOverviewActive = !!onDashboard && viewMode === 'grid';
@@ -366,6 +386,69 @@ export function Sidebar() {
             );
           })}
         </div>
+
+        {/* ── Pipeline Templates (quick-load) ── */}
+        {pipelineTemplates.length > 0 && (
+          <>
+            <div className={cx(s.sectionHead, layoutCollapsed && s.sectionHeadCollapsed)}>
+              <AnimatePresence initial={false}>
+                {!collapsed && (
+                  <motion.span
+                    className={s.sectionLabel}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    Templates
+                  </motion.span>
+                )}
+              </AnimatePresence>
+              <NavLink
+                to="/pipelines"
+                className={cx(s.addBtn, layoutCollapsed && s.addBtnCollapsed)}
+                title="Manage templates"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Workflow size={11} />
+              </NavLink>
+            </div>
+            <div className={s.workspaceList}>
+              {pipelineTemplates.slice(0, 6).map(t => (
+                <button
+                  key={t.id}
+                  className={cx(s.wsRow, s.tplRow, layoutCollapsed && s.wsRowCollapsed)}
+                  onClick={() => loadTemplateIntoConsole(t.id)}
+                  title={`Load "${t.title}" into the Pipeline Builder`}
+                >
+                  <span className={cx(s.wsClickArea, layoutCollapsed && s.wsClickAreaCollapsed)}>
+                    <span className={s.wsAvatar} style={{ backgroundColor: 'rgba(123, 104, 238, 0.10)', borderColor: 'rgba(123, 104, 238, 0.30)' }}>
+                      <Workflow size={12} color="var(--color-brand)" style={{ margin: 'auto' }} />
+                    </span>
+                    <AnimatePresence initial={false}>
+                      {!collapsed && (
+                        <motion.span
+                          className={s.wsName}
+                          initial={{ opacity: 0, width: 0 }}
+                          animate={{ opacity: 1, width: 'auto' }}
+                          exit={{ opacity: 0, width: 0 }}
+                          transition={{ duration: 0.15 }}
+                        >
+                          {t.title}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </span>
+                  {!collapsed && (
+                    <span className={s.tplMeta} title={`${t.tasks.length} task${t.tasks.length !== 1 ? 's' : ''} · used ${t.useCount}×`}>
+                      {t.tasks.length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
         {/* ── Navigation ── */}
         <nav className={s.nav}>
@@ -656,7 +739,30 @@ const s = {
     display: flex; align-items: center; justify-content: center;
     transition: background 0.15s, color 0.15s;
     flex-shrink: 0;
+    text-decoration: none;
     &:hover { background: rgba(123, 104, 238, 0.12); color: var(--color-brand); }
+  `,
+  addBtnCollapsed: css`
+    /* no special handling — keeps it clickable when sidebar is collapsed */
+  `,
+  tplRow: css`
+    background: transparent;
+    border: none;
+    width: 100%;
+    text-align: left;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    &:hover { background: var(--bg-hover); }
+  `,
+  tplMeta: css`
+    font-size: 10px; font-weight: 700; color: var(--text-tertiary);
+    padding: 0 6px;
+    background: var(--bg-tertiary);
+    border-radius: 99px;
+    flex-shrink: 0;
+    min-width: 18px; text-align: center;
   `,
 
   /* Workspace list */

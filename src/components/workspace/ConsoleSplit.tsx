@@ -21,13 +21,13 @@ const CHAT_DEFAULT = 360;
 interface ConsoleSplitProps {
   /** Left pane — the terminal. */
   terminal: React.ReactNode;
-  /** Right pane — the chat panel. */
-  chat: React.ReactNode;
+  /** Right pane — the chat + pipeline panel. */
+  right: React.ReactNode;
   /** Whether the console is the visible view; gates the drag handle. */
   active: boolean;
 }
 
-export function ConsoleSplit({ terminal, chat, active }: ConsoleSplitProps) {
+export function ConsoleSplit({ terminal, right, active }: ConsoleSplitProps) {
   const [chatWidth, setChatWidth] = useState<number>(() => {
     const stored = localStorage.getItem('orchaterm:chatWidth');
     if (!stored) return CHAT_DEFAULT;
@@ -118,7 +118,7 @@ export function ConsoleSplit({ terminal, chat, active }: ConsoleSplitProps) {
       >
         {/* Inner wrapper fixed at chatWidth so content doesn't squish during the collapse animation */}
         <div className={s.chatInner} style={{ width: chatWidth, minWidth: chatWidth }}>
-          {chat}
+          {right}
         </div>
       </div>
 

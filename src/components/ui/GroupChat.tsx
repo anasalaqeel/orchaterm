@@ -1,10 +1,16 @@
 /**
  * GroupChat.tsx
  *
- * Streaming Ollama chat panel scoped to the active Space.
+ * Streaming chat panel scoped to the active Space.
  *
- * Features:
- * - Streaming chat with Ollama (stale-closure fix via streamingContentRef)
+ * Pipeline / plan-generation features have moved to the dedicated Pipeline tab.
+ * When the chat classifies the user's message as a plan request, it generates
+ * the plan and hands the result off to the parent via `onPendingPlan(goal, tasks)`.
+ * The parent (RightPanel) flips the right-pane to the Pipeline tab and shows
+ * a pending-plan preview in the Builder.
+ *
+ * Features kept here:
+ * - Streaming chat with the active LLM provider (stale-closure fix via streamingContentRef)
  * - Chat history persisted to localStorage per workspace/space
  * - Live terminal feed: watchForSummary → summariseChunk → agent-summary messages
  * - Terminal injection: parses "INJECT → <title>: <msg>" from Ollama, calls write_pty
@@ -12,6 +18,7 @@
  * - Export transcript as .md
  * - Contextual empty state with suggested prompts
  * - Inline Markdown rendering (code fences, bold, inline code)
+ * - Conductor engine log feed (subscribed via window events from RightPanel)
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -19,10 +26,8 @@ import { css, cx } from '@emotion/css';
 import {
   Send, Bot, User, WifiOff, RefreshCw, Users,
   ChevronDown, BookmarkPlus, Download, X as XIcon, SlidersHorizontal, Check,
-  MessageSquare, Network, Copy, Square, Sparkles, Edit2, ListOrdered, Zap,
+  Copy, Square, Sparkles,
 } from 'lucide-react';
-import { Select } from './Select';
-import { Input } from './Input';
 import { useDashboard } from '../../context/DashboardContext';
 import { writePtyChunked } from '../../utils/ptyUtils';
 import {
@@ -37,13 +42,14 @@ import { bufferWatcher } from '../../services/bufferWatcher';
 import { stripAnsiCodes } from '../../services/sentinelParser';
 import { needsBroker } from '../../services/needsBroker';
 import { autonomousOrchestrator } from '../../services/autonomousOrchestrator';
-import { orchestratorEngine } from '../../services/orchestratorEngine';
-import type { OrchestratorTask, OrchestratorPlan, ConductorLogEntry } from '../../types';
+import type { OrchestratorTask, ConductorLogEntry } from '../../types';
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
 interface GroupChatProps {
   workspaceId: string;
+  /** Called when the chat generates a plan. The parent lifts it into the Pipeline tab. */
+  onPendingPlan?: (goal: string, tasks: OrchestratorTask[]) => void;
 }
 
 // ── Display message ────────────────────────────────────────────────────────────
@@ -64,12 +70,6 @@ interface DisplayMessage {
   taskOutput?: ConductorLogEntry['taskOutput'];
   /** Agent title — present on sentinel conductor messages. */
   agentTitle?: string;
-}
-
-/** Pending plan awaiting user confirmation before starting. */
-interface PendingPlan {
-  goal: string;
-  tasks: OrchestratorTask[];
 }
 
 // ── Storage helpers ────────────────────────────────────────────────────────────
@@ -211,10 +211,10 @@ function getSuggestions(sessionTitles: string[]): string[] {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
+export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan }) => {
   const {
     workspaces, spaces, terminalSessions,
-    activeSpaceId, settings, updateSettings, addSavedPrompt, showToast, addPlan, llmProviders,
+    activeSpaceId, settings, updateSettings, addSavedPrompt, showToast, llmProviders,
   } = useDashboard();
 
   /** Master AI switch — when off, every LLM-triggering feature is disabled. */
@@ -269,25 +269,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   const [input,      setInput]      = useState('');
   const [streaming,  setStreaming]  = useState(false);
 
-  // ── Plan mode state ───────────────────────────────────────────────────────
-  const [pendingPlan,    setPendingPlan]    = useState<PendingPlan | null>(null);
+  // ── Plan generation state (intent + plan-gen) ──────────────────────────────
   const [classifying,    setClassifying]    = useState(false); // intent classification phase
   const [generatingPlan, setGeneratingPlan] = useState(false); // actual plan generation phase
-  const [livePlan,       setLivePlan]       = useState<OrchestratorPlan | null>(null);
-
-  // ── Input mode (chat vs manual pipeline builder) ──────────────────────────
-  const [inputMode,      setInputMode]      = useState<'chat' | 'pipeline'>('chat');
-  const [executionMode,  setExecutionMode]  = useState<'sequential' | 'parallel'>('sequential');
-  const [buildTitle,     setBuildTitle]     = useState('');
-  const [buildSessionId, setBuildSessionId] = useState('');
-  const [buildTasks,     setBuildTasks]     = useState<OrchestratorTask[]>([]);
-  const [draggedIndex,   setDraggedIndex]   = useState<number | null>(null);
-  const [dragOver,       setDragOver]       = useState<{ index: number; position: 'top' | 'bottom' } | null>(null);
-  const [editingTaskId,  setEditingTaskId]  = useState<string | null>(null);
-  const [editTitle,      setEditTitle]      = useState('');
-  const [editSessionId,  setEditSessionId]  = useState('');
-
-
 
   // ── Features popover ─────────────────────────────────────────────────────
   const [featuresOpen,   setFeaturesOpen]   = useState(false);
@@ -497,12 +481,13 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiEnabled, autoModeOn, activeSpaceId, groupSessionIds]);
 
-  // ── Conductor engine log + state → chat feed ────────────────────────────
-  // Engine is a singleton — subscribe once on mount, never re-subscribe.
+  // ── Conductor engine log → chat feed (via window event from RightPanel) ──
+  // The engine subscription itself now lives in RightPanel so both tabs share
+  // the same live plan; RightPanel re-emits log entries for this panel to render.
   useEffect(() => {
-    const unsubLog = orchestratorEngine.onLog((entry) => {
-      // Engine is one global singleton; ignore logs from a plan that belongs to
-      // a different workspace so they don't leak into this panel's feed.
+    const onLog = (e: Event) => {
+      const entry = (e as CustomEvent<ConductorLogEntry>).detail;
+      if (!entry) return;
       if (entry.workspaceId && entry.workspaceId !== workspaceId) return;
       setMessages(prev => [...prev, {
         id:            crypto.randomUUID(),
@@ -512,215 +497,16 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
         taskOutput:    entry.taskOutput,
         agentTitle:    entry.agentTitle,
       }]);
-    });
-    const unsubState = orchestratorEngine.onStateChange((plan) => {
-      setLivePlan({ ...plan });
-    });
-    // Sync initial state in case a plan is already running
-    const existing = orchestratorEngine.getCurrentPlan();
-    if (existing) setLivePlan({ ...existing });
-    return () => { unsubLog(); unsubState(); };
-  }, []);
-
-  // Keep livePlan visible indefinitely once reached a terminal state until explicitly dismissed
-  useEffect(() => {
-    // No-op: do not auto-dismiss completed or stopped plans
-  }, [livePlan]);
-
-  // ── Plan: confirm and start ───────────────────────────────────────────────
-
-  const handleRunPlan = useCallback(() => {
-    if (!aiEnabled || !pendingPlan) return;
-
-    const currentPlan = orchestratorEngine.getCurrentPlan();
-    if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(), role: 'system',
-        content: '⚠ A plan is already running. Stop it first via the Orchestrator.',
-      }]);
-      return;
-    }
-
-    const finalTasks = pendingPlan.tasks.map((t, idx) => ({
-      ...t,
-      dependsOn: executionMode === 'sequential' ? (idx > 0 ? [pendingPlan.tasks[idx - 1].id] : []) : [],
-    }));
-
-    const plan: OrchestratorPlan = {
-      id:          crypto.randomUUID(),
-      goal:        pendingPlan.goal,
-      tasks:       finalTasks,
-      status:      'approved',
-      createdAt:   Date.now(),
-      workspaceId,
-      spaceId:     activeSpaceId ?? null,
     };
-
-    orchestratorEngine.updateConfig({
-      relayProvider:      llmProviders.relay,
-      planGenProvider:    llmProviders.planGen,
-      autoAnswerProvider: llmProviders.autoAnswer,
-      taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
-      interactionMode:    settings.conductorInteractionMode,
-      sessionTitles:      new Map(groupSessions.map(s => [s.id, s.title])),
-    });
-
-    orchestratorEngine.start(plan);
-    addPlan(plan);
-    setPendingPlan(null);
-
-    setMessages(prev => [...prev, {
-      id: crypto.randomUUID(), role: 'system',
-      content: `▶ Plan started (${executionMode} mode) — ${plan.tasks.length} task${plan.tasks.length !== 1 ? 's' : ''} dispatched`,
-    }]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingPlan, executionMode, activeSpaceId, workspaceId, groupSessions, settings, addPlan, llmProviders]);
-
-  const handleDiscardPlan = useCallback(() => {
-    setPendingPlan(null);
-    setMessages(prev => [...prev, {
-      id: crypto.randomUUID(), role: 'system', content: '✕ Plan discarded',
-    }]);
-  }, []);
-
-  // ── Pipeline builder (manual mode) ───────────────────────────────────────
-
-  const handleAddBuildTask = useCallback(() => {
-    if (!buildTitle.trim() || !buildSessionId) return;
-    const session = groupSessions.find(s => s.id === buildSessionId);
-    if (!session) return;
-    setBuildTasks(prev => {
-      const newTask: OrchestratorTask = {
-        id:                   crypto.randomUUID(),
-        title:                buildTitle.trim(),
-        description:          buildTitle.trim(),
-        assignedSessionId:    session.id,
-        assignedSessionTitle: session.title,
-        dependsOn:            prev.length > 0 ? [prev[prev.length - 1].id] : [],
-        status:               'pending' as const,
-      };
-      return [...prev, newTask];
-    });
-    setBuildTitle('');
-  }, [buildTitle, buildSessionId, groupSessions]);
-
-  const handleRemoveBuildTask = useCallback((id: string) => {
-    setBuildTasks(prev => {
-      const filtered = prev.filter(t => t.id !== id);
-      return filtered.map((t, idx) => ({
-        ...t,
-        dependsOn: idx > 0 ? [filtered[idx - 1].id] : [],
-      }));
-    });
-  }, []);
-
-  const startEditingTask = useCallback((task: OrchestratorTask) => {
-    setEditingTaskId(task.id);
-    setEditTitle(task.title);
-    setEditSessionId(task.assignedSessionId);
-  }, []);
-
-  const saveEditingTask = useCallback(() => {
-    if (!editingTaskId || !editTitle.trim() || !editSessionId) return;
-    const session = groupSessions.find(s => s.id === editSessionId);
-    if (!session) return;
-    setBuildTasks(prev => prev.map(t => {
-      if (t.id !== editingTaskId) return t;
-      return {
-        ...t,
-        title: editTitle.trim(),
-        description: editTitle.trim(),
-        assignedSessionId: session.id,
-        assignedSessionTitle: session.title,
-      };
-    }));
-    setEditingTaskId(null);
-  }, [editingTaskId, editTitle, editSessionId, groupSessions]);
-
-  const cancelEditingTask = useCallback(() => {
-    setEditingTaskId(null);
-  }, []);
-
-  const handleDropBuildTask = useCallback((targetIndex: number, position: 'top' | 'bottom') => {
-    if (draggedIndex === null) return;
-    const insertAt = position === 'top' ? targetIndex : targetIndex + 1;
-    const finalIndex = draggedIndex < insertAt ? insertAt - 1 : insertAt;
-    if (finalIndex === draggedIndex) {
-      setDraggedIndex(null);
-      setDragOver(null);
-      return;
-    }
-    setBuildTasks(prev => {
-      const items = [...prev];
-      const [moved] = items.splice(draggedIndex, 1);
-      items.splice(finalIndex, 0, moved);
-      return items.map((t, idx) => ({
-        ...t,
-        dependsOn: idx > 0 ? [items[idx - 1].id] : [],
-      }));
-    });
-    setDraggedIndex(null);
-    setDragOver(null);
-  }, [draggedIndex]);
-
-  const handleRunBuildPlan = useCallback(() => {
-    if (!aiEnabled || buildTasks.length === 0) return;
-
-    const currentPlan = orchestratorEngine.getCurrentPlan();
-    if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(), role: 'system',
-        content: '⚠ A plan is already running. Stop it first via the Orchestrator.',
-      }]);
-      return;
-    }
-
-    const finalTasks = buildTasks.map((t, idx) => ({
-      ...t,
-      dependsOn: executionMode === 'sequential' ? (idx > 0 ? [buildTasks[idx - 1].id] : []) : [],
-    }));
-
-    const plan: OrchestratorPlan = {
-      id:          crypto.randomUUID(),
-      goal:        buildTasks.map(t => t.title).join(' → '),
-      tasks:       finalTasks,
-      status:      'approved',
-      createdAt:   Date.now(),
-      workspaceId,
-      spaceId:     activeSpaceId ?? null,
-    };
-
-    orchestratorEngine.updateConfig({
-      relayProvider:      llmProviders.relay,
-      planGenProvider:    llmProviders.planGen,
-      autoAnswerProvider: llmProviders.autoAnswer,
-      taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
-      interactionMode:    settings.conductorInteractionMode,
-      sessionTitles:      new Map(groupSessions.map(s => [s.id, s.title])),
-    });
-
-    orchestratorEngine.start(plan);
-    addPlan(plan);
-
-    setMessages(prev => [...prev, {
-      id: crypto.randomUUID(), role: 'system',
-      content: `▶ Pipeline started (${executionMode} mode) — ${plan.tasks.length} task${plan.tasks.length !== 1 ? 's' : ''} dispatched`,
-    }]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buildTasks, executionMode, activeSpaceId, workspaceId, groupSessions, settings, addPlan, llmProviders]);
-
-  const handleClearBuild = useCallback(() => {
-    setBuildTasks([]);
-    setBuildTitle('');
-    setBuildSessionId('');
-  }, []);
+    window.addEventListener('orchaterm:conductor-log', onLog as EventListener);
+    return () => window.removeEventListener('orchaterm:conductor-log', onLog as EventListener);
+  }, [workspaceId]);
 
   // ── Send message ──────────────────────────────────────────────────────────
 
   const handleSend = useCallback((overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text || streaming || classifying || generatingPlan) return;
-    if (inputMode !== 'chat') return; // pipeline mode uses handleRunBuildPlan instead
 
     if (!aiEnabled) {
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'system', content: '⚠ AI features are disabled. Enable them in Settings to chat.' }]);
@@ -745,7 +531,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       if (intent === 'plan') {
         setClassifying(false);
         setGeneratingPlan(true);
-        // Plan generation mode
+        // Plan generation mode — hand off to the parent (RightPanel) via onPendingPlan.
         const { system: planSystem, userContent: planContent } = buildPlanGenPrompt(
           text, groupSessions.map(s => ({ title: s.title })),
         );
@@ -780,7 +566,18 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             };
           });
 
-          setPendingPlan({ goal: extractedGoal, tasks });
+          if (onPendingPlan) {
+            onPendingPlan(extractedGoal, tasks);
+            setMessages(prev => [...prev, {
+              id: crypto.randomUUID(), role: 'system',
+              content: `🔀 Plan generated — view it in the Pipeline tab (${tasks.length} task${tasks.length !== 1 ? 's' : ''})`,
+            }]);
+          } else {
+            setMessages(prev => [...prev, {
+              id: crypto.randomUUID(), role: 'system',
+              content: `Plan generated — ${tasks.length} task${tasks.length !== 1 ? 's' : ''}`,
+            }]);
+          }
         }).catch((err: Error) => {
           if (planAbort.signal.aborted) return;
           setMessages(prev => [...prev, {
@@ -874,7 +671,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
       }]);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, streaming, classifying, generatingPlan, inputMode, settings, workspace, activeSpace, groupSessions, apiHistory, workspaceId, llmProviders]);
+  }, [input, streaming, classifying, generatingPlan, settings, workspace, activeSpace, groupSessions, apiHistory, workspaceId, llmProviders, onPendingPlan]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -950,8 +747,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
   const modelMissing = !effectiveChatModel;
 
   // ── Render ────────────────────────────────────────────────────────────────
-
-
 
   return (
     <div className={s.root}>
@@ -1076,29 +871,22 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
             <p className={s.emptyTitle}>
               {activeSpace ? `Orchestrating "${activeSpace.name}"` : 'Workspace AI'}
             </p>
-            {inputMode === 'pipeline' ? (
-              <p className={s.emptyHint}>
-                Add tasks below, assign agents, then hit Run Pipeline.
-              </p>
-            ) : (
-              <>
-                <p className={s.emptyHint}>
-                  Ask anything about your terminals, tasks, or workflow.
-                </p>
-                <div className={s.suggestions}>
-                  {getSuggestions(groupSessions.map(s => s.title)).map(suggestion => (
-                    <button
-                      key={suggestion}
-                      className={s.suggestionBtn}
-                      onClick={() => handleSend(suggestion)}
-                      disabled={modelMissing || providerOnline === false}
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
+            <p className={s.emptyHint}>
+              Ask anything about your terminals, tasks, or workflow.
+              Describe a multi-step goal and the plan will appear in the Pipeline tab.
+            </p>
+            <div className={s.suggestions}>
+              {getSuggestions(groupSessions.map(s => s.title)).map(suggestion => (
+                <button
+                  key={suggestion}
+                  className={s.suggestionBtn}
+                  onClick={() => handleSend(suggestion)}
+                  disabled={modelMissing || providerOnline === false}
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           messages.map(msg => (
@@ -1119,68 +907,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
           </div>
         )}
 
-        {/* Pending plan preview — confirm before running */}
-        {pendingPlan && !generatingPlan && (
-          <div className={s.planPreview}>
-            <div className={s.planPreviewHeader}>
-              <SlidersHorizontal size={12} />
-              <span>Proposed Pipeline</span>
-            </div>
-            <div className={s.planTaskList}>
-              {pendingPlan.tasks.map((task, i) => {
-                const depNames = executionMode === 'sequential'
-                  ? (i > 0 ? [pendingPlan.tasks[i - 1].title] : [])
-                  : [];
-                return (
-                  <div key={task.id} className={s.planTask}>
-                    <span className={s.planTaskNum}>{i + 1}</span>
-                    <div className={s.planTaskBody}>
-                      <div className={s.planTaskTitle}>{task.title}</div>
-                      <div className={s.planTaskMeta}>
-                        <span className={s.planTaskAgent}>{task.assignedSessionTitle}</span>
-                        {depNames.length > 0 && (
-                          <span className={s.planTaskDeps}>after: {depNames.join(', ')}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className={s.modeControlBar}>
-              <span className={s.modeControlLabel}>Execution Mode</span>
-              <div className={s.modeToggleGroup}>
-                <button
-                  className={cx(s.modeToggleBtn, executionMode === 'sequential' && s.modeToggleBtnActive)}
-                  onClick={() => setExecutionMode('sequential')}
-                  title="Run steps one after another (Step 1 → Step 2)"
-                >
-                  <ListOrdered size={12} />
-                  Sequential
-                </button>
-                <button
-                  className={cx(s.modeToggleBtn, executionMode === 'parallel' && s.modeToggleBtnActive)}
-                  onClick={() => setExecutionMode('parallel')}
-                  title="Run all steps concurrently at the same time"
-                >
-                  <Zap size={12} />
-                  Parallel
-                </button>
-              </div>
-            </div>
-            <div className={s.planPreviewActions}>
-              <button
-                className={s.planRunBtn}
-                onClick={handleRunPlan}
-                title="Start running this plan"
-              >
-                ▶ Run Plan
-              </button>
-              <button className={s.planDiscardBtn} onClick={handleDiscardPlan}>✕ Discard</button>
-            </div>
-          </div>
-        )}
-
         <div ref={bottomRef} />
       </div>
 
@@ -1190,29 +916,12 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
         </button>
       )}
 
-      {/* Input mode bar — separates feed from command area */}
-      <div className={s.inputModeBar}>
-        <div className={s.inputModePill}>
-          <button
-            className={cx(s.inputModeBtn, inputMode === 'chat' && s.inputModeBtnActive)}
-            onClick={() => setInputMode('chat')}
-            title="Chat with AI or generate plans in natural language"
-          >
-            <MessageSquare size={10} />
-            Chat
-          </button>
-          <button
-            className={cx(s.inputModeBtn, inputMode === 'pipeline' && s.inputModeBtnActive)}
-            onClick={() => setInputMode('pipeline')}
-            title="Manually build and run a task pipeline"
-          >
-            <Network size={10} />
-            Pipeline
-          </button>
-        </div>
-
-        {/* Features — only relevant in chat mode */}
-        {!modelMissing && inputMode === 'chat' && (
+      {/* Features bar */}
+      {!modelMissing && (
+        <div className={s.inputModeBar}>
+          <div className={s.modeLabelRow}>
+            <span className={s.modeLabel}>Chat</span>
+          </div>
           <div ref={featuresRef} style={{ position: 'relative' }}>
             <button
               className={cx(s.inputModeIconBtn, featuresOpen && s.inputModeIconBtnActive)}
@@ -1251,356 +960,48 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId }) => {
               </div>
             )}
           </div>
-        )}
-      </div>
-
-      {/* ── Live pipeline board — always visible when a plan is running ── */}
-      {livePlan && livePlan.tasks.length > 0 && (
-        <div className={css`
-          border-top: 1px solid var(--border-color);
-          padding: 8px 12px;
-          background: var(--bg-secondary);
-          display: flex; flex-direction: column; gap: 3px;
-        `}>
-          <div className={css`
-            font-size:10px;font-weight:700;letter-spacing:.08em;
-            color:var(--text-secondary);text-transform:uppercase;margin-bottom:4px;
-            display:flex;align-items:center;gap:6px;
-          `}>
-            <span style={{color:
-              livePlan.status==='running' ? 'var(--color-brand)' :
-              livePlan.status==='done'    ? 'var(--color-success)' :
-              livePlan.status==='failed'  ? 'var(--color-error)' :
-              livePlan.status==='stopped' ? 'var(--text-tertiary)' : 'var(--color-warning)'
-            }}>
-              {livePlan.status==='running' ? '⚡' :
-               livePlan.status==='done'    ? '✓'  :
-               livePlan.status==='failed'  ? '✗'  :
-               livePlan.status==='stopped' ? '⏹'  : '⏸'}
-            </span>
-            <span className={css`flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`}>
-              {livePlan.goal}
-            </span>
-            {livePlan.status === 'running' && (
-              <button
-                title="Pause orchestration"
-                onClick={() => orchestratorEngine.pause()}
-                className={css`background:none;border:1px solid var(--border-color);color:var(--text-secondary);
-                  border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;
-                  &:hover{color:var(--text-primary);border-color:var(--text-secondary);}`}
-              >⏸</button>
-            )}
-            {livePlan.status === 'paused' && (
-              <button
-                title="Resume orchestration"
-                onClick={() => orchestratorEngine.resume()}
-                className={css`background:none;border:1px solid var(--color-brand);color:var(--color-brand);
-                  border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;
-                  &:hover{background:rgba(var(--color-brand-rgb),0.12);}`}
-              >▶</button>
-            )}
-            {(livePlan.status === 'running' || livePlan.status === 'paused') && (
-              <button
-                title="Stop orchestration"
-                onClick={() => orchestratorEngine.stop()}
-                className={css`background:none;border:1px solid var(--color-error);color:var(--color-error);
-                  border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;
-                  &:hover{background:rgba(var(--color-error-rgb),0.12);}`}
-              >■</button>
-            )}
-            {(livePlan.status === 'done' || livePlan.status === 'failed' || livePlan.status === 'stopped') && (
-              <button
-                title="Dismiss"
-                onClick={() => { setLivePlan(null); orchestratorEngine.clearPlan(); }}
-                className={css`background:none;border:none;color:var(--text-secondary);
-                  padding:1px 4px;font-size:12px;cursor:pointer;line-height:1;
-                  &:hover{color:var(--text-primary);}`}
-              >×</button>
-            )}
-          </div>
-          {livePlan.tasks.map(task => {
-            const statusColor =
-              task.status==='running' ? 'var(--color-brand)' :
-              task.status==='done'    ? 'var(--color-success)' :
-              task.status==='failed'  ? 'var(--color-error)' : 'var(--text-tertiary)';
-            const statusIcon =
-              task.status==='running' ? '▶' :
-              task.status==='done'    ? '✓' :
-              task.status==='failed'  ? '✗' : '○';
-            const elapsed = task.startedAt
-              ? task.completedAt
-                ? ((task.completedAt - task.startedAt) / 1000).toFixed(1) + 's'
-                : Math.round((Date.now() - task.startedAt) / 1000) + 's…'
-              : null;
-            return (
-              <div key={task.id} className={css`
-                display:flex;align-items:center;gap:6px;font-size:11px;
-                padding:3px 6px;border-radius:3px;
-                border-left:2px solid ${statusColor};
-                background:var(--bg-primary);
-              `}>
-                <span style={{color:statusColor,fontWeight:700,width:10,flexShrink:0}}>{statusIcon}</span>
-                <span className={css`flex:1;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`}>{task.title}</span>
-                <span className={css`color:var(--text-secondary);font-size:10px;flex-shrink:0;`}>{task.assignedSessionTitle}</span>
-                {elapsed && <span className={css`color:var(--text-secondary);font-size:10px;min-width:32px;text-align:right;flex-shrink:0;`}>{elapsed}</span>}
-                {task.status==='done' && (task.output?.filesModified?.length ?? 0) > 0 && (
-                  <span title={task.output!.filesModified.join(', ')} className={css`color:var(--color-success);font-size:10px;flex-shrink:0;cursor:default;`}>
-                    📄{task.output!.filesModified.length}
-                  </span>
-                )}
-              </div>
-            );
-          })}
         </div>
       )}
 
       {/* Chat input area */}
-      {inputMode === 'chat' && (
-        <div className={s.inputArea}>
-          <textarea
-            ref={textareaRef}
-            className={s.textarea}
-            value={input}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              modelMissing
-                ? `Configure a ${providerLabel} model in Settings first…`
-                : classifying
-                ? 'Thinking…'
-                : generatingPlan
-                ? 'Generating plan…'
-                : streaming
-                ? `${providerLabel} is responding…`
-                : providerOnline === false
-                ? `${providerLabel} offline — check connection`
-                : 'Ask anything or describe a goal — ↵ send, Shift+↵ newline'
-            }
-            disabled={modelMissing || providerOnline === false || classifying || generatingPlan}
-            rows={1}
-          />
-          {classifying || generatingPlan ? (
-            <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleCancelPlan} title="Cancel"><Square size={12} fill="currentColor" strokeWidth={0} /></button>
-          ) : streaming ? (
-            <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleStop} title="Stop"><Square size={12} fill="currentColor" strokeWidth={0} /></button>
-          ) : (
-            <button
-              className={s.sendBtn}
-              onClick={() => handleSend()}
-              disabled={!input.trim() || modelMissing || providerOnline === false || generatingPlan}
-              title="Send (Enter)"
-            >
-              <Send size={13} />
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Pipeline builder area */}
-      {inputMode === 'pipeline' && (
-        <div className={s.pipelineArea}>
-          {/* Task list */}
-          {buildTasks.length > 0 && (
-            <div className={s.pipelineTaskList}>
-              {buildTasks.map((task, i) => {
-                const isEditing = editingTaskId === task.id;
-                return (
-                  <div
-                    key={task.id}
-                    className={cx(
-                      s.pipelineTaskItem,
-                      draggedIndex === i && s.pipelineTaskItemDragging,
-                      dragOver?.index === i && dragOver.position === 'top' && s.pipelineTaskItemDragTop,
-                      dragOver?.index === i && dragOver.position === 'bottom' && s.pipelineTaskItemDragBottom,
-                    )}
-                    draggable={!isEditing}
-                    onDragStart={(e) => {
-                      if (isEditing) { e.preventDefault(); return; }
-                      setDraggedIndex(i);
-                      e.dataTransfer.effectAllowed = 'move';
-                    }}
-                    onDragEnd={() => {
-                      setDraggedIndex(null);
-                      setDragOver(null);
-                    }}
-                    onDragOver={(e) => {
-                      if (isEditing) return;
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'move';
-                      if (draggedIndex === null) return;
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const midY = rect.top + rect.height / 2;
-                      const pos = e.clientY < midY ? 'top' : 'bottom';
-                      if (dragOver?.index !== i || dragOver?.position !== pos) {
-                        setDragOver({ index: i, position: pos });
-                      }
-                    }}
-                    onDragLeave={(e) => {
-                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                        if (dragOver?.index === i) {
-                          setDragOver(null);
-                        }
-                      }
-                    }}
-                    onDrop={(e) => {
-                      if (isEditing) return;
-                      e.preventDefault();
-                      const pos = dragOver?.index === i ? dragOver.position : 'top';
-                      handleDropBuildTask(i, pos);
-                    }}
-                  >
-                    <span className={s.pipelineTaskGrip} title="Drag to reorder">⋮⋮</span>
-                    <span className={s.pipelineTaskNum}>{i + 1}.</span>
-                    {isEditing ? (
-                      <div className={css`display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;`}>
-                        <Input
-                          type="text"
-                          className={s.pipelineTitleInput}
-                          value={editTitle}
-                          onChange={e => setEditTitle(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') saveEditingTask();
-                            if (e.key === 'Escape') cancelEditingTask();
-                          }}
-                          autoFocus
-                        />
-                        <div className={css`width: 130px; flex-shrink: 0;`}>
-                          <Select
-                            compact
-                            value={editSessionId}
-                            onChange={setEditSessionId}
-                            options={[
-                              ...groupSessions.map(sess => ({ value: sess.id, name: sess.title })),
-                            ]}
-                          />
-                        </div>
-                        <button
-                          className={s.pipelineTaskEditSave}
-                          onClick={saveEditingTask}
-                          disabled={!editTitle.trim() || !editSessionId}
-                          title="Save step (Enter)"
-                        >
-                          <Check size={11} />
-                        </button>
-                        <button
-                          className={s.pipelineTaskRemove}
-                          onClick={cancelEditingTask}
-                          title="Cancel (Esc)"
-                        >
-                          <XIcon size={11} />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <span
-                          className={s.pipelineTaskTitle}
-                          onDoubleClick={() => startEditingTask(task)}
-                          title="Double-click to edit step"
-                        >
-                          {task.title}
-                        </span>
-                        <span
-                          className={s.pipelineTaskAgent}
-                          onDoubleClick={() => startEditingTask(task)}
-                          title="Double-click to edit step"
-                        >
-                          → {task.assignedSessionTitle}
-                        </span>
-                        <button
-                          className={s.pipelineTaskEditBtn}
-                          onClick={() => startEditingTask(task)}
-                          title="Edit step (or double-click)"
-                        >
-                          <Edit2 size={11} />
-                        </button>
-                        <button
-                          className={s.pipelineTaskRemove}
-                          onClick={() => handleRemoveBuildTask(task.id)}
-                          title="Remove step"
-                        >
-                          <XIcon size={11} />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {buildTasks.length === 0 && (
-            <p className={s.pipelineEmpty}>No tasks yet — add tasks below then click Run</p>
-          )}
-
-          {/* Add task */}
-          <div className={s.pipelineAddRow}>
-            <Input
-              type="text"
-              className={s.pipelineTitleInput}
-              placeholder="Task description…"
-              value={buildTitle}
-              onChange={e => setBuildTitle(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAddBuildTask()}
-            />
-            <div className={s.pipelineAgentWrap}>
-              <Select
-                compact
-                value={buildSessionId}
-                onChange={setBuildSessionId}
-                options={[
-                  { value: '', name: 'Select tab…', disabled: true },
-                  ...groupSessions.map(sess => ({ value: sess.id, name: sess.title })),
-                ]}
-              />
-            </div>
-            <button
-              className={s.pipelineAddBtn}
-              onClick={handleAddBuildTask}
-              disabled={!buildTitle.trim() || !buildSessionId}
-              title="Add step to pipeline (Enter)"
-            >
-              + Add Step
-            </button>
-          </div>
-
-          {/* Run / Clear — only displayed after at least one step is added */}
-          {buildTasks.length > 0 && (
-            <div className={s.pipelineFooterArea}>
-              <div className={s.modeControlBar}>
-                <span className={s.modeControlLabel}>Execution Mode</span>
-                <div className={s.modeToggleGroup}>
-                  <button
-                    className={cx(s.modeToggleBtn, executionMode === 'sequential' && s.modeToggleBtnActive)}
-                    onClick={() => setExecutionMode('sequential')}
-                    title="Run steps one after another (Step 1 → Step 2)"
-                  >
-                    <ListOrdered size={12} />
-                    Sequential
-                  </button>
-                  <button
-                    className={cx(s.modeToggleBtn, executionMode === 'parallel' && s.modeToggleBtnActive)}
-                    onClick={() => setExecutionMode('parallel')}
-                    title="Run all steps concurrently at the same time"
-                  >
-                    <Zap size={12} />
-                    Parallel
-                  </button>
-                </div>
-              </div>
-              <div className={s.pipelineActions}>
-                <button
-                  className={s.pipelineRunBtn}
-                  onClick={handleRunBuildPlan}
-                  title={`Execute ${buildTasks.length} pipeline step${buildTasks.length !== 1 ? 's' : ''}`}
-                >
-                  ▶ Execute Pipeline ({buildTasks.length} {buildTasks.length === 1 ? 'step' : 'steps'})
-                </button>
-                <button className={s.pipelineClearBtn} onClick={handleClearBuild}>Clear</button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      <div className={s.inputArea}>
+        <textarea
+          ref={textareaRef}
+          className={s.textarea}
+          value={input}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          placeholder={
+            modelMissing
+              ? `Configure a ${providerLabel} model in Settings first…`
+              : classifying
+              ? 'Thinking…'
+              : generatingPlan
+              ? 'Generating plan…'
+              : streaming
+              ? `${providerLabel} is responding…`
+              : providerOnline === false
+              ? `${providerLabel} offline — check connection`
+              : 'Ask anything or describe a goal — ↵ send, Shift+↵ newline'
+          }
+          disabled={modelMissing || providerOnline === false || classifying || generatingPlan}
+          rows={1}
+        />
+        {classifying || generatingPlan ? (
+          <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleCancelPlan} title="Cancel"><Square size={12} fill="currentColor" strokeWidth={0} /></button>
+        ) : streaming ? (
+          <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleStop} title="Stop"><Square size={12} fill="currentColor" strokeWidth={0} /></button>
+        ) : (
+          <button
+            className={s.sendBtn}
+            onClick={() => handleSend()}
+            disabled={!input.trim() || modelMissing || providerOnline === false || generatingPlan}
+            title="Send (Enter)"
+          >
+            <Send size={13} />
+          </button>
+        )}
+      </div>
     </div>
   );
 };
@@ -1749,9 +1150,7 @@ const s = {
     background: var(--bg-canvas); overflow: hidden; position: relative;
   `,
 
-
-
-  /* ── Input mode bar ── */
+  /* ── Features bar ── */
   inputModeBar: css`
     display: flex; align-items: center; justify-content: space-between;
     padding: 5px 10px 5px 12px;
@@ -1760,29 +1159,12 @@ const s = {
     background: var(--bg-secondary);
     flex-shrink: 0;
   `,
-  inputModePill: css`
-    display: flex; gap: 2px;
-    background: var(--bg-canvas);
-    border-radius: 99px;
-    padding: 3px;
-    border: 1px solid var(--border-color);
+  modeLabelRow: css`
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--text-tertiary); font-weight: 600;
   `,
-  inputModeBtn: css`
-    display: flex; align-items: center; gap: 4px;
-    padding: 4px 12px;
-    border-radius: 99px;
-    font-size: 11px; font-weight: 600;
-    color: var(--text-tertiary);
-    background: transparent;
-    border: none; cursor: pointer;
-    transition: color 0.15s, background 0.15s;
-    white-space: nowrap;
-    &:hover { color: var(--text-secondary); }
-  `,
-  inputModeBtnActive: css`
-    background: var(--color-brand) !important;
-    color: #fff !important;
-    box-shadow: 0 2px 6px rgba(var(--color-brand-rgb), 0.3);
+  modeLabel: css`
+    font-size: 11px; color: var(--text-tertiary); font-weight: 600;
   `,
   inputModeIconBtn: css`
     display: flex; align-items: center; justify-content: center;
@@ -1800,177 +1182,11 @@ const s = {
     background: rgba(var(--color-brand-rgb), 0.12) !important;
     border-color: rgba(var(--color-brand-rgb), 0.3) !important;
   `,
-  /* Makes featuresPopover open upward when triggered from bottom bar */
   featuresPopoverUp: css`
     top: auto !important;
     bottom: calc(100% + 6px) !important;
   `,
 
-  /* ── Pipeline builder area ── */
-  pipelineArea: css`
-    flex-shrink: 0;
-    border-top: 1px solid var(--border-color);
-    padding: 8px 10px;
-    display: flex; flex-direction: column; gap: 6px;
-    background: var(--bg-secondary);
-  `,
-  pipelineTaskList: css`
-    display: flex; flex-direction: column; gap: 3px;
-    max-height: 100px; overflow-y: auto;
-  `,
-  pipelineTaskItem: css`
-    position: relative;
-    display: flex; align-items: center; gap: 6px;
-    padding: 5px 8px;
-    border-radius: 6px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-color);
-    cursor: grab;
-    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
-    user-select: none;
-    &:active { cursor: grabbing; }
-  `,
-  pipelineTaskItemDragging: css`
-    opacity: 0.45;
-    border-style: dashed;
-  `,
-  pipelineTaskItemDragTop: css`
-    &::before {
-      content: '';
-      position: absolute;
-      top: -3px;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: var(--color-brand);
-      border-radius: 3px;
-      box-shadow: 0 0 6px rgba(var(--color-brand-rgb), 0.6);
-      pointer-events: none;
-      z-index: 10;
-    }
-  `,
-  pipelineTaskItemDragBottom: css`
-    &::after {
-      content: '';
-      position: absolute;
-      bottom: -3px;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: var(--color-brand);
-      border-radius: 3px;
-      box-shadow: 0 0 6px rgba(var(--color-brand-rgb), 0.6);
-      pointer-events: none;
-      z-index: 10;
-    }
-  `,
-  pipelineTaskGrip: css`
-    font-size: 10px;
-    line-height: 1;
-    letter-spacing: -1px;
-    color: var(--text-tertiary);
-    cursor: grab;
-    flex-shrink: 0;
-    &:hover { color: var(--text-secondary); }
-  `,
-  pipelineTaskNum: css`
-    font-size: 10px; color: var(--text-tertiary); font-weight: 700;
-    flex-shrink: 0; width: 14px; text-align: right;
-  `,
-  pipelineTaskTitle: css`
-    flex: 1; font-size: 11px; color: var(--text-primary);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  `,
-  pipelineTaskAgent: css`
-    font-size: 10px; color: var(--color-brand); font-weight: 600;
-    flex-shrink: 0; max-width: 80px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  `,
-  pipelineTaskRemove: css`
-    display: flex; align-items: center; justify-content: center;
-    width: 16px; height: 16px; border-radius: 3px;
-    background: transparent; border: none;
-    color: var(--text-tertiary); cursor: pointer; flex-shrink: 0;
-    transition: color 0.12s, background 0.12s;
-    &:hover { color: var(--color-error); background: rgba(var(--color-error-rgb), 0.12); }
-  `,
-  pipelineTaskEditBtn: css`
-    display: flex; align-items: center; justify-content: center;
-    width: 16px; height: 16px; border-radius: 3px;
-    background: transparent; border: none;
-    color: var(--text-tertiary); cursor: pointer; flex-shrink: 0;
-    transition: color 0.12s, background 0.12s;
-    &:hover { color: var(--color-brand); background: rgba(123, 104, 238, 0.12); }
-  `,
-  pipelineTaskEditSave: css`
-    display: flex; align-items: center; justify-content: center;
-    width: 20px; height: 20px; border-radius: 4px;
-    background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3);
-    color: var(--color-success); cursor: pointer; flex-shrink: 0;
-    transition: all 0.12s;
-    &:hover:not(:disabled) { background: var(--color-success); color: #fff; }
-    &:disabled { opacity: 0.35; cursor: default; }
-  `,
-  pipelineEmpty: css`
-    font-size: 11px; color: var(--text-tertiary);
-    text-align: center; padding: 4px 0; font-style: italic;
-  `,
-  pipelineAddRow: css`
-    display: flex; align-items: center; gap: 5px;
-  `,
-  pipelineAgentWrap: css`
-    width: 130px; flex-shrink: 0;
-  `,
-  pipelineTitleInput: css`
-    flex: 1; min-width: 0;
-    background: var(--bg-input);
-    border: 1px solid var(--border-color-hover);
-    border-radius: 6px;
-    padding: 5px 8px;
-    font-size: 11px; color: var(--text-primary);
-    outline: none; font-family: var(--font-family);
-    transition: border-color 0.15s;
-    &:focus { border-color: var(--color-brand); }
-    &::placeholder { color: var(--text-tertiary); }
-  `,
-  pipelineAddBtn: css`
-    height: 28px; flex-shrink: 0;
-    padding: 0 10px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 6px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-color-hover);
-    color: var(--text-secondary); font-size: 11px; font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s, color 0.15s;
-    &:hover:not(:disabled) { background: var(--color-brand); border-color: var(--color-brand); color: #fff; }
-    &:disabled { opacity: 0.35; cursor: default; }
-  `,
-  pipelineActions: css`
-    display: flex; align-items: center; gap: 7px;
-    padding-top: 2px;
-  `,
-  pipelineRunBtn: css`
-    flex: 1;
-    background: var(--gradient-brand);
-    color: #fff; border: none; border-radius: 7px;
-    padding: 6px 10px;
-    font-size: 11px; font-weight: 700;
-    cursor: pointer;
-    transition: filter 0.15s;
-    &:hover { filter: brightness(1.08); }
-    &:disabled { opacity: 0.4; cursor: default; filter: none; }
-  `,
-  pipelineClearBtn: css`
-    background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: 7px;
-    padding: 6px 10px;
-    font-size: 11px; font-weight: 600;
-    color: var(--text-tertiary); cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
-    &:hover { border-color: var(--border-color-hover); color: var(--text-secondary); }
-  `,
   header: css`
     display: flex; align-items: center; justify-content: space-between;
     padding: 10px 12px; border-bottom: 1px solid var(--border-color);
@@ -2029,14 +1245,6 @@ const s = {
     display: flex; align-items: center; justify-content: center;
     transition: all 150ms ease;
     &:hover { background: var(--bg-hover); color: var(--text-primary); }
-  `,
-  headerIconBtnActive: css`
-    color: var(--color-success) !important;
-    background: rgba(var(--color-success-rgb), 0.1) !important;
-  `,
-  headerIconBtnAutoMode: css`
-    color: var(--color-warning) !important;
-    background: rgba(var(--color-warning-rgb), 0.1) !important;
   `,
   aiToggle: css`
     display: flex; align-items: center; gap: 4px;
@@ -2210,10 +1418,6 @@ const s = {
   conductorText: css`font-size: 11px; color: var(--text-secondary); line-height: 1.4;`,
 
   // ── Plan mode ────────────────────────────────────────────────────────────
-  headerIconBtnPlanMode: css`
-    color: var(--color-info) !important;
-    background: rgba(var(--color-info-rgb), 0.1) !important;
-  `,
   planThinking: css`
     display: flex; align-items: center; gap: 5px;
     padding: 8px 12px; border-radius: 6px;
@@ -2225,95 +1429,6 @@ const s = {
     @keyframes planPulse { 0%,100%{opacity:0.2;transform:scale(0.8)} 50%{opacity:1;transform:scale(1)} }
   `,
   planThinkingLabel: css`font-size: 11px; color: var(--color-info); margin-left: 4px;`,
-  planPreview: css`
-    border: 1px solid rgba(var(--color-info-rgb), 0.2); border-radius: 8px; overflow: hidden;
-    background: rgba(var(--color-info-rgb), 0.04);
-  `,
-  planPreviewHeader: css`
-    display: flex; align-items: center; gap: 7px;
-    padding: 9px 12px; background: rgba(var(--color-info-rgb), 0.07);
-    border-bottom: 1px solid rgba(var(--color-info-rgb), 0.15);
-    font-size: 11px; font-weight: 600; color: var(--color-info);
-  `,
-  planPreviewGoal: css`
-    font-weight: 400; color: var(--text-secondary); overflow: hidden;
-    text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
-  `,
-  planTaskList: css`display: flex; flex-direction: column; gap: 1px; padding: 6px 0;`,
-  planTask: css`
-    display: flex; align-items: flex-start; gap: 10px; padding: 7px 12px;
-    &:hover { background: var(--bg-input); }
-  `,
-  planTaskNum: css`
-    font-size: 10px; font-weight: 700; color: var(--text-tertiary);
-    min-width: 16px; text-align: right; padding-top: 1px; flex-shrink: 0;
-  `,
-  planTaskBody: css`display: flex; flex-direction: column; gap: 2px; min-width: 0;`,
-  planTaskTitle: css`font-size: 12px; color: var(--text-primary); font-weight: 500;`,
-  planTaskMeta: css`display: flex; align-items: center; gap: 8px; flex-wrap: wrap;`,
-  planTaskAgent: css`
-    font-size: 10px; color: var(--color-brand); font-weight: 600;
-    background: rgba(var(--color-brand-rgb), 0.1); padding: 1px 6px; border-radius: 99px;
-  `,
-  planTaskDeps: css`font-size: 10px; color: var(--text-tertiary);`,
-  planPreviewActions: css`
-    display: flex; gap: 8px; padding: 10px 12px;
-    border-top: 1px solid rgba(var(--color-info-rgb), 0.12); background: var(--bg-canvas);
-  `,
-  planRunBtn: css`
-    flex: 1; padding: 7px 12px; border-radius: 6px; border: none;
-    background: var(--color-info); color: var(--bg-secondary); font-size: 12px; font-weight: 700;
-    cursor: pointer; transition: all 150ms ease;
-    &:hover:not(:disabled) { filter: brightness(1.1); }
-    &:disabled { opacity: 0.4; cursor: not-allowed; }
-  `,
-  planDiscardBtn: css`
-    padding: 7px 14px; border-radius: 6px;
-    border: 1px solid var(--border-color);
-    background: transparent; color: var(--text-tertiary); font-size: 12px;
-    cursor: pointer; transition: all 150ms ease;
-    &:hover { border-color: var(--color-error); color: var(--color-error); }
-  `,
-  pipelineFooterArea: css`
-    display: flex; flex-direction: column; gap: 8px;
-    margin-top: 8px; padding-top: 8px;
-    border-top: 1px dashed var(--border-color);
-  `,
-  modeControlBar: css`
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 6px 10px;
-    background: var(--bg-canvas);
-    border: 1px solid rgba(var(--color-info-rgb), 0.15);
-    border-radius: 8px;
-  `,
-  modeControlLabel: css`
-    font-size: 11px; font-weight: 600; color: var(--text-secondary);
-  `,
-  modeToggleGroup: css`
-    display: flex; align-items: center; gap: 2px;
-    background: var(--bg-input); border: 1px solid var(--border-color);
-    border-radius: 6px; padding: 2px;
-  `,
-  modeToggleBtn: css`
-    display: flex; align-items: center; gap: 4px;
-    border: none; background: transparent; color: var(--text-tertiary);
-    font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 4px;
-    cursor: pointer; transition: all 0.15s ease;
-    &:hover { color: var(--text-primary); }
-  `,
-  modeToggleBtnActive: css`
-    background: var(--color-brand); color: #fff;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
-    &:hover { color: #fff; }
-  `,
-
-  // ── Mode badge (header) ──────────────────────────────────────────────────
-  modeBadge: css`
-    font-size: 10px; font-weight: 600; padding: 2px 8px;
-    border-radius: 99px; background: rgba(var(--color-info-rgb), 0.12);
-    color: var(--color-info); border: 1px solid rgba(var(--color-info-rgb), 0.25);
-    white-space: nowrap;
-  `,
 
   // ── Features popover ─────────────────────────────────────────────────────
   featuresPopover: css`
@@ -2339,8 +1454,6 @@ const s = {
     transition: background 120ms ease;
     &:hover { background: var(--bg-hover); }
   `,
-  featureOptionActive: css`background: rgba(var(--color-brand-rgb), 0.08) !important;`,
-  featureOptionActivePlan: css`background: rgba(var(--color-info-rgb), 0.08) !important;`,
   featureOptionActiveGreen: css`background: rgba(var(--color-success-rgb), 0.08) !important;`,
   featureOptionActiveYellow: css`background: rgba(var(--color-warning-rgb), 0.08) !important;`,
   featureOptionCheck: css`
