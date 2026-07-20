@@ -8,15 +8,17 @@
  * All state lives in the parent (RightPanel) — this is a controlled component.
  */
 import React, { useState } from 'react';
-import { css, cx } from '@emotion/css';
+import { css } from '@emotion/css';
 import {
-  ListOrdered, Zap, Edit2, Check, X as XIcon, Plus, Save, Workflow,
+  Edit2, Check, X as XIcon, Plus, Save, Workflow,
 } from 'lucide-react';
 import { Select } from '../ui/Select';
 import { Input } from '../ui/Input';
 import { DependencyGraph } from './DependencyGraph';
 import { PendingPlanPreview } from './PendingPlanPreview';
 import type { OrchestratorTask, PipelineTemplate } from '../../types';
+import { useDragReorder } from '../../hooks';
+import { ExecutionModeToggle, DraggableTaskRow } from './index';
 
 interface SessionOption {
   id: string;
@@ -62,8 +64,7 @@ export const PipelineBuilder: React.FC<PipelineBuilderProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editSessionId, setEditSessionId] = useState('');
-  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
-  const [dragOver, setDragOver] = useState<{ index: number; pos: 'top' | 'bottom' } | null>(null);
+  const { draggedIdx, setDraggedIdx, dragOver, setDragOver, handleDrop } = useDragReorder(tasks, setTasks);
   const [showSave, setShowSave] = useState(false);
   const [tplTitle, setTplTitle] = useState('');
   const [tplDesc, setTplDesc] = useState('');
@@ -112,23 +113,7 @@ export const PipelineBuilder: React.FC<PipelineBuilderProps> = ({
     setEditingId(null);
   };
 
-  // ── Drag-drop reorder ──────────────────────────────────────────────────────
-  const onDrop = (targetIdx: number, pos: 'top' | 'bottom') => {
-    if (draggedIdx === null) return;
-    const insertAt = pos === 'top' ? targetIdx : targetIdx + 1;
-    const finalIdx = draggedIdx < insertAt ? insertAt - 1 : insertAt;
-    if (finalIdx === draggedIdx) {
-      setDraggedIdx(null);
-      setDragOver(null);
-      return;
-    }
-    const items = [...tasks];
-    const [moved] = items.splice(draggedIdx, 1);
-    items.splice(finalIdx, 0, moved);
-    setTasks(items);
-    setDraggedIdx(null);
-    setDragOver(null);
-  };
+
 
   const clearAll = () => {
     setTasks([]);
@@ -189,47 +174,13 @@ export const PipelineBuilder: React.FC<PipelineBuilderProps> = ({
             {tasks.map((task, i) => {
               const isEditing = editingId === task.id;
               return (
-                <div
+                <DraggableTaskRow
                   key={task.id}
-                  className={cx(
-                    s.taskItem,
-                    draggedIdx === i && s.taskItemDragging,
-                    dragOver?.index === i && dragOver.pos === 'top' && s.taskItemDragTop,
-                    dragOver?.index === i && dragOver.pos === 'bottom' && s.taskItemDragBottom,
-                  )}
-                  draggable={!isEditing}
-                  onDragStart={(e) => {
-                    if (isEditing) { e.preventDefault(); return; }
-                    setDraggedIdx(i);
-                    e.dataTransfer.effectAllowed = 'move';
-                  }}
-                  onDragEnd={() => { setDraggedIdx(null); setDragOver(null); }}
-                  onDragOver={(e) => {
-                    if (isEditing) return;
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                    if (draggedIdx === null) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const pos = e.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
-                    if (dragOver?.index !== i || dragOver?.pos !== pos) {
-                      setDragOver({ index: i, pos });
-                    }
-                  }}
-                  onDragLeave={(e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget as Node) && dragOver?.index === i) {
-                      setDragOver(null);
-                    }
-                  }}
-                  onDrop={(e) => {
-                    if (isEditing) return;
-                    e.preventDefault();
-                    const pos = dragOver?.index === i ? dragOver.pos : 'top';
-                    onDrop(i, pos);
-                  }}
+                  index={i}
+                  dragState={{ draggedIdx, setDraggedIdx, dragOver, setDragOver, handleDrop }}
+                  onRemove={() => removeTask(task.id)}
+                  disabled={isEditing}
                 >
-                  <span className={s.taskGrip} title="Drag to reorder">⋮⋮</span>
-                  <span className={s.taskNum}>{i + 1}.</span>
-
                   {isEditing ? (
                     <div className={s.editRow}>
                       <Input
@@ -270,12 +221,9 @@ export const PipelineBuilder: React.FC<PipelineBuilderProps> = ({
                       <button className={s.iconEditBtn} onClick={() => startEditing(task)} title="Edit step">
                         <Edit2 size={11} />
                       </button>
-                      <button className={s.iconRemoveBtn} onClick={() => removeTask(task.id)} title="Remove step">
-                        <XIcon size={11} />
-                      </button>
                     </>
                   )}
-                </div>
+                </DraggableTaskRow>
               );
             })}
           </div>
@@ -321,24 +269,11 @@ export const PipelineBuilder: React.FC<PipelineBuilderProps> = ({
           <>
             <div className={s.modeBar}>
               <span className={s.modeLabel}>Execution Mode</span>
-              <div className={s.modeToggle}>
-                <button
-                  className={cx(s.modeBtn, executionMode === 'sequential' && s.modeBtnActive)}
-                  onClick={() => setExecutionMode('sequential')}
-                  title="Run steps one after another"
-                >
-                  <ListOrdered size={12} />
-                  Sequential
-                </button>
-                <button
-                  className={cx(s.modeBtn, executionMode === 'parallel' && s.modeBtnActive)}
-                  onClick={() => setExecutionMode('parallel')}
-                  title="Run all steps concurrently"
-                >
-                  <Zap size={12} />
-                  Parallel
-                </button>
-              </div>
+              <ExecutionModeToggle
+                mode={executionMode}
+                onChange={setExecutionMode}
+                disabled={disabled}
+              />
             </div>
 
             <div className={s.graphRow}>
@@ -428,50 +363,7 @@ const s = {
   taskList: css`
     display: flex; flex-direction: column; gap: 3px;
   `,
-  taskItem: css`
-    position: relative;
-    display: flex; align-items: center; gap: 6px;
-    padding: 6px 8px;
-    border-radius: 6px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-color);
-    cursor: grab;
-    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
-    user-select: none;
-    &:active { cursor: grabbing; }
-  `,
-  taskItemDragging: css`
-    opacity: 0.45; border-style: dashed;
-  `,
-  taskItemDragTop: css`
-    &::before {
-      content: ''; position: absolute;
-      top: -3px; left: 0; right: 0;
-      height: 3px; background: var(--color-brand);
-      border-radius: 3px;
-      box-shadow: 0 0 6px rgba(var(--color-brand-rgb), 0.6);
-      pointer-events: none; z-index: 10;
-    }
-  `,
-  taskItemDragBottom: css`
-    &::after {
-      content: ''; position: absolute;
-      bottom: -3px; left: 0; right: 0;
-      height: 3px; background: var(--color-brand);
-      border-radius: 3px;
-      box-shadow: 0 0 6px rgba(var(--color-brand-rgb), 0.6);
-      pointer-events: none; z-index: 10;
-    }
-  `,
-  taskGrip: css`
-    font-size: 10px; line-height: 1; letter-spacing: -1px;
-    color: var(--text-tertiary); cursor: grab; flex-shrink: 0;
-    &:hover { color: var(--text-secondary); }
-  `,
-  taskNum: css`
-    font-size: 10px; color: var(--text-tertiary); font-weight: 700;
-    flex-shrink: 0; width: 14px; text-align: right;
-  `,
+
   taskTitle: css`
     flex: 1; font-size: 12px; color: var(--text-primary);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -506,6 +398,7 @@ const s = {
     transition: color 0.12s, background 0.12s;
     &:hover { color: var(--color-brand); background: rgba(var(--color-brand-rgb), 0.12); }
   `,
+
   iconRemoveBtn: css`
     display: flex; align-items: center; justify-content: center;
     width: 18px; height: 18px; border-radius: 3px;
@@ -549,23 +442,7 @@ const s = {
     border-radius: 8px;
   `,
   modeLabel: css`font-size: 11px; font-weight: 600; color: var(--text-secondary);`,
-  modeToggle: css`
-    display: flex; align-items: center; gap: 2px;
-    background: var(--bg-input); border: 1px solid var(--border-color);
-    border-radius: 6px; padding: 2px;
-  `,
-  modeBtn: css`
-    display: flex; align-items: center; gap: 4px;
-    border: none; background: transparent; color: var(--text-tertiary);
-    font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 4px;
-    cursor: pointer; transition: all 0.15s ease;
-    &:hover { color: var(--text-primary); }
-  `,
-  modeBtnActive: css`
-    background: var(--color-brand); color: #fff;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
-    &:hover { color: #fff; }
-  `,
+
 
   graphRow: css`
     background: var(--bg-canvas); border-radius: 8px;

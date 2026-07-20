@@ -11,8 +11,9 @@ import type { OrchestratorPlan, OrchestratorTask, PipelineTemplate, TerminalSess
 import { PipelineBuilder } from './PipelineBuilder';
 import { PipelineLiveBoard } from './PipelineLiveBoard';
 import { PipelineHistory } from './PipelineHistory';
+import { PipelineTemplates } from './PipelineTemplates';
 
-type SubTab = 'builder' | 'live' | 'history';
+type SubTab = 'builder' | 'live' | 'history' | 'templates';
 
 interface PipelinePanelProps {
   workspaceId: string;
@@ -110,6 +111,14 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
             <HistoryIcon size={11} />
             History
           </button>
+          <button
+            className={cx(s.tab, activeTab === 'templates' && s.tabActive)}
+            onClick={() => setTab('templates')}
+            title="Manage reusable pipeline templates"
+          >
+            <Workflow size={11} />
+            Templates
+          </button>
         </div>
       </div>
 
@@ -141,6 +150,10 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
 
         {activeTab === 'history' && (
           <PipelineHistory workspaceId={workspaceId} onRerunPlan={onRerunPlan} />
+        )}
+
+        {activeTab === 'templates' && (
+          <PipelineTemplates workspaceId={workspaceId} />
         )}
       </div>
     </div>

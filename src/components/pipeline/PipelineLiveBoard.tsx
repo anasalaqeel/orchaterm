@@ -6,11 +6,12 @@
  */
 import React, { useEffect, useState } from 'react';
 import { css, cx } from '@emotion/css';
-import { RotateCcw, ListOrdered, Zap } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import { orchestratorEngine } from '../../services/orchestratorEngine';
 import type { OrchestratorPlan, OrchestratorTaskStatus, TerminalSession } from '../../types';
 import { DependencyGraph } from './DependencyGraph';
 import { TaskCard } from './TaskCard';
+import { PLAN_STATUS_COLORS, PLAN_STATUS_ICONS, ExecutionModeBadge } from './index';
 
 interface PipelineLiveBoardProps {
   plan: OrchestratorPlan | null;
@@ -21,26 +22,7 @@ interface PipelineLiveBoardProps {
   sessions: TerminalSession[];
 }
 
-const STATUS_COLOR: Record<OrchestratorPlan['status'] | 'unknown', string> = {
-  draft:    'var(--text-tertiary)',
-  approved: 'var(--color-info)',
-  running:  'var(--color-brand)',
-  paused:   'var(--color-warning)',
-  done:     'var(--color-success)',
-  failed:   'var(--color-error)',
-  stopped:  'var(--text-tertiary)',
-  unknown:  'var(--text-tertiary)',
-};
 
-const STATUS_ICON: Record<OrchestratorPlan['status'], string> = {
-  draft:    '○',
-  approved: '→',
-  running:  '⚡',
-  paused:   '⏸',
-  done:     '✓',
-  failed:   '✗',
-  stopped:  '⏹',
-};
 
 export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({ plan, onDismiss, onRerun, sessions }) => {
   // Tick once a second while a task is running so elapsed times update.
@@ -64,8 +46,8 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({ plan, onDi
   }
 
   const status = plan.status;
-  const statusColor = STATUS_COLOR[status] ?? STATUS_COLOR.unknown;
-  const statusIcon = STATUS_ICON[status];
+  const statusColor = PLAN_STATUS_COLORS[status] ?? PLAN_STATUS_COLORS.unknown;
+  const statusIcon = PLAN_STATUS_ICONS[status];
 
   const total = plan.tasks.length;
   const done = plan.tasks.filter(t => t.status === 'done').length;
@@ -104,16 +86,7 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({ plan, onDi
             <span className={s.statusBadge} style={{ color: statusColor, backgroundColor: statusColor + '1a', borderColor: statusColor + '44' }}>
               {status.toUpperCase()}
             </span>
-            {plan.executionMode && (
-              <span className={s.modeBadge} title={
-                plan.executionMode === 'sequential'
-                  ? 'Tasks run one after another, each waiting for the previous to finish'
-                  : 'Tasks with no dependencies run at the same time'
-              }>
-                {plan.executionMode === 'sequential' ? <ListOrdered size={10} /> : <Zap size={10} />}
-                {plan.executionMode === 'sequential' ? 'Sequential' : 'Parallel'}
-              </span>
-            )}
+            {plan.executionMode && <ExecutionModeBadge mode={plan.executionMode} />}
             <span className={s.metaItem}>{total} task{total !== 1 ? 's' : ''}</span>
             {running > 0 && <span className={s.metaItem} style={{ color: 'var(--color-brand)' }}>{running} running</span>}
             {done   > 0 && <span className={s.metaItem} style={{ color: 'var(--color-success)' }}>{done} done</span>}
@@ -240,14 +213,6 @@ const s = {
     font-size: 9px; font-weight: 700;
     padding: 1px 6px; border-radius: 99px;
     border: 1px solid; letter-spacing: 0.04em;
-  `,
-  modeBadge: css`
-    display: inline-flex; align-items: center; gap: 3px;
-    font-size: 9px; font-weight: 700;
-    padding: 1px 7px; border-radius: 99px;
-    color: var(--color-info);
-    background: rgba(var(--color-info-rgb), 0.12);
-    border: 1px solid rgba(var(--color-info-rgb), 0.3);
   `,
   metaItem: css`font-size: 10px; color: var(--text-tertiary);`,
   controls: css`
