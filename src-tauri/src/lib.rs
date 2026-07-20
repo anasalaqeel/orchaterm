@@ -911,13 +911,13 @@ pub fn run() {
             save_store,
             write_file_path
         ])
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(target_os = "windows")]
             {
                 use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
                 use windows::core::Interface;
 
-                for (label, window) in app.webview_windows() {
+                for (label, window) in _app.webview_windows() {
                     let _ = window.with_webview(move |webview| {
                         unsafe {
                             let controller = webview.controller();
