@@ -25,7 +25,7 @@ import type {
 } from '../../types';
 
 type ActiveTab = 'chat' | 'pipeline';
-type SubTab = 'builder' | 'live' | 'history';
+type SubTab = 'builder' | 'live' | 'history' | 'templates';
 
 interface RightPanelProps {
   workspaceId: string;
@@ -61,6 +61,18 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
   const [livePlan,      setLivePlan]      = useState<OrchestratorPlan | null>(null);
   const [buildTasks,    setBuildTasks]    = useState<OrchestratorTask[]>([]);
   const [executionMode, setExecutionMode] = useState<'sequential' | 'parallel'>('sequential');
+
+  // ── Listen for custom event to switch pipeline sub-tab ─────────────────────
+  useEffect(() => {
+    const onOpenSubtab = (e: Event) => {
+      const detail = (e as CustomEvent<{ subTab: SubTab }>).detail;
+      if (!detail?.subTab) return;
+      setActiveTab('pipeline');
+      setPinnedSubTab(detail.subTab);
+    };
+    window.addEventListener('orchaterm:open-pipeline-subtab', onOpenSubtab as EventListener);
+    return () => window.removeEventListener('orchaterm:open-pipeline-subtab', onOpenSubtab as EventListener);
+  }, []);
 
   // ── Engine subscription: state + log → re-renders + chat feed relay ────────
   useEffect(() => {

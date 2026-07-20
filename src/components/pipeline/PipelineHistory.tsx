@@ -7,9 +7,11 @@
  */
 import React, { useMemo, useState } from 'react';
 import { css, cx } from '@emotion/css';
-import { ChevronDown, ChevronUp, RotateCcw, BookmarkPlus, ListOrdered, Zap } from 'lucide-react';
+import { ChevronDown, ChevronUp, RotateCcw, BookmarkPlus } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
-import type { OrchestratorPlan, OrchestratorPlanStatus, PipelineTemplate } from '../../types';
+import type { OrchestratorPlan, PipelineTemplate } from '../../types';
+import { formatRelative } from '../../utils';
+import { PLAN_STATUS_COLORS, PLAN_STATUS_ICONS, ExecutionModeBadge, TaskRow } from './index';
 
 interface PipelineHistoryProps {
   workspaceId: string;
@@ -17,20 +19,7 @@ interface PipelineHistoryProps {
   onRerunPlan?: (plan: OrchestratorPlan) => void;
 }
 
-const STATUS_COLOR: Record<OrchestratorPlanStatus, string> = {
-  draft:    'var(--text-tertiary)',
-  approved: 'var(--color-info)',
-  running:  'var(--color-brand)',
-  paused:   'var(--color-warning)',
-  done:     'var(--color-success)',
-  failed:   'var(--color-error)',
-  stopped:  'var(--text-tertiary)',
-};
 
-const STATUS_ICON: Record<OrchestratorPlanStatus, string> = {
-  draft: '○', approved: '→', running: '⚡', paused: '⏸',
-  done: '✓', failed: '✗', stopped: '⏹',
-};
 
 type FilterKey = 'all' | 'running' | 'done' | 'failed' | 'stopped';
 
@@ -91,7 +80,7 @@ export const PipelineHistory: React.FC<PipelineHistoryProps> = ({ workspaceId, o
       executionMode,
       tags: ['reused'],
       tasks,
-    }).then(() => showToast('Saved as template — find it in the Builder or /pipelines', 'success'));
+    }).then(() => showToast('Saved as template — find it in the Templates tab', 'success'));
   };
 
   return (
@@ -122,20 +111,15 @@ export const PipelineHistory: React.FC<PipelineHistoryProps> = ({ workspaceId, o
           {filtered.map(plan => {
             const isOpen = !!expanded[plan.id];
             const done = plan.tasks.filter(t => t.status === 'done').length;
-            const color = STATUS_COLOR[plan.status];
+            const color = PLAN_STATUS_COLORS[plan.status];
             return (
               <div key={plan.id} className={cx(s.card, isOpen && s.cardOpen)}>
                 <button className={s.row} onClick={() => setExpanded(p => ({ ...p, [plan.id]: !p[plan.id] }))}>
-                  <span className={s.statusIcon} style={{ color }}>{STATUS_ICON[plan.status]}</span>
+                  <span className={s.statusIcon} style={{ color }}>{PLAN_STATUS_ICONS[plan.status]}</span>
                   <span className={s.statusBadge} style={{ color, backgroundColor: color + '1a', borderColor: color + '44' }}>
                     {plan.status.toUpperCase()}
                   </span>
-                  {plan.executionMode && (
-                    <span className={s.modeBadge}>
-                      {plan.executionMode === 'sequential' ? <ListOrdered size={9} /> : <Zap size={9} />}
-                      {plan.executionMode === 'sequential' ? 'Seq' : 'Par'}
-                    </span>
-                  )}
+                  {plan.executionMode && <ExecutionModeBadge mode={plan.executionMode} short />}
                   <span className={s.goal} title={plan.goal}>{plan.goal}</span>
                   <span className={s.taskCount}>{done}/{plan.tasks.length} done</span>
                   <span className={s.timestamp}>{formatRelative(plan.createdAt)}</span>
@@ -148,19 +132,14 @@ export const PipelineHistory: React.FC<PipelineHistoryProps> = ({ workspaceId, o
                   <div className={s.body}>
                     <div className={s.taskList}>
                       {plan.tasks.map((task, i) => (
-                        <div key={task.id} className={s.taskItem}>
-                          <span className={s.taskStatusIcon} style={{ color: STATUS_COLOR_FOR_TASK[task.status] }}>
-                            {STATUS_ICON_FOR_TASK[task.status]}
-                          </span>
-                          <span className={s.taskNum}>{i + 1}.</span>
-                          <span className={s.taskTitle}>{task.title}</span>
-                          <span className={s.taskAgent}>→ {task.assignedSessionTitle}</span>
-                          {task.status === 'done' && (task.output?.filesModified.length ?? 0) > 0 && (
-                            <span className={s.filesBadge}>
-                              {task.output!.filesModified.length} file{(task.output!.filesModified.length ?? 0) !== 1 ? 's' : ''}
-                            </span>
-                          )}
-                        </div>
+                        <TaskRow
+                          key={task.id}
+                          index={i + 1}
+                          title={task.title}
+                          agentHint={task.assignedSessionTitle}
+                          status={task.status}
+                          filesCount={task.status === 'done' ? task.output?.filesModified.length : undefined}
+                        />
                       ))}
                     </div>
 
@@ -206,29 +185,9 @@ export const PipelineHistory: React.FC<PipelineHistoryProps> = ({ workspaceId, o
   );
 };
 
-const STATUS_COLOR_FOR_TASK: Record<'pending' | 'running' | 'done' | 'failed', string> = {
-  pending: 'var(--text-tertiary)',
-  running: 'var(--color-brand)',
-  done:    'var(--color-success)',
-  failed:  'var(--color-error)',
-};
 
-const STATUS_ICON_FOR_TASK: Record<'pending' | 'running' | 'done' | 'failed', string> = {
-  pending: '○', running: '▶', done: '✓', failed: '✗',
-};
 
-function formatRelative(ms: number): string {
-  const diff = Date.now() - ms;
-  const sec = Math.floor(diff / 1000);
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  if (day < 7) return `${day}d ago`;
-  return new Date(ms).toLocaleDateString();
-}
+
 
 const s = {
   root: css`
@@ -338,39 +297,6 @@ const s = {
   taskList: css`
     display: flex; flex-direction: column; gap: 2px;
   `,
-  taskItem: css`
-    display: flex; align-items: center; gap: 6px;
-    padding: 4px 6px;
-    border-radius: 4px;
-    &:hover { background: var(--bg-input); }
-  `,
-  taskStatusIcon: css`
-    font-size: 11px; font-weight: 700;
-    width: 12px; text-align: center; flex-shrink: 0;
-  `,
-  taskNum: css`
-    font-size: 10px; font-weight: 700; color: var(--text-tertiary);
-    width: 16px; text-align: right; flex-shrink: 0;
-  `,
-  taskTitle: css`
-    flex: 1; min-width: 0;
-    font-size: 11px; color: var(--text-primary);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  `,
-  taskAgent: css`
-    font-size: 10px; color: var(--color-brand); font-weight: 600;
-    flex-shrink: 0;
-    max-width: 100px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  `,
-  filesBadge: css`
-    font-size: 9px; color: var(--color-success);
-    padding: 1px 6px;
-    background: rgba(var(--color-success-rgb), 0.12);
-    border-radius: 99px;
-    flex-shrink: 0;
-  `,
-
   summaries: css`
     display: flex; flex-direction: column; gap: 5px;
     padding-top: 6px; border-top: 1px dashed var(--border-color);

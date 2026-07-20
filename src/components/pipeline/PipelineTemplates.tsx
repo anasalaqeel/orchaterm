@@ -1,26 +1,30 @@
 /*
  * PipelineTemplates.tsx
  *
- * Full-page management view for reusable pipeline templates. Mirrors the
- * PromptVault structure: search/filter, cards with details, edit modal,
- * delete confirm, and a Run flow that targets a workspace/space.
+ * Tab view component for reusable pipeline templates.
+ * Allows user to search, filter, edit, delete, run templates,
+ * and load them directly into the Builder.
  */
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
 import { css, cx, keyframes } from '@emotion/css';
 import {
-  Plus, Edit2, Trash2, Search, X, ListOrdered, Zap, Tag, Play, Workflow,
+  Plus, Edit2, Trash2, Search, X, Tag, Play, Workflow,
 } from 'lucide-react';
-import { useDashboard } from '../context/DashboardContext';
-import { ConfirmDialog, Input, Select } from '../components/ui';
-import { orchestratorEngine } from '../services/orchestratorEngine';
+import { useDashboard } from '../../context/DashboardContext';
+import { ConfirmDialog, Input, Select } from '../ui';
+import { useDragReorder } from '../../hooks';
+import { ExecutionModeToggle, ExecutionModeBadge, DraggableTaskRow, TaskRow } from './index';
+import { orchestratorEngine } from '../../services/orchestratorEngine';
 import type {
   OrchestratorPlan, PipelineTemplate, PipelineTemplateTask,
   Workspace, Space, TerminalSession,
-} from '../types';
+} from '../../types';
 
-export const PipelineTemplatesView: React.FC = () => {
-  const navigate = useNavigate();
+interface PipelineTemplatesProps {
+  workspaceId: string;
+}
+
+export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceId }) => {
   const {
     pipelineTemplates, addPipelineTemplate, updatePipelineTemplate, deletePipelineTemplate,
     workspaces, spaces, terminalSessions, showToast, incrementTemplateUse,
@@ -57,21 +61,20 @@ export const PipelineTemplatesView: React.FC = () => {
     setTagFilter(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
   };
 
-  // ── Run flow ──────────────────────────────────────────────────────────────
   const handleRun = (
     template: PipelineTemplate,
-    workspaceId: string,
+    targetWorkspaceId: string,
     spaceId: string | null,
     agentByTaskId: Record<string, { id: string; title: string }>,
   ) => {
-    const workspace = workspaces.find(w => w.id === workspaceId);
+    const workspace = workspaces.find(w => w.id === targetWorkspaceId);
     if (!workspace) {
       showToast('Pick a workspace first', 'error');
       return;
     }
     const sessionsInScope = spaceId
       ? terminalSessions.filter(s => spaces.find(sp => sp.id === spaceId)?.sessionIds.includes(s.id) ?? false)
-      : terminalSessions.filter(s => s.workspaceId === workspaceId);
+      : terminalSessions.filter(s => s.workspaceId === targetWorkspaceId);
 
     const idMap = new Map<string, string>();
     template.tasks.forEach(t => idMap.set(t.id, crypto.randomUUID()));
@@ -98,7 +101,7 @@ export const PipelineTemplatesView: React.FC = () => {
       tasks,
       status: 'approved',
       createdAt: Date.now(),
-      workspaceId,
+      workspaceId: targetWorkspaceId,
       spaceId,
       executionMode: template.executionMode,
     };
@@ -117,26 +120,17 @@ export const PipelineTemplatesView: React.FC = () => {
     void incrementTemplateUse(template.id);
     showToast(`Pipeline started in "${workspace.name}"`, 'success');
     setRunTarget(null);
-    // The dashboard's own active-workspace state is what we should mutate; we use
-    // window events so the sidebar / workspace router picks it up.
-    window.dispatchEvent(new CustomEvent('orchaterm:open-workspace', { detail: { workspaceId, spaceId } }));
-    navigate('/');
+    window.dispatchEvent(new CustomEvent('orchaterm:open-workspace', { detail: { workspaceId: targetWorkspaceId, spaceId } }));
   };
 
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <div>
-          <h2 className={styles.title}>Pipeline Templates</h2>
-          <p className={styles.description}>
-            Reusable multi-step pipelines. Run them against any workspace, or load them into the Builder.
-          </p>
-        </div>
         <button
           onClick={() => { setEditing(null); setCreating(true); }}
           className={styles.primaryBtn}
         >
-          <Plus size={14} />
+          <Plus size={12} />
           New Template
         </button>
       </div>
@@ -147,7 +141,7 @@ export const PipelineTemplatesView: React.FC = () => {
           <Search size={12} className={styles.searchIcon} />
           <Input
             type="text"
-            placeholder="Search by title, description, tag, or task…"
+            placeholder="Search templates…"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className={styles.searchInput}
@@ -180,10 +174,10 @@ export const PipelineTemplatesView: React.FC = () => {
 
       {filtered.length === 0 ? (
         <div className={styles.emptyState}>
-          <Workflow size={28} className={styles.emptyIcon} />
-          <p className={styles.emptyTitle}>No templates yet.</p>
+          <Workflow size={24} className={styles.emptyIcon} />
+          <p className={styles.emptyTitle}>No templates found</p>
           <p className={styles.emptySubtitle}>
-            Build a pipeline in the Pipeline tab and click "Save as Template", or create one from scratch here.
+            Save a template from the Builder or click "New Template" above.
           </p>
         </div>
       ) : (
@@ -197,8 +191,6 @@ export const PipelineTemplatesView: React.FC = () => {
               onRun={() => { setRunTarget(tpl); }}
               onLoadIntoBuilder={() => {
                 window.dispatchEvent(new CustomEvent('orchaterm:load-template', { detail: { templateId: tpl.id } }));
-                showToast(`Loaded "${tpl.title}" into the Builder — open the console to continue`, 'info');
-                navigate('/');
               }}
             />
           ))}
@@ -216,6 +208,7 @@ export const PipelineTemplatesView: React.FC = () => {
               showToast(`Template "${data.title}" updated`, 'success');
             } else {
               addPipelineTemplate(data);
+              showToast(`Template "${data.title}" created`, 'success');
             }
             setCreating(false);
             setEditing(null);
@@ -226,9 +219,12 @@ export const PipelineTemplatesView: React.FC = () => {
       {/* Delete confirm */}
       <ConfirmDialog
         isOpen={confirmOpen}
-        message={`Delete template "${pipelineTemplates.find(t => t.id === pendingDeleteId)?.title ?? ''}"? This cannot be undone.`}
+        message={`Delete template "${pipelineTemplates.find(t => t.id === pendingDeleteId)?.title ?? ''}"?`}
         onConfirm={() => {
-          if (pendingDeleteId) deletePipelineTemplate(pendingDeleteId);
+          if (pendingDeleteId) {
+            deletePipelineTemplate(pendingDeleteId);
+            showToast('Template deleted', 'info');
+          }
           setConfirmOpen(false);
           setPendingDeleteId(null);
         }}
@@ -239,6 +235,7 @@ export const PipelineTemplatesView: React.FC = () => {
       {runTarget && (
         <RunTemplateModal
           template={runTarget}
+          currentWorkspaceId={workspaceId}
           workspaces={workspaces}
           spaces={spaces}
           terminalSessions={terminalSessions}
@@ -259,52 +256,49 @@ const TemplateCard: React.FC<{
   onRun: () => void;
   onLoadIntoBuilder: () => void;
 }> = ({ template, onEdit, onDelete, onRun, onLoadIntoBuilder }) => {
-  const isSeq = template.executionMode === 'sequential';
   return (
     <div className={styles.card}>
       <div className={styles.cardHeader}>
         <div className={styles.cardInfo}>
           <div className={styles.cardTitleRow}>
-            <Workflow size={14} className={styles.cardIcon} />
+            <Workflow size={13} className={styles.cardIcon} />
             <h4 className={styles.cardTitle}>{template.title}</h4>
-            <span className={cx(styles.modeBadge, isSeq ? styles.modeSeq : styles.modePar)} title={`Execution: ${template.executionMode}`}>
-              {isSeq ? <ListOrdered size={10} /> : <Zap size={10} />}
-              {isSeq ? 'Sequential' : 'Parallel'}
-            </span>
+            <ExecutionModeBadge mode={template.executionMode} size={9} short />
           </div>
           {template.description && (
             <p className={styles.cardDesc}>{template.description}</p>
           )}
-          <div className={styles.tagsList}>
-            {template.tags.map(tag => (
-              <span key={tag} className={styles.tagItem}><Tag size={9} /> {tag}</span>
-            ))}
-          </div>
+          {template.tags.length > 0 && (
+            <div className={styles.tagsList}>
+              {template.tags.map(tag => (
+                <span key={tag} className={styles.tagItem}><Tag size={8} /> {tag}</span>
+              ))}
+            </div>
+          )}
         </div>
         <div className={styles.cardActions}>
           <button onClick={onRun} className={styles.runBtn} title="Run against a workspace">
-            <Play size={12} /> Run
+            <Play size={11} /> Run
           </button>
-          <button onClick={onEdit} className={styles.iconBtn} title="Edit template"><Edit2 size={12} /></button>
-          <button onClick={onDelete} className={cx(styles.iconBtn, styles.iconBtnDanger)} title="Delete template"><Trash2 size={12} /></button>
+          <button onClick={onEdit} className={styles.iconBtn} title="Edit"><Edit2 size={11} /></button>
+          <button onClick={onDelete} className={cx(styles.iconBtn, styles.iconBtnDanger)} title="Delete"><Trash2 size={11} /></button>
         </div>
       </div>
       <div className={styles.taskList}>
         {template.tasks.map((task, i) => (
-          <div key={task.id} className={styles.taskRow}>
-            <span className={styles.taskNum}>{i + 1}</span>
-            <span className={styles.taskTitle}>{task.title}</span>
-            {task.agentHint && <span className={styles.taskAgent}>→ {task.agentHint}</span>}
-            {task.dependsOnIndices.length > 0 && (
-              <span className={styles.taskDeps}>after #{task.dependsOnIndices.map(j => j + 1).join(', #')}</span>
-            )}
-          </div>
+          <TaskRow
+            key={task.id}
+            index={i + 1}
+            title={task.title}
+            agentHint={task.agentHint}
+            dependsOn={task.dependsOnIndices.length > 0 ? `after #${task.dependsOnIndices.map(j => j + 1).join(', #')}` : undefined}
+          />
         ))}
       </div>
       <div className={styles.cardFooter}>
         <span className={styles.footerMeta}>{template.tasks.length} task{template.tasks.length !== 1 ? 's' : ''}</span>
-        <span className={styles.footerMeta}>Used {template.useCount}× {template.usedAt ? `· last ${formatRelative(template.usedAt)}` : ''}</span>
-        <button onClick={onLoadIntoBuilder} className={styles.loadBtn} title="Open in the Builder (current workspace)">
+        <span className={styles.footerMeta}>Used {template.useCount}×</span>
+        <button onClick={onLoadIntoBuilder} className={styles.loadBtn} title="Load into current workspace Builder">
           Load in Builder
         </button>
       </div>
@@ -326,19 +320,15 @@ const TemplateEditor: React.FC<{
   const [tasks, setTasks]       = useState<PipelineTemplateTask[]>(
     template?.tasks ?? [{ id: crypto.randomUUID(), title: '', description: '', dependsOnIndices: [] }],
   );
+  const { draggedIdx, setDraggedIdx, dragOver, setDragOver, handleDrop } = useDragReorder(tasks, setTasks);
 
   const updateTask = (id: string, updates: Partial<PipelineTemplateTask>) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
   };
   const removeTask = (id: string) => setTasks(prev => prev.filter(t => t.id !== id));
   const addTask = () => setTasks(prev => [...prev, { id: crypto.randomUUID(), title: '', description: '', dependsOnIndices: prev.length > 0 ? [prev.length - 1] : [] }]);
-  const moveTask = (idx: number, dir: -1 | 1) => {
-    const next = [...tasks];
-    const j = idx + dir;
-    if (j < 0 || j >= next.length) return;
-    [next[idx], next[j]] = [next[j], next[idx]];
-    setTasks(next);
-  };
+
+
 
   const submit = () => {
     if (!title.trim()) { return; }
@@ -395,22 +385,7 @@ const TemplateEditor: React.FC<{
             </div>
             <div className={styles.formRow}>
               <label className={styles.fieldLabel}>Execution mode</label>
-              <div className={styles.modeToggle}>
-                <button
-                  type="button"
-                  className={cx(styles.modeBtn, mode === 'sequential' && styles.modeBtnActive)}
-                  onClick={() => setMode('sequential')}
-                >
-                  <ListOrdered size={11} /> Sequential
-                </button>
-                <button
-                  type="button"
-                  className={cx(styles.modeBtn, mode === 'parallel' && styles.modeBtnActive)}
-                  onClick={() => setMode('parallel')}
-                >
-                  <Zap size={11} /> Parallel
-                </button>
-              </div>
+              <ExecutionModeToggle mode={mode} onChange={setMode} />
             </div>
           </div>
 
@@ -422,8 +397,12 @@ const TemplateEditor: React.FC<{
               </button>
             </div>
             {tasks.map((task, i) => (
-              <div key={task.id} className={styles.editTaskRow}>
-                <span className={styles.taskNum}>{i + 1}</span>
+              <DraggableTaskRow
+                key={task.id}
+                index={i}
+                dragState={{ draggedIdx, setDraggedIdx, dragOver, setDragOver, handleDrop }}
+                onRemove={() => removeTask(task.id)}
+              >
                 <Input
                   type="text"
                   value={task.title}
@@ -435,7 +414,7 @@ const TemplateEditor: React.FC<{
                   type="text"
                   value={task.agentHint ?? ''}
                   onChange={e => updateTask(task.id, { agentHint: e.target.value })}
-                  placeholder="agent hint (tab name)"
+                  placeholder="agent hint"
                   className={styles.input}
                 />
                 <Input
@@ -448,12 +427,7 @@ const TemplateEditor: React.FC<{
                   placeholder="deps"
                   className={cx(styles.input, styles.depsInput)}
                 />
-                <button type="button" onClick={() => moveTask(i, -1)} disabled={i === 0} className={styles.moveBtn} title="Move up">↑</button>
-                <button type="button" onClick={() => moveTask(i, 1)} disabled={i === tasks.length - 1} className={styles.moveBtn} title="Move down">↓</button>
-                <button type="button" onClick={() => removeTask(task.id)} className={styles.removeBtn} title="Remove">
-                  <Trash2 size={11} />
-                </button>
-              </div>
+              </DraggableTaskRow>
             ))}
             {tasks.length === 0 && (
               <p className={styles.emptyHint}>No tasks yet. Add at least one.</p>
@@ -479,6 +453,7 @@ const TemplateEditor: React.FC<{
 
 const RunTemplateModal: React.FC<{
   template: PipelineTemplate;
+  currentWorkspaceId: string;
   workspaces: Workspace[];
   spaces: Space[];
   terminalSessions: TerminalSession[];
@@ -489,10 +464,10 @@ const RunTemplateModal: React.FC<{
     spaceId: string | null,
     agentByTaskId: Record<string, { id: string; title: string }>,
   ) => void;
-}> = ({ template, workspaces, spaces, terminalSessions, onCancel, onRun }) => {
-  const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? '');
+}> = ({ template, currentWorkspaceId, workspaces, spaces, terminalSessions, onCancel, onRun }) => {
+  const [workspaceId, setWorkspaceId] = useState(currentWorkspaceId || workspaces[0]?.id || '');
   const [spaceId, setSpaceId] = useState<string | null>(
-    spaces.find(sp => sp.workspaceId === workspaces[0]?.id)?.id ?? null,
+    spaces.find(sp => sp.workspaceId === (currentWorkspaceId || workspaces[0]?.id))?.id ?? null,
   );
   const [assignments, setAssignments] = useState<Record<string, string>>({});
 
@@ -601,51 +576,29 @@ const RunTemplateModal: React.FC<{
   );
 };
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatRelative(iso: string): string {
-  try {
-    const ms = new Date(iso).getTime();
-    const diff = Date.now() - ms;
-    const sec = Math.floor(diff / 1000);
-    if (sec < 60) return `${sec}s ago`;
-    const min = Math.floor(sec / 60);
-    if (min < 60) return `${min}m ago`;
-    const hr = Math.floor(min / 60);
-    if (hr < 24) return `${hr}h ago`;
-    return new Date(ms).toLocaleDateString();
-  } catch {
-    return '';
-  }
-}
+// ── Helpers ──
 
 const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
 const slideUp = keyframes`from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; }`;
 
 const styles = {
   container: css`
-    flex: 1; overflow-y: auto;
-    padding: var(--spacing-xl);
-    display: flex; flex-direction: column; gap: var(--spacing-xl);
-    background-color: var(--bg-primary);
+    flex: 1; min-height: 0; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 12px;
+    padding: 12px;
+    &::-webkit-scrollbar { width: 4px; }
+    &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
   `,
   header: css`
-    display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md);
-  `,
-  title: css`
-    font-size: var(--font-size-3xl); font-weight: var(--font-weight-bold);
-    letter-spacing: -0.025em; color: var(--text-primary); margin: 0;
-  `,
-  description: css`
-    font-size: var(--font-size-sm); color: var(--text-secondary); margin: 4px 0 0;
+    display: flex; align-items: center; justify-content: flex-end; gap: var(--spacing-sm);
   `,
   primaryBtn: css`
     display: inline-flex; align-items: center; gap: 6px;
     background: var(--gradient-brand); color: #fff;
-    padding: 8px 14px; border: none; border-radius: var(--border-radius-md);
-    font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold);
+    padding: 6px 12px; border: none; border-radius: var(--border-radius-md);
+    font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold);
     cursor: pointer; transition: filter 0.15s;
-    box-shadow: 0 4px 14px rgba(123, 104, 238, 0.3);
+    box-shadow: 0 2px 6px rgba(123, 104, 238, 0.25);
     &:hover { filter: brightness(1.06); }
   `,
   primaryBtnSmall: css`
@@ -657,42 +610,41 @@ const styles = {
     &:hover:not(:disabled) { filter: brightness(1.06); }
     &:disabled { opacity: 0.4; cursor: default; }
   `,
-
   filtersArea: css`
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-lg);
-    padding: var(--spacing-md);
-    display: flex; flex-direction: column; gap: 10px;
+    border-radius: var(--border-radius-md);
+    padding: var(--spacing-sm);
+    display: flex; flex-direction: column; gap: 8px;
   `,
   searchRow: css`
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 6px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);
-    padding: 6px 12px;
+    padding: 4px 8px;
   `,
   searchIcon: css`color: var(--text-tertiary); flex-shrink: 0;`,
   searchInput: css`
     flex: 1; background: transparent; border: none; outline: none;
-    font-size: var(--font-size-sm); color: var(--text-primary);
+    font-size: var(--font-size-xs); color: var(--text-primary);
     &::placeholder { color: var(--text-tertiary); }
   `,
   clearBtn: css`
     background: transparent; border: none; cursor: pointer;
-    color: var(--text-tertiary); padding: 2px;
+    color: var(--text-tertiary); padding: 1px;
     &:hover { color: var(--text-primary); }
   `,
   tagRow: css`
-    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
   `,
   tagChip: css`
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 10px;
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 2px 8px;
     background-color: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: 99px;
-    font-size: 11px; color: var(--text-secondary);
+    font-size: 10px; color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.15s;
     &:hover { color: var(--text-primary); border-color: var(--border-color-hover); }
@@ -704,27 +656,25 @@ const styles = {
   `,
   clearTagsBtn: css`
     background: transparent; border: none; cursor: pointer;
-    font-size: 11px; color: var(--text-tertiary); font-weight: 600;
+    font-size: 10px; color: var(--text-tertiary); font-weight: 600;
     &:hover { color: var(--color-error); }
   `,
-
   emptyState: css`
-    padding: var(--spacing-3xl);
+    padding: var(--spacing-xl);
     text-align: center;
     border: 1px dashed var(--border-color);
-    border-radius: var(--border-radius-lg);
+    border-radius: var(--border-radius-md);
     background-color: var(--bg-secondary);
-    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
   `,
   emptyIcon: css`color: var(--border-color-hover);`,
-  emptyTitle: css`color: var(--text-secondary); margin: 0;`,
-  emptySubtitle: css`font-size: var(--font-size-xs); color: var(--text-tertiary); margin: 0;`,
-
+  emptyTitle: css`color: var(--text-secondary); margin: 0; font-size: var(--font-size-sm); font-weight: 600;`,
+  emptySubtitle: css`font-size: 10px; color: var(--text-tertiary); margin: 0;`,
   cardsList: css`
-    display: flex; flex-direction: column; gap: var(--spacing-md);
+    display: flex; flex-direction: column; gap: 10px;
   `,
   card: css`
-    border-radius: var(--border-radius-lg);
+    border-radius: var(--border-radius-md);
     border: 1px solid var(--border-color);
     background-color: var(--bg-secondary);
     overflow: hidden;
@@ -732,42 +682,32 @@ const styles = {
     &:hover { border-color: var(--border-color-hover); }
   `,
   cardHeader: css`
-    padding: var(--spacing-md) var(--spacing-lg);
-    display: flex; justify-content: space-between; align-items: flex-start; gap: var(--spacing-md);
+    padding: 10px 12px;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
   `,
   cardInfo: css`
-    display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0;
+    display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0;
   `,
   cardTitleRow: css`
-    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   `,
   cardIcon: css`color: var(--color-brand); flex-shrink: 0;`,
   cardTitle: css`
     font-weight: var(--font-weight-bold); color: var(--text-primary);
-    font-size: var(--font-size-base); margin: 0;
+    font-size: var(--font-size-sm); margin: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 150px;
   `,
-  modeBadge: css`
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 9px; padding: 2px 8px; border-radius: 99px;
-    border: 1px solid; font-weight: 700;
-  `,
-  modeSeq: css`
-    background: rgba(var(--color-info-rgb), 0.12); color: var(--color-info);
-    border-color: rgba(var(--color-info-rgb), 0.3);
-  `,
-  modePar: css`
-    background: rgba(var(--color-warning-rgb), 0.12); color: var(--color-warning);
-    border-color: rgba(var(--color-warning-rgb), 0.3);
-  `,
+
   cardDesc: css`
-    font-size: 11px; color: var(--text-secondary); margin: 0; line-height: 1.5;
+    font-size: 10px; color: var(--text-secondary); margin: 0; line-height: 1.4;
   `,
   tagsList: css`
-    display: flex; flex-wrap: wrap; gap: 4px;
+    display: flex; flex-wrap: wrap; gap: 3px;
   `,
   tagItem: css`
-    display: inline-flex; align-items: center; gap: 3px;
-    font-size: 9px; padding: 1px 6px; border-radius: 99px;
+    display: inline-flex; align-items: center; gap: 2px;
+    font-size: 9px; padding: 1px 5px; border-radius: 99px;
     background: var(--bg-tertiary); color: var(--text-secondary);
     border: 1px solid var(--border-color);
   `,
@@ -775,14 +715,14 @@ const styles = {
     display: flex; gap: 4px; flex-shrink: 0;
   `,
   runBtn: css`
-    display: inline-flex; align-items: center; gap: 5px;
+    display: inline-flex; align-items: center; gap: 4px;
     background: var(--color-brand); color: #fff;
-    padding: 5px 10px; border: none; border-radius: var(--border-radius-sm);
-    font-size: 11px; font-weight: 700; cursor: pointer;
+    padding: 4px 8px; border: none; border-radius: var(--border-radius-sm);
+    font-size: 10px; font-weight: 700; cursor: pointer;
     &:hover { filter: brightness(1.08); }
   `,
   iconBtn: css`
-    width: 28px; height: 28px;
+    width: 24px; height: 24px;
     background: transparent;
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);
@@ -794,51 +734,27 @@ const styles = {
   iconBtnDanger: css`
     &:hover { color: var(--color-error); border-color: var(--color-error); background: rgba(var(--color-error-rgb), 0.1); }
   `,
-
   taskList: css`
-    padding: 0 var(--spacing-lg);
-    display: flex; flex-direction: column; gap: 2px;
-  `,
-  taskRow: css`
-    display: flex; align-items: center; gap: 8px;
-    padding: 5px 8px;
-    border-radius: var(--border-radius-sm);
-    background: var(--bg-tertiary);
-    font-size: 11px;
-  `,
-  taskNum: css`
-    font-size: 10px; font-weight: 700; color: var(--text-tertiary);
-    width: 16px; text-align: right; flex-shrink: 0;
-  `,
-  taskTitle: css`
-    flex: 1; min-width: 0;
-    color: var(--text-primary);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  `,
-  taskAgent: css`
-    font-size: 10px; color: var(--color-brand); font-weight: 600;
-    flex-shrink: 0;
-  `,
-  taskDeps: css`
-    font-size: 10px; color: var(--text-tertiary); flex-shrink: 0;
+    padding: 0 12px 10px;
+    display: flex; flex-direction: column; gap: 3px;
   `,
 
   cardFooter: css`
-    padding: 8px var(--spacing-lg);
-    display: flex; align-items: center; gap: var(--spacing-md);
+    padding: 6px 12px;
+    display: flex; align-items: center; gap: var(--spacing-sm);
     border-top: 1px solid var(--border-color);
     background: var(--bg-canvas);
   `,
   footerMeta: css`
-    font-size: 10px; color: var(--text-tertiary); font-weight: 600;
+    font-size: 9px; color: var(--text-tertiary); font-weight: 600;
   `,
   loadBtn: css`
     margin-left: auto;
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    padding: 4px 10px; border-radius: var(--border-radius-sm);
-    font-size: 11px; font-weight: 600; cursor: pointer;
+    padding: 3px 8px; border-radius: var(--border-radius-sm);
+    font-size: 10px; font-weight: 600; cursor: pointer;
     &:hover { color: var(--color-brand); border-color: var(--color-brand); }
   `,
 
@@ -888,7 +804,6 @@ const styles = {
     cursor: pointer;
     &:hover { color: var(--text-primary); border-color: var(--border-color-hover); }
   `,
-
   formRow: css`
     display: flex; flex-direction: column; gap: 6px;
   `,
@@ -909,24 +824,6 @@ const styles = {
     &:focus { border-color: var(--color-brand); }
     &::placeholder { color: var(--text-tertiary); }
   `,
-  modeToggle: css`
-    display: flex; gap: 2px;
-    background: var(--bg-input); border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm); padding: 2px;
-  `,
-  modeBtn: css`
-    flex: 1;
-    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-    background: transparent; border: none; cursor: pointer;
-    color: var(--text-tertiary); font-size: 11px; font-weight: 600;
-    padding: 5px 8px; border-radius: 4px;
-    &:hover { color: var(--text-primary); }
-  `,
-  modeBtnActive: css`
-    background: var(--color-brand); color: #fff;
-    &:hover { color: #fff; }
-  `,
-
   tasksSection: css`
     display: flex; flex-direction: column; gap: 6px;
   `,
@@ -946,32 +843,27 @@ const styles = {
     &:hover { color: var(--color-brand); border-color: var(--color-brand); }
   `,
   editTaskRow: css`
+    position: relative;
     display: flex; align-items: center; gap: 6px;
     padding: 6px 8px;
     background: var(--bg-tertiary);
     border-radius: var(--border-radius-sm);
     border: 1px solid var(--border-color);
   `,
+  taskNum: css`
+    font-size: 10px; font-weight: 700; color: var(--text-tertiary);
+    width: 16px; text-align: right; flex-shrink: 0;
+  `,
+  taskTitle: css`
+    flex: 1; min-width: 0; font-size: 11px;
+    color: var(--text-primary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  `,
   depsInput: css`
     width: 80px; flex: none;
   `,
   agentSelect: css`flex: 1; min-width: 0;`,
-  moveBtn: css`
-    background: transparent; border: 1px solid var(--border-color);
-    color: var(--text-tertiary); cursor: pointer;
-    width: 22px; height: 24px; border-radius: 4px;
-    &:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-color-hover); }
-    &:disabled { opacity: 0.35; cursor: default; }
-  `,
-  removeBtn: css`
-    background: transparent; border: 1px solid var(--border-color);
-    color: var(--text-tertiary); cursor: pointer;
-    width: 24px; height: 24px; border-radius: 4px;
-    display: inline-flex; align-items: center; justify-content: center;
-    &:hover { color: var(--color-error); border-color: var(--color-error); }
-  `,
   emptyHint: css`font-size: 11px; color: var(--text-tertiary); font-style: italic; text-align: center; padding: 8px 0;`,
-
   warningBanner: css`
     background: rgba(var(--color-warning-rgb), 0.08);
     border: 1px solid rgba(var(--color-warning-rgb), 0.3);

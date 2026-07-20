@@ -1,3 +1,3 @@
 // Custom hooks extracted from DashboardContext will live here.
 // Example: useConductorEngine, useTerminalSessions, useWorkspaces, etc.
-export {};
+export { useDragReorder } from './useDragReorder';
