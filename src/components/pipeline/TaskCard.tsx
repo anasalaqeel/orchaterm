@@ -9,6 +9,7 @@ import React, { useState } from 'react';
 import { css, cx } from '@emotion/css';
 import { ChevronDown, ChevronRight, FileText } from 'lucide-react';
 import type { OrchestratorTask } from '../../types';
+import { TASK_STATUS_COLORS, TASK_STATUS_ICONS } from './pipelineConstants';
 
 interface TaskCardProps {
   task: OrchestratorTask;
@@ -26,19 +27,7 @@ interface TaskCardProps {
   defaultExpanded?: boolean;
 }
 
-const STATUS_COLORS: Record<OrchestratorTask['status'], string> = {
-  pending:  'var(--text-tertiary)',
-  running:  'var(--color-brand)',
-  done:     'var(--color-success)',
-  failed:   'var(--color-error)',
-};
 
-const STATUS_ICONS: Record<OrchestratorTask['status'], string> = {
-  pending:  '○',
-  running:  '▶',
-  done:     '✓',
-  failed:   '✗',
-};
 
 export const TaskCard: React.FC<TaskCardProps> = ({
   task,
@@ -51,8 +40,8 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [filesHover, setFilesHover] = useState(false);
 
-  const color = STATUS_COLORS[task.status];
-  const icon  = STATUS_ICONS[task.status];
+  const color = TASK_STATUS_COLORS[task.status];
+  const icon  = TASK_STATUS_ICONS[task.status];
 
   const elapsed = task.startedAt
     ? task.completedAt
