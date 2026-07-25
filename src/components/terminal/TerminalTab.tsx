@@ -301,6 +301,17 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       termRef.current = term;
       fitAddonRef.current = fitAddon;
 
+      // ─ Wait for custom fonts to load ──────────────────────────────────────
+      // Prevents overlapping text if xterm measures cells using a fallback font
+      // before the custom web font (like Fira Code) is fully loaded.
+      document.fonts.ready.then(() => {
+        if (!effectActiveRef.current) return;
+        (term as any)._core?._charSizeService?.measure();
+        safeFit(fitAddon);
+        try { webglAddonRef.current?.clearTextureAtlas(); } catch { /* ignore */ }
+        term.refresh(0, term.rows - 1);
+      });
+
       // GPU renderer attachment lives in its own effect, gated on `isVisible`
       // (see below) — Chromium caps concurrent WebGL contexts at ~16, and
       // every tab/pane's xterm instance stays mounted indefinitely so PTY
@@ -526,28 +537,23 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       // Only responsibility: call safeFit when the container element changes
       // size. The term.onResize handler above forwards any resulting dimension
       // change to the PTY — no resize_pty call needed here.
-      let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-
-      let resizeRaf1: number, resizeRaf2: number;
+      let resizeRaf: number;
       const resizeObserver = new ResizeObserver(() => {
-        if (resizeTimer !== null) clearTimeout(resizeTimer);
-        cancelAnimationFrame(resizeRaf1);
-        cancelAnimationFrame(resizeRaf2);
-        resizeTimer = setTimeout(() => {
+        cancelAnimationFrame(resizeRaf);
+        
+        // Use a single requestAnimationFrame to throttle resizes to the display refresh rate.
+        // This prevents 'ResizeObserver loop limit exceeded' errors and keeps window 
+        // dragging smooth, while avoiding the 100ms lag of the old setTimeout.
+        resizeRaf = requestAnimationFrame(() => {
           if (!fitAddonRef.current || !termRef.current) return;
-          // charSizeService.measure() reads measureElement.offsetWidth (DOM span
-          // with 32 "W"s). While the terminal is display:none, offsetWidth=0 so
-          // measure() silently no-ops and _charSizeService.width stays stale.
-          // Calling it here — after the container is visible again — gives xterm
-          // fresh char metrics so proposeDimensions() calculates correct cols/rows.
           (termRef.current as any)._core?._charSizeService?.measure();
           safeFit(fitAddonRef.current);
-          resizeRaf1 = requestAnimationFrame(() => {
-            resizeRaf2 = requestAnimationFrame(() => {
-              if (fitAddonRef.current) safeFit(fitAddonRef.current);
-            });
+          
+          // A second pass to catch flexbox settling (e.g. scrollbars appearing/disappearing)
+          requestAnimationFrame(() => {
+            if (fitAddonRef.current) safeFit(fitAddonRef.current);
           });
-        }, 100);
+        });
       });
 
       if (containerRef.current) {
@@ -604,9 +610,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         lastPtyPixelSizeRef.current = null;
         cancelled = true;
         cancelAnimationFrame(rafId);
-        cancelAnimationFrame(resizeRaf1);
-        cancelAnimationFrame(resizeRaf2);
-        if (resizeTimer !== null) clearTimeout(resizeTimer);
+        cancelAnimationFrame(resizeRaf);
         resizeObserver.disconnect();
         term.element?.removeEventListener('mouseup', onMouseUp);
         term.element?.removeEventListener('mousedown', onMouseDown);
