@@ -15,6 +15,33 @@ function chunkEnd(data: string, start: number, chunkSize: number): number {
       // in rather than leaving it stranded at the start of the next chunk.
       end += 1;
     }
+
+    // Prevent splitting ANSI escape sequences (like \x1b[200~ or \x1b[201~) across chunks.
+    // ConPTY drops escape sequences if they are split and delayed.
+    let escapeIdx = -1;
+    for (let j = 1; j <= 8 && (end - j) >= start; j++) {
+      if (data.charCodeAt(end - j) === 0x1b) {
+        escapeIdx = end - j;
+        break;
+      }
+    }
+    
+    if (escapeIdx !== -1) {
+      // Check if the escape sequence terminates before `end`.
+      let terminated = false;
+      for (let k = escapeIdx + 1; k < end; k++) {
+        if (/[a-zA-Z~]/.test(data[k])) {
+          terminated = true;
+          break;
+        }
+      }
+      
+      // If unterminated, pull boundary back to before the ESC character
+      // (as long as it doesn't cause an empty chunk).
+      if (!terminated && escapeIdx > start) {
+        end = escapeIdx;
+      }
+    }
   }
   return end;
 }
