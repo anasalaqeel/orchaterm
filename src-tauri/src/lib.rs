@@ -80,6 +80,60 @@ mod winjob {
     }
 }
 
+// ── Windows build number (for xterm.js ConPTY compat mode) ───────────────────
+// GetVersionEx lies about the build number unless the app manifest declares
+// compatibility with the running OS, so read it straight from the registry
+// instead — same value node's os.release() (used by VS Code) resolves to.
+#[cfg(target_os = "windows")]
+mod winver {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::ERROR_SUCCESS;
+    use windows::Win32::System::Registry::{
+        RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ,
+    };
+
+    pub(crate) fn current_build_number() -> Option<u32> {
+        unsafe {
+            let subkey: Vec<u16> = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\0"
+                .encode_utf16()
+                .collect();
+            let value: Vec<u16> = "CurrentBuildNumber\0".encode_utf16().collect();
+
+            let mut buf = [0u16; 32];
+            let mut size = (buf.len() * 2) as u32;
+
+            let status = RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                PCWSTR(subkey.as_ptr()),
+                PCWSTR(value.as_ptr()),
+                RRF_RT_REG_SZ,
+                None,
+                Some(buf.as_mut_ptr() as *mut _),
+                Some(&mut size),
+            );
+
+            if status != ERROR_SUCCESS {
+                return None;
+            }
+
+            let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+            String::from_utf16(&buf[..len]).ok()?.parse().ok()
+        }
+    }
+}
+
+#[tauri::command]
+fn windows_build_number() -> Option<u32> {
+    #[cfg(target_os = "windows")]
+    {
+        winver::current_build_number()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
+
 // ── Shell detection ────────────────────────────────────────────────────────────
 
 #[derive(Clone, Serialize)]
@@ -519,6 +573,7 @@ fn spawn_pty(
         cmd.cwd(&workspace_path);
     }
     cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
 
     let child = pair
         .slave
@@ -532,6 +587,7 @@ fn spawn_pty(
                 fallback.cwd(&workspace_path);
             }
             fallback.env("TERM", "xterm-256color");
+            fallback.env("COLORTERM", "truecolor");
             pair.slave.spawn_command(fallback)
         })
         .map_err(|e| format!("Failed to spawn shell: {e}"))?;
@@ -903,6 +959,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_available_shells,
+            windows_build_number,
             spawn_pty,
             write_pty,
             resize_pty,
