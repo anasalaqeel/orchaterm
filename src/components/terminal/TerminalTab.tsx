@@ -7,11 +7,12 @@ import {
   forwardRef,
   useMemo,
 } from 'react';
-import { Terminal } from '@xterm/xterm';
+import { Terminal, IWindowsPty } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
+import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
@@ -49,6 +50,21 @@ interface TerminalTabProps {
 }
 
 type SpawnState = 'idle' | 'spawning' | 'running' | 'error';
+
+// Fetched once per app session (same OS build for every session/tab) and
+// shared across all TerminalTab instances. Resolves to null on non-Windows
+// hosts, where xterm's windowsPty compat mode simply stays unset.
+let windowsPtyInfoPromise: Promise<IWindowsPty | null> | null = null;
+function getWindowsPtyInfo(): Promise<IWindowsPty | null> {
+  if (!windowsPtyInfoPromise) {
+    windowsPtyInfoPromise = invoke<number | null>('windows_build_number')
+      .then((buildNumber) =>
+        buildNumber ? { backend: 'conpty' as const, buildNumber } : null,
+      )
+      .catch(() => null);
+  }
+  return windowsPtyInfoPromise;
+}
 
 // ── Safe fit helper ────────────────────────────────────────────────────────────
 // Always probe proposeDimensions() before calling fit(). If the container has
@@ -139,7 +155,18 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // duplicate "$" once the shell has already printed a prompt. Gating
     // term.onResize on an actual pixel-size change (a genuine resize) avoids
     // that without blocking real resizes.
+    //
+    // That pixel-size gate is only correct for container-driven refits
+    // (ResizeObserver settling, initial mount poll). It's WRONG for refits we
+    // trigger for a known real reason at an unchanged container size — font
+    // finishing load (fallback → real glyph metrics changes cols/rows for
+    // real), a font-size/lineHeight/letterSpacing config edit, or the
+    // imperative fit() on tab-show. Those must always reach ConPTY or xterm's
+    // grid silently drifts from what the shell is wrapping at (columns
+    // misaligned, lines overlapping/duplicating). forceResizeRef lets those
+    // call sites bypass the gate for exactly one onResize firing.
     const lastPtyPixelSizeRef = useRef<{ w: number; h: number } | null>(null);
+    const forceResizeRef = useRef(false);
 
     // Live refs read inside the (long-lived) main effect so it never closes over
     // a stale value. keybindings: lets the custom key handler stay on THIS term
@@ -158,7 +185,13 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         const term = termRef.current;
         if (!fitAddonRef.current || !term) return;
         (term as any)._core?._charSizeService?.measure();
+        // onResize (if it fires) is synchronous within fit() — xterm only fires it
+        // when cols/rows actually change. Clear the flag right after in case it
+        // didn't fire, so it can't dangle true and bypass the noise guard on some
+        // later, unrelated container resize.
+        forceResizeRef.current = true;
         safeFit(fitAddonRef.current);
+        forceResizeRef.current = false;
         // The WebGL glyph atlas desyncs while the pane is hidden (no paints) —
         // on re-show the first frame draws stale/overlapping glyphs. Rebuild it,
         // then force a full redraw so every cell repaints from clean state.
@@ -296,10 +329,24 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       term.loadAddon(searchAddon);
       searchAddonRef.current = searchAddon;
 
+      // Unicode 11 width tables — xterm defaults to Unicode 6, which
+      // mis-measures wide/emoji/box-drawing glyphs that modern TUIs (Claude
+      // Code, etc.) and ConPTY both assume Unicode 11+ widths for. A
+      // mis-measured glyph shifts every column after it on that row.
+      term.loadAddon(new Unicode11Addon());
+      term.unicode.activeVersion = '11';
+
       term.open(containerRef.current);
 
       termRef.current = term;
       fitAddonRef.current = fitAddon;
+
+      // ConPTY compat heuristics (scrollback-on-grow, reflow) — see IWindowsPty
+      // doc comment. No-op on non-Windows (info resolves to null).
+      getWindowsPtyInfo().then((info) => {
+        if (!effectActiveRef.current || !info) return;
+        term.options.windowsPty = info;
+      });
 
       // ─ Wait for custom fonts to load ──────────────────────────────────────
       // Prevents overlapping text if xterm measures cells using a fallback font
@@ -307,7 +354,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       document.fonts.ready.then(() => {
         if (!effectActiveRef.current) return;
         (term as any)._core?._charSizeService?.measure();
+        forceResizeRef.current = true;
         safeFit(fitAddon);
+        forceResizeRef.current = false; // clear if fit() didn't actually resize (no onResize fired)
         try { webglAddonRef.current?.clearTextureAtlas(); } catch { /* ignore */ }
         term.refresh(0, term.rows - 1);
       });
@@ -480,8 +529,12 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         const rect = containerRef.current?.getBoundingClientRect();
         const w = rect ? Math.round(rect.width) : -1;
         const h = rect ? Math.round(rect.height) : -1;
-        const last = lastPtyPixelSizeRef.current;
-        if (last && last.w === w && last.h === h) return;
+        const force = forceResizeRef.current;
+        forceResizeRef.current = false;
+        if (!force) {
+          const last = lastPtyPixelSizeRef.current;
+          if (last && last.w === w && last.h === h) return;
+        }
         lastPtyPixelSizeRef.current = { w, h };
         invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
       });
@@ -718,7 +771,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       const id1 = requestAnimationFrame(() => {
         (term as any)._core?._charSizeService?.measure();
         id2 = requestAnimationFrame(() => {
-          if (fitAddonRef.current) safeFit(fitAddonRef.current);
+          if (fitAddonRef.current) {
+            forceResizeRef.current = true;
+            safeFit(fitAddonRef.current);
+            forceResizeRef.current = false; // clear if fit() didn't actually resize (no onResize fired)
+          }
         });
       });
       return () => { cancelAnimationFrame(id1); cancelAnimationFrame(id2); };
