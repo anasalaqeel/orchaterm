@@ -144,29 +144,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // True once the PTY is alive — allows the term.onResize handler to call
     // resize_pty without racing a spawn that hasn't returned yet.
     const isSpawnedRef = useRef(false);
-    // Container pixel size (not char-grid cols/rows) as of the last resize_pty
-    // call we actually sent. xterm.js can recompute a slightly different
-    // cols/rows for the SAME container size — font-metric/sub-pixel
-    // measurement noise settling across the handful of corrective re-fits
-    // scheduled shortly after mount (see TerminalContainer's post-animation
-    // re-fit). Forwarding one of those as a live PTY resize makes shells with
-    // readline-style redraw-on-resize (MSYS2 Git Bash in particular) redraw
-    // their prompt line as a NEW line instead of overwriting it — a visible
-    // duplicate "$" once the shell has already printed a prompt. Gating
-    // term.onResize on an actual pixel-size change (a genuine resize) avoids
-    // that without blocking real resizes.
-    //
-    // That pixel-size gate is only correct for container-driven refits
-    // (ResizeObserver settling, initial mount poll). It's WRONG for refits we
-    // trigger for a known real reason at an unchanged container size — font
-    // finishing load (fallback → real glyph metrics changes cols/rows for
-    // real), a font-size/lineHeight/letterSpacing config edit, or the
-    // imperative fit() on tab-show. Those must always reach ConPTY or xterm's
-    // grid silently drifts from what the shell is wrapping at (columns
-    // misaligned, lines overlapping/duplicating). forceResizeRef lets those
-    // call sites bypass the gate for exactly one onResize firing.
-    const lastPtyPixelSizeRef = useRef<{ w: number; h: number } | null>(null);
-    const forceResizeRef = useRef(false);
+    // Tracks the exact (cols, rows) grid size as of the last resize_pty call sent
+    // to the PTY. Guarantees that Xterm.js and ConPTY stay 100% in sync without
+    // sending redundant IPC calls when dimensions haven't changed.
+    const lastPtyColsRowsRef = useRef<{ cols: number; rows: number } | null>(null);
 
     // Live refs read inside the (long-lived) main effect so it never closes over
     // a stale value. keybindings: lets the custom key handler stay on THIS term
@@ -189,9 +170,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         // when cols/rows actually change. Clear the flag right after in case it
         // didn't fire, so it can't dangle true and bypass the noise guard on some
         // later, unrelated container resize.
-        forceResizeRef.current = true;
         safeFit(fitAddonRef.current);
-        forceResizeRef.current = false;
         // The WebGL glyph atlas desyncs while the pane is hidden (no paints) —
         // on re-show the first frame draws stale/overlapping glyphs. Rebuild it,
         // then force a full redraw so every cell repaints from clean state.
@@ -261,12 +240,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         // Mark PTY as live so the onResize handler starts forwarding size changes.
         isSpawnedRef.current = true;
         setSpawnState('running');
-        // Baseline for the onResize pixel-size guard below — the PTY was just
-        // spawned at the container's current pixel size.
-        const spawnRect = containerRef.current?.getBoundingClientRect();
-        lastPtyPixelSizeRef.current = spawnRect
-          ? { w: Math.round(spawnRect.width), h: Math.round(spawnRect.height) }
-          : null;
+        // Baseline for the onResize grid-size guard — the PTY was just
+        // spawned at these exact cols/rows.
+        lastPtyColsRowsRef.current = { cols, rows };
 
         // Focus xterm now that the PTY is alive and ready for input.
         termRef.current?.focus();
@@ -354,9 +330,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       document.fonts.ready.then(() => {
         if (!effectActiveRef.current) return;
         (term as any)._core?._charSizeService?.measure();
-        forceResizeRef.current = true;
         safeFit(fitAddon);
-        forceResizeRef.current = false; // clear if fit() didn't actually resize (no onResize fired)
         try { webglAddonRef.current?.clearTextureAtlas(); } catch { /* ignore */ }
         term.refresh(0, term.rows - 1);
       });
@@ -518,24 +492,14 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       // ─ xterm.js → PTY size sync (primary resize mechanism) ──────────
       // term.onResize fires whenever xterm.js cols/rows actually change —
       // whether from fit() after a container resize or from switchTab.
-      // This is the most direct path: no polling, no comparison bugs.
       // We guard on isSpawnedRef so we never call resize_pty before the
-      // PTY process exists, and on an actual container pixel-size change so
-      // measurement-noise re-fits don't reach the PTY (see
-      // lastPtyPixelSizeRef above — this is what stops the Git Bash
-      // duplicate-prompt-line bug).
+      // PTY process exists, and check lastPtyColsRowsRef so we only emit
+      // resize_pty when grid dimensions actually differ from current PTY state.
       const resizeDispose = term.onResize(({ cols, rows }) => {
         if (!isSpawnedRef.current) return;
-        const rect = containerRef.current?.getBoundingClientRect();
-        const w = rect ? Math.round(rect.width) : -1;
-        const h = rect ? Math.round(rect.height) : -1;
-        const force = forceResizeRef.current;
-        forceResizeRef.current = false;
-        if (!force) {
-          const last = lastPtyPixelSizeRef.current;
-          if (last && last.w === w && last.h === h) return;
-        }
-        lastPtyPixelSizeRef.current = { w, h };
+        const last = lastPtyColsRowsRef.current;
+        if (last && last.cols === cols && last.rows === rows) return;
+        lastPtyColsRowsRef.current = { cols, rows };
         invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
       });
 
@@ -660,7 +624,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         // Reset the guard so a genuine re-run (deps change) works correctly.
         effectActiveRef.current = false;
         isSpawnedRef.current = false;
-        lastPtyPixelSizeRef.current = null;
+        lastPtyColsRowsRef.current = null;
         cancelled = true;
         cancelAnimationFrame(rafId);
         cancelAnimationFrame(resizeRaf);
@@ -772,9 +736,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         (term as any)._core?._charSizeService?.measure();
         id2 = requestAnimationFrame(() => {
           if (fitAddonRef.current) {
-            forceResizeRef.current = true;
             safeFit(fitAddonRef.current);
-            forceResizeRef.current = false; // clear if fit() didn't actually resize (no onResize fired)
           }
         });
       });
