@@ -38,12 +38,6 @@ interface TerminalTabProps {
   shellArgs?: string[];
   /** Called when the PTY child process exits. */
   onExit?: () => void;
-  /**
-   * Whether this tab is actually on-screen right now. Kept for API parity with
-   * TerminalContainer; ghostty-web uses a single Canvas2D renderer per terminal
-   * (no WebGL context-cap to manage), so this no longer gates a GPU renderer.
-   */
-  isVisible?: boolean;
 }
 
 type SpawnState = 'idle' | 'spawning' | 'running' | 'error';
@@ -210,6 +204,12 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       searchIndexRef.current = 0;
       termRef.current?.clearSelection();
       termRef.current?.focus();
+    }, []);
+
+    // Clear any pending search debounce on unmount so it can't fire after the
+    // terminal (and its buffer) is gone.
+    useEffect(() => () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     }, []);
 
     // ── Spawn helper (used for initial spawn AND retry) ──────────────────
@@ -514,15 +514,19 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           attempt();
         };
 
+        // Re-fit once the web font (Fira Code) is available so cell metrics are
+        // measured against the real font; any resulting size change flows to the
+        // PTY via term.onResize above. Spawning is kicked off separately below so
+        // font loading can neither delay nor duplicate it.
         document.fonts.ready.then(() => {
           if (disposed || !fitAddon) return;
           safeFit(fitAddon);
-          trySpawn();
         });
-        // Also kick off trySpawn immediately in case fonts are already loaded
-        // (document.fonts.ready still resolves, but we don't want to wait on it
-        // for the common case where the font is cached).
-        trySpawn();
+
+        // Spawn on the next frame (lets flex layout settle) and poll until the
+        // container has real dimensions, then wait for the PTY-data listener to
+        // be attached before spawning. Exactly ONE kick-off → no double spawn.
+        rafId = requestAnimationFrame(trySpawn);
       };
 
       setup();
