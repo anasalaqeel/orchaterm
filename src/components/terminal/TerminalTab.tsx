@@ -529,7 +529,14 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         rafId = requestAnimationFrame(trySpawn);
       };
 
-      setup();
+      // Any rejection from setup() (WASM load failure, open() throw, etc.)
+      // surfaces in the error overlay instead of leaving a silent blank pane.
+      setup().catch((err) => {
+        if (disposed) return;
+        console.error('[TerminalTab] setup failed:', err);
+        setSpawnState('error');
+        setErrorMsg(err instanceof Error ? err.message : String(err));
+      });
 
       // ─ Cleanup ───────────────────────────────────────────────────────
       return () => {
