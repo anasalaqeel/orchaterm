@@ -8,6 +8,13 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  // ghostty-web ships a raw .wasm asset loaded at runtime via a `?url` import.
+  // Excluding it from the dep pre-bundler keeps that asset (and its
+  // `import.meta.url`/`?url` resolution) intact instead of being inlined.
+  optimizeDeps: {
+    exclude: ["ghostty-web"],
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

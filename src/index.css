@@ -1,5 +1,3 @@
-@import "@xterm/xterm/css/xterm.css";
-
 /* ── Shared tokens ─────────────────────────────────────────────────────────── */
 :root[data-theme] {
   /* Spacing */
@@ -179,9 +177,4 @@ body {
   outline-offset: 2px;
 }
 
-/* ── xterm overrides ────────────────────────────────────────────────────────── */
-.xterm { padding: 8px; }
-.xterm-viewport  { background-color: transparent !important; }
-.xterm-screen    { background-color: transparent !important; }
-.xterm-selection div { background-color: rgba(158, 255, 255, 0.2) !important; }
-.xterm-rows { font-family: var(--font-family-mono); }
+/* (terminal canvas sizing lives with the TerminalTab emotion styles) */

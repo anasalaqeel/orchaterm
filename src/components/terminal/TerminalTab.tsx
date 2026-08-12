@@ -7,19 +7,17 @@ import {
   forwardRef,
   useMemo,
 } from 'react';
-import { Terminal, IWindowsPty } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import { WebglAddon } from '@xterm/addon-webgl';
-import { WebLinksAddon } from '@xterm/addon-web-links';
-import { SearchAddon } from '@xterm/addon-search';
-import { Unicode11Addon } from '@xterm/addon-unicode11';
-import { openUrl } from '@tauri-apps/plugin-opener';
+import { Terminal, FitAddon } from 'ghostty-web';
+import type { IDisposable } from 'ghostty-web';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { css } from '@emotion/css';
 import { Copy, Check, Search, X } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
-import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey, kittyEncodeKey, attachKittyProtocol } from '../../utils/terminalThemes';
+import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey } from '../../utils/terminalThemes';
+import { ensureGhostty } from '../../utils/ghosttyInit';
+import { UrlLinkProvider } from '../../utils/linkProviders';
+import { searchBuffer, revealMatch, type SearchMatch } from '../../utils/terminalSearch';
 import { writePtyChunked } from '../../utils/ptyUtils';
 import { QuickActionsBar } from './QuickActionsBar';
 
@@ -27,7 +25,7 @@ import { QuickActionsBar } from './QuickActionsBar';
 export interface TerminalTabHandle {
   /** Re-fit the terminal to its container (call after tab becomes visible). */
   fit: () => void;
-  /** Focus the xterm instance so keyboard input is captured. */
+  /** Focus the terminal so keyboard input is captured. */
   focus: () => void;
 }
 
@@ -41,36 +39,21 @@ interface TerminalTabProps {
   /** Called when the PTY child process exits. */
   onExit?: () => void;
   /**
-   * Whether this tab is actually on-screen right now (its workspace console
-   * is showing AND it's the active/split-visible tab within it). The xterm
-   * instance itself stays mounted regardless — this only gates the WebGL
-   * renderer, see the "GPU renderer" effect below.
+   * Whether this tab is actually on-screen right now. Kept for API parity with
+   * TerminalContainer; ghostty-web uses a single Canvas2D renderer per terminal
+   * (no WebGL context-cap to manage), so this no longer gates a GPU renderer.
    */
   isVisible?: boolean;
 }
 
 type SpawnState = 'idle' | 'spawning' | 'running' | 'error';
 
-// Fetched once per app session (same OS build for every session/tab) and
-// shared across all TerminalTab instances. Resolves to null on non-Windows
-// hosts, where xterm's windowsPty compat mode simply stays unset.
-let windowsPtyInfoPromise: Promise<IWindowsPty | null> | null = null;
-function getWindowsPtyInfo(): Promise<IWindowsPty | null> {
-  if (!windowsPtyInfoPromise) {
-    windowsPtyInfoPromise = invoke<number | null>('windows_build_number')
-      .then((buildNumber) =>
-        buildNumber ? { backend: 'conpty' as const, buildNumber } : null,
-      )
-      .catch(() => null);
-  }
-  return windowsPtyInfoPromise;
-}
-
 // ── Safe fit helper ────────────────────────────────────────────────────────────
-// Always probe proposeDimensions() before calling fit(). If the container has
-// zero size, proposeDimensions() returns undefined and fit() crashes internally
-// trying to read .dimensions on that undefined value.
-function safeFit(addon: FitAddon): { cols: number; rows: number } | null {
+// Probe proposeDimensions() before fit(); ghostty-web's FitAddon returns
+// undefined when the container has no measurable size, and fit() would throw
+// dividing by zero cell metrics in that case.
+function safeFit(addon: FitAddon | null): { cols: number; rows: number } | null {
+  if (!addon) return null;
   try {
     const dims = addon.proposeDimensions();
     if (!dims || dims.cols <= 0 || dims.rows <= 0) return null;
@@ -91,9 +74,6 @@ const ANSI_CONTROL = new RegExp('\\u001b\\][^\\u0007]*(?:\\u0007|\\u001b\\\\)|\\
  * Strip exactly ONE leading newline — but only when it is the session's first
  * visible content (everything before it is escape sequences). Returns the
  * (possibly trimmed) data plus whether the one-shot decision is now resolved.
- *
- * Safe for other shells: PowerShell/WSL print a printable prompt first (decision
- * resolves without stripping), and TUIs (Claude, agy) clear/redraw the screen.
  */
 function stripLeadingPromptNewline(data: string): { out: string; resolved: boolean } {
   const visible = data.replace(ANSI_CONTROL, '').replace(/\r/g, '');
@@ -106,7 +86,7 @@ function stripLeadingPromptNewline(data: string): { out: string; resolved: boole
 }
 
 export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
-  ({ sessionId, workspacePath, shell, shellArgs, onExit, isVisible = true }, ref) => {
+  ({ sessionId, workspacePath, shell, shellArgs, onExit }, ref) => {
     const { settings } = useDashboard();
     const terminalConfig = useMemo(
       () => settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG,
@@ -116,16 +96,20 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const termRef = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
-    const webglAddonRef = useRef<WebglAddon | null>(null);
     const [spawnState, setSpawnState] = useState<SpawnState>('idle');
     const [errorMsg, setErrorMsg] = useState('');
     const [hasSelection, setHasSelection] = useState(false);
     const [hasCopied, setHasCopied] = useState(false);
 
-    // Search state
+    // Search state. ghostty-web has no search addon, so we scan the buffer
+    // ourselves (src/utils/terminalSearch.ts). The matches live in a ref (no
+    // re-render needed per match); only the count drives the UI badge.
     const [searchVisible, setSearchVisible] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState(0);
+    const searchMatchesRef = useRef<SearchMatch[]>([]);
+    const searchIndexRef = useRef(0);
+    const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -133,20 +117,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // Visual bell state
     const [bellActive, setBellActive] = useState(false);
 
-    // Search addon ref
-    const searchAddonRef = useRef<SearchAddon | null>(null);
-    // Guard against React StrictMode double-invocation. When StrictMode runs
-    // cleanup immediately after the first effect, it sets this to true so the
-    // second (redundant) invocation is a no-op. Manually triggered retries
-    // reset this flag because they come from the retry button, not from the
-    // effect re-running with the same deps.
-    const effectActiveRef = useRef(false);
     // True once the PTY is alive — allows the term.onResize handler to call
     // resize_pty without racing a spawn that hasn't returned yet.
     const isSpawnedRef = useRef(false);
     // Tracks the exact (cols, rows) grid size as of the last resize_pty call sent
-    // to the PTY. Guarantees that Xterm.js and ConPTY stay 100% in sync without
-    // sending redundant IPC calls when dimensions haven't changed.
+    // to the PTY — avoids redundant IPC when dimensions haven't changed.
     const lastPtyColsRowsRef = useRef<{ cols: number; rows: number } | null>(null);
 
     // Live refs read inside the (long-lived) main effect so it never closes over
@@ -158,25 +133,21 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     const onExitRef = useRef(onExit);
     onExitRef.current = onExit;
 
-    // ── Expose fit() to parent via ref ───────────────────────────────────
+    // Snapshot of search visibility for the key handler (re-attached only on
+    // effect deps change, so it must read the latest value via a ref).
+    const searchVisibleRef = useRef(searchVisible);
+    searchVisibleRef.current = searchVisible;
+    const contextMenuRef = useRef(contextMenu);
+    contextMenuRef.current = contextMenu;
+
+    // ── Expose fit()/focus() to parent via ref ───────────────────────────
     // safeFit → fit() → term.onResize fires → resize_pty (if spawned).
-    // No need to call resize_pty directly here.
     useImperativeHandle(ref, () => ({
       fit: () => {
         const term = termRef.current;
         if (!fitAddonRef.current || !term) return;
-        (term as any)._core?._charSizeService?.measure();
-        // onResize (if it fires) is synchronous within fit() — xterm only fires it
-        // when cols/rows actually change. Clear the flag right after in case it
-        // didn't fire, so it can't dangle true and bypass the noise guard on some
-        // later, unrelated container resize.
         safeFit(fitAddonRef.current);
-        // The WebGL glyph atlas desyncs while the pane is hidden (no paints) —
-        // on re-show the first frame draws stale/overlapping glyphs. Rebuild it,
-        // then force a full redraw so every cell repaints from clean state.
-        try { webglAddonRef.current?.clearTextureAtlas(); } catch { /* DOM renderer */ }
         term.scrollToBottom();
-        term.refresh(0, term.rows - 1);
       },
       focus: () => {
         termRef.current?.focus();
@@ -184,31 +155,62 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     }));
 
     // ── Quick Actions bar → PTY ───────────────────────────────────────────
-    // Wrap in bracketed-paste markers ourselves (same escape sequences and
-    // condition xterm.js's own term.paste() uses — see Clipboard.ts's
-    // bracketTextForPaste) so the shell/app sees this as one pasted blob,
+    // Wrap in bracketed-paste markers ourselves (same escape sequences the
+    // emulator's paste() uses) so the shell/app sees this as one pasted blob,
     // not fast synthetic keystrokes exposed to per-character shell-side side
-    // effects (autosuggestion accept, magic-space history expansion, etc.)
-    // that can execute the command early and leak trailing text into
-    // whatever starts next. We build the whole payload (markers + trailing
-    // Enter) as ONE string and send it in a single call rather than calling
-    // term.paste() and then a separate write_pty for '\r': write_pty is an
-    // async Tauri command, so two independent invokes here would have no
-    // guaranteed ordering — a single combined write does.
-    //
-    // Enter must sit outside the closing marker: bracketed paste treats an
-    // embedded \r as a literal newline in the line buffer, not "run this
-    // now" (that's what stops a pasted multi-line script from
-    // auto-executing), so it has to be appended after `\x1b[201~`.
+    // effects (autosuggestion accept, magic-space history expansion, etc.).
+    // Enter sits OUTSIDE the closing marker so it submits the pasted text.
     const runQuickActionCommand = useCallback((command: string, autoExecute: boolean) => {
       const term = termRef.current;
       if (!term) return;
-      const bracketed = term.modes.bracketedPasteMode ? `\x1b[200~${command}\x1b[201~` : command;
+      const bracketed = term.hasBracketedPaste() ? `\x1b[200~${command}\x1b[201~` : command;
       const data = autoExecute ? `${bracketed}\r` : bracketed;
       writePtyChunked(sessionId, data).catch((err) =>
         console.error('[TerminalTab] write_pty failed:', err),
       );
     }, [sessionId]);
+
+    // ── Search helpers (buffer-based, replace addon-search) ──────────────
+    const runSearch = useCallback((query: string) => {
+      const term = termRef.current;
+      if (!query) {
+        searchMatchesRef.current = [];
+        searchIndexRef.current = 0;
+        setSearchResults(0);
+        term?.clearSelection();
+        return;
+      }
+      if (!term) return;
+      const matches = searchBuffer(term, query);
+      searchMatchesRef.current = matches;
+      if (matches.length > 0) {
+        searchIndexRef.current = 0;
+        revealMatch(term, matches[0]);
+      } else {
+        term.clearSelection();
+      }
+      setSearchResults(matches.length);
+    }, []);
+
+    const advanceSearch = useCallback((forward: boolean) => {
+      const term = termRef.current;
+      const matches = searchMatchesRef.current;
+      if (!term || matches.length === 0) return;
+      const n = matches.length;
+      searchIndexRef.current = (searchIndexRef.current + (forward ? 1 : -1) + n) % n;
+      revealMatch(term, matches[searchIndexRef.current]);
+    }, []);
+
+    const closeSearch = useCallback(() => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+      setSearchVisible(false);
+      setSearchQuery('');
+      setSearchResults(0);
+      searchMatchesRef.current = [];
+      searchIndexRef.current = 0;
+      termRef.current?.clearSelection();
+      termRef.current?.focus();
+    }, []);
 
     // ── Spawn helper (used for initial spawn AND retry) ──────────────────
     const spawnSession = useCallback(async () => {
@@ -219,10 +221,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       setErrorMsg('');
 
       // Fit first so the PTY starts with the real terminal dimensions.
-      // When called from the rAF (normal start-up) the container has already
-      // settled so safeFit returns real dims. On Retry clicks the container
-      // is already sized too. Use current xterm.js cols/rows as fallback
-      // (safer than the hardcoded 80×24 — xterm may have already been fitted).
       const fitted = fitAddonRef.current ? safeFit(fitAddonRef.current) : null;
       const cols = fitted?.cols ?? term.cols;
       const rows = fitted?.rows ?? term.rows;
@@ -237,18 +235,12 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           shellArgs: shellArgs ?? [],
         });
 
-        // Mark PTY as live so the onResize handler starts forwarding size changes.
         isSpawnedRef.current = true;
         setSpawnState('running');
-        // Baseline for the onResize grid-size guard — the PTY was just
-        // spawned at these exact cols/rows.
         lastPtyColsRowsRef.current = { cols, rows };
-
-        // Focus xterm now that the PTY is alive and ready for input.
         termRef.current?.focus();
 
-        // If xterm.js was resized while we were awaiting spawn_pty (unlikely
-        // but possible), correct the PTY now.
+        // If the terminal was resized while we awaited spawn_pty, correct the PTY.
         const liveterm = termRef.current;
         if (liveterm && (liveterm.cols !== cols || liveterm.rows !== rows)) {
           invoke('resize_pty', {
@@ -265,386 +257,291 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       }
     }, [sessionId, workspacePath, shell, shellArgs]);
 
-    // ── Main effect — creates xterm, wires listeners, spawns PTY ─────────
+    // ── Main effect — creates ghostty-web Terminal, wires listeners, spawns PTY ─
     useEffect(() => {
       if (!containerRef.current) return;
-      // If the effect is already active (StrictMode double-invocation in dev),
-      // skip this redundant run. The flag is reset in cleanup so a genuine
-      // re-run (deps change or manual retry) still works correctly.
-      if (effectActiveRef.current) return;
-      effectActiveRef.current = true;
 
+      // Local disposed flag — the async WASM load means setup() can complete
+      // after React has already run cleanup (StrictMode double-invoke, or a
+      // deps change). Every async callback checks this before touching the DOM.
+      let disposed = false;
 
-      // ─ xterm instance ────────────────────────────────────────────────
-      const term = new Terminal({
-        cursorBlink: terminalConfig.cursorBlink,
-        cursorStyle: terminalConfig.cursorStyle,
-        scrollback: terminalConfig.scrollback,
-        macOptionIsMeta: terminalConfig.macOptionIsMeta,
-        macOptionClickForcesSelection: false,
-        theme: terminalConfig.theme,
-        fontFamily: terminalConfig.fontFamily,
-        fontSize: terminalConfig.fontSize,
-        lineHeight: terminalConfig.lineHeight,
-        letterSpacing: Number.isFinite(terminalConfig.letterSpacing) ? terminalConfig.letterSpacing : 0,
-        allowProposedApi: true,
-      });
+      // Cleanup handles created inside setup(); null until assigned.
+      let term: Terminal | null = null;
+      let fitAddon: FitAddon | null = null;
+      let dataDispose: IDisposable | null = null;
+      let selDispose: IDisposable | null = null;
+      let bellDispose: IDisposable | null = null;
+      let resizeDispose: IDisposable | null = null;
+      let unlisten: UnlistenFn | null = null;
+      let unlistenExit: UnlistenFn | null = null;
+      let resizeObserver: ResizeObserver | null = null;
+      let rafId = 0;
+      let resizeRaf = 0;
 
-      const fitAddon = new FitAddon();
-      term.loadAddon(fitAddon);
+      const setup = async () => {
+        // Load the Ghostty WASM core (cached after the first tab). This is the
+        // one place that awaits: everything terminal-related happens after.
+        const ghostty = await ensureGhostty();
+        if (disposed || !containerRef.current) return;
 
-      const webLinksAddon = new WebLinksAddon((_e, uri) => {
-        openUrl(uri).catch((err: any) => {
-          console.error('[TerminalTab] Failed to open link:', err);
+        // ─ ghostty-web Terminal ──────────────────────────────────────────
+        // Only options ghostty-web supports are passed (no lineHeight/
+        // letterSpacing/macOptionIsMeta — those are xterm-only). Kitty keyboard
+        // protocol, Unicode width, grapheme clustering and IME are native to
+        // the Ghostty core, so no addons/shims are needed for them.
+        term = new Terminal({
+          ghostty,
+          cursorBlink: terminalConfig.cursorBlink,
+          cursorStyle: terminalConfig.cursorStyle,
+          scrollback: terminalConfig.scrollback,
+          theme: terminalConfig.theme,
+          fontFamily: terminalConfig.fontFamily,
+          fontSize: terminalConfig.fontSize,
         });
-      });
-      term.loadAddon(webLinksAddon);
 
-      // Search addon for finding text in terminal
-      const searchAddon = new SearchAddon();
-      term.loadAddon(searchAddon);
-      searchAddonRef.current = searchAddon;
+        fitAddon = new FitAddon();
+        term.loadAddon(fitAddon);
 
-      // Unicode 11 width tables — xterm defaults to Unicode 6, which
-      // mis-measures wide/emoji/box-drawing glyphs that modern TUIs (Claude
-      // Code, etc.) and ConPTY both assume Unicode 11+ widths for. A
-      // mis-measured glyph shifts every column after it on that row.
-      term.loadAddon(new Unicode11Addon());
-      term.unicode.activeVersion = '11';
+        // URL detection → opens via the Tauri opener plugin (replaces
+        // addon-web-links). ghostty-web also has built-in detection; this
+        // provider ensures clicks route through openUrl specifically.
+        term.registerLinkProvider(new UrlLinkProvider(term));
 
-      term.open(containerRef.current);
+        term.open(containerRef.current);
 
-      termRef.current = term;
-      fitAddonRef.current = fitAddon;
+        termRef.current = term;
+        fitAddonRef.current = fitAddon;
 
-      // ConPTY compat heuristics (scrollback-on-grow, reflow) — see IWindowsPty
-      // doc comment. No-op on non-Windows (info resolves to null).
-      getWindowsPtyInfo().then((info) => {
-        if (!effectActiveRef.current || !info) return;
-        term.options.windowsPty = info;
-      });
-
-      // ─ Wait for custom fonts to load ──────────────────────────────────────
-      // Prevents overlapping text if xterm measures cells using a fallback font
-      // before the custom web font (like Fira Code) is fully loaded.
-      document.fonts.ready.then(() => {
-        if (!effectActiveRef.current) return;
-        (term as any)._core?._charSizeService?.measure();
-        safeFit(fitAddon);
-        try { webglAddonRef.current?.clearTextureAtlas(); } catch { /* ignore */ }
-        term.refresh(0, term.rows - 1);
-      });
-
-      // GPU renderer attachment lives in its own effect, gated on `isVisible`
-      // (see below) — Chromium caps concurrent WebGL contexts at ~16, and
-      // every tab/pane's xterm instance stays mounted indefinitely so PTY
-      // output keeps flowing while hidden, so we can't just attach on mount.
-
-      // ─ Mouse shortcuts (Linux middle-click paste) ───────────────────────
-      const onMouseUp = (e: MouseEvent) => {
-        if (e.button === 1) {
-          e.preventDefault();
-          // Route through term.paste() (not a raw write) so xterm wraps the
-          // text in bracketed-paste markers when the app enabled mode 2004 —
-          // otherwise newlines in a multi-line selection are read as Enter and
-          // submitted line-by-line (e.g. agy ran each line as a command).
-          const selection = term.getSelection();
-          if (selection) {
-            term.paste(selection);
-          } else if (navigator.clipboard) {
-            navigator.clipboard.readText().then(text => {
-              if (text) term.paste(text);
-            }).catch(() => {});
+        // ─ Mouse shortcuts (Linux middle-click paste) ─────────────────────
+        const onMouseUp = (e: MouseEvent) => {
+          if (e.button === 1) {
+            e.preventDefault();
+            // Route through paste() so the emulator wraps the text in
+            // bracketed-paste markers when mode 2004 is active.
+            const selection = term!.getSelection();
+            if (selection) {
+              term!.paste(selection);
+            } else if (navigator.clipboard) {
+              navigator.clipboard.readText().then((text) => {
+                if (text) term!.paste(text);
+              }).catch(() => {});
+            }
           }
-        }
-      };
-      const onMouseDown = (e: MouseEvent) => {
-        if (e.button === 1) e.preventDefault(); // Prevent browser autoscroll
-      };
+        };
+        const onMouseDown = (e: MouseEvent) => {
+          if (e.button === 1) e.preventDefault(); // Prevent browser autoscroll
+        };
+        const onContextMenu = (e: MouseEvent) => {
+          e.preventDefault();
+          setContextMenu({ x: e.clientX, y: e.clientY });
+        };
 
-      // ─ Context menu (right-click) ───────────────────────────────────────
-      const onContextMenu = (e: MouseEvent) => {
-        e.preventDefault();
-        setContextMenu({ x: e.clientX, y: e.clientY });
-      };
+        term.element?.addEventListener('mouseup', onMouseUp);
+        term.element?.addEventListener('mousedown', onMouseDown);
+        term.element?.addEventListener('contextmenu', onContextMenu);
 
-      term.element?.addEventListener('mouseup', onMouseUp);
-      term.element?.addEventListener('mousedown', onMouseDown);
-      term.element?.addEventListener('contextmenu', onContextMenu);
+        selDispose = term.onSelectionChange(() => {
+          setHasSelection(term!.hasSelection());
+        });
 
-      const selDispose = term.onSelectionChange(() => {
-        setHasSelection(term.hasSelection());
-      });
+        // ─ Visual bell handler ────────────────────────────────────────────
+        bellDispose = term.onBell(() => {
+          setBellActive(true);
+          setTimeout(() => setBellActive(false), 200);
+        });
 
-      // ─ Visual bell handler ────────────────────────────────────────────────
-      // Show a visual flash when the terminal emits a bell character
-      const bellDispose = term.onBell(() => {
-        setBellActive(true);
-        setTimeout(() => setBellActive(false), 200);
-      });
+        // ─ Forward keyboard input → PTY ──────────────────────────────────
+        // Large inputs (paste) are chunked: Windows ConPTY / readline-based
+        // CLIs drop characters when a big buffer arrives in a single write.
+        dataDispose = term.onData((data) => {
+          if (data.length > 80) {
+            writePtyChunked(sessionId, data).catch((err) =>
+              console.error('[TerminalTab] writePtyChunked failed:', err),
+            );
+          } else {
+            invoke('write_pty', { sessionId, data }).catch((err) =>
+              console.error('[TerminalTab] write_pty failed:', err),
+            );
+          }
+        });
 
-      // ─ Forward keyboard input → PTY ──────────────────────────────────
-      // Large inputs (paste) are chunked: Windows ConPTY / readline-based CLIs
-      // drop characters when a big buffer arrives in a single write. Single
-      // keystrokes go direct so typing has no added latency.
-      const dataDispose = term.onData((data) => {
-        if (data.length > 80) {
-          writePtyChunked(sessionId, data).catch((err) =>
-            console.error('[TerminalTab] writePtyChunked failed:', err),
-          );
-        } else {
-          invoke('write_pty', { sessionId, data }).catch((err) =>
-            console.error('[TerminalTab] write_pty failed:', err),
-          );
-        }
-      });
+        // ─ Single keyboard authority (bound to THIS term instance) ───────
+        // Reads the latest keybindings via a ref so config edits apply live
+        // without re-attaching. Unbound combos (the default) return true →
+        // ghostty-web encodes and forwards them to the PTY. Kitty keyboard
+        // protocol is handled natively by the Ghostty core, so there is no
+        // manual CSI-u encoding here (the old xterm.js shim is gone).
+        term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+          if (e.type !== 'keydown') return true;
 
-      // ─ Kitty keyboard protocol ────────────────────────────────────────────
-      // xterm 5.3 has no kitty keyboard support, so apps that enable it (e.g.
-      // Claude Code, aider, Antigravity CLI, nvim) get no reply to their query
-      // and their keys stay legacy-encoded — desyncing their input parser
-      // (Antigravity's double-Ctrl+D exit silently failed; Shift+Enter is
-      // indistinguishable from Enter). attachKittyProtocol tracks the
-      // requested flags and auto-resets them when a TUI hands control back to
-      // the shell; kittyEncodeKey (below) reports Ctrl/Alt combos plus
-      // Escape/Enter/Tab/Backspace as CSI-u while flags are active.
-      // https://sw.kovidgoyal.net/kitty/keyboard-protocol/
-      const kitty = attachKittyProtocol(term, (data) => {
-        invoke('write_pty', { sessionId, data }).catch(() => {});
-      });
+          // When search is visible, only pass through Escape to close it.
+          if (searchVisibleRef.current) {
+            if (e.key === 'Escape') {
+              closeSearch();
+              return false;
+            }
+            return false; // the search input handles everything else
+          }
 
-      // ─ Single keyboard authority (bound to THIS term instance) ───────────
-      // Reads the latest keybindings via a ref, so config edits apply live
-      // without re-attaching AND the handler is never stranded on a stale
-      // disposed terminal after a deps change recreated it. Unbound combos
-      // (the default) return true → forwarded to the PTY like a real emulator.
-      term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-        if (e.type !== 'keydown') return true;
-
-        // When search is visible, only pass through Escape to close it
-        // All other keys are handled by the search input
-        if (searchVisible) {
-          if (e.key === 'Escape') {
-            setSearchVisible(false);
-            searchAddonRef.current?.clearDecorations();
-            setSearchQuery('');
-            setSearchResults(0);
+          // Ctrl+F / Cmd+F for search (overrideable via keybindings).
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.shiftKey && !e.altKey) {
+            setSearchVisible(true);
+            requestAnimationFrame(() => {
+              const searchInput = document.querySelector(`[data-search-input="true"]`) as HTMLInputElement;
+              searchInput?.focus();
+            });
             return false;
           }
-          // Don't pass any other keys to terminal while search is active
-          return false;
-        }
 
-        // Ctrl+F / Cmd+F for search (overrideable via keybindings)
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.shiftKey && !e.altKey) {
-          setSearchVisible(true);
-          // Focus search input after state update - use requestAnimationFrame for proper timing
-          requestAnimationFrame(() => {
-            const searchInput = document.querySelector(`[data-search-input="true"]`) as HTMLInputElement;
-            searchInput?.focus();
-          });
-          return false;
-        }
-
-        // Escape to close context menu
-        if (e.key === 'Escape' && contextMenu) {
-          setContextMenu(null);
-          return false;
-        }
-
-        const binding = resolveTerminalKey(buildCombo(e), keybindingsRef.current);
-        
-        // If there's an explicit binding, handle it according to its action.
-        if (binding && binding.action !== 'passthrough') {
-          switch (binding.action) {
-            case 'clear':         term.clear(); break;
-            case 'scroll-top':    term.scrollToTop(); break;
-            case 'scroll-bottom': term.scrollToBottom(); break;
-            case 'send-text':
-              invoke('write_pty', { sessionId, data: binding.text ?? '' }).catch(() => {});
-              break;
-            case 'copy':
-              if (term.hasSelection() && navigator.clipboard) {
-                navigator.clipboard.writeText(term.getSelection()).catch(() => {});
-              }
-              break;
-            case 'paste':
-              // Chromium fires a native paste for Ctrl+Shift+V (bracketed-paste
-              // handled by xterm). We only consume the keydown so the raw control
-              // byte never reaches the shell — no manual clipboard read here.
-              break;
+          // Escape to close context menu.
+          if (e.key === 'Escape' && contextMenuRef.current) {
+            setContextMenu(null);
+            return false;
           }
-          return false; // Consume: matched and handled
-        }
 
-        // Unbound or explicit passthrough → PTY
-        if (!binding || binding.action === 'passthrough') {
-          const kittySeq = kittyEncodeKey(e, kitty.getFlags());
-          if (kittySeq) {
-            invoke('write_pty', { sessionId, data: kittySeq }).catch(() => {});
-            return false; // consume; don't let xterm send the legacy byte
+          const binding = resolveTerminalKey(buildCombo(e), keybindingsRef.current);
+
+          // Explicit binding — handle according to its action.
+          if (binding && binding.action !== 'passthrough') {
+            switch (binding.action) {
+              case 'clear':         term!.clear(); break;
+              case 'scroll-top':    term!.scrollToTop(); break;
+              case 'scroll-bottom': term!.scrollToBottom(); break;
+              case 'send-text':
+                invoke('write_pty', { sessionId, data: binding.text ?? '' }).catch(() => {});
+                break;
+              case 'copy':
+                if (term!.hasSelection() && navigator.clipboard) {
+                  navigator.clipboard.writeText(term!.getSelection()).catch(() => {});
+                }
+                break;
+              case 'paste':
+                // Chromium fires a native paste for Ctrl+Shift+V (bracketed
+                // paste handled by the emulator). We only consume the keydown
+                // so the raw control byte never reaches the shell.
+                break;
+            }
+            return false; // consumed
           }
-          return true; // legacy passthrough → PTY
-        }
-        return false;
-      });
 
-      // ─ xterm.js → PTY size sync (primary resize mechanism) ──────────
-      // term.onResize fires whenever xterm.js cols/rows actually change —
-      // whether from fit() after a container resize or from switchTab.
-      // We guard on isSpawnedRef so we never call resize_pty before the
-      // PTY process exists, and check lastPtyColsRowsRef so we only emit
-      // resize_pty when grid dimensions actually differ from current PTY state.
-      const resizeDispose = term.onResize(({ cols, rows }) => {
-        if (!isSpawnedRef.current) return;
-        const last = lastPtyColsRowsRef.current;
-        if (last && last.cols === cols && last.rows === rows) return;
-        lastPtyColsRowsRef.current = { cols, rows };
-        invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
-      });
+          // Unbound or explicit passthrough → let ghostty-web encode & send.
+          return true;
+        });
 
-      // ─ Listen to session-scoped event from Rust ──────────────────────
-      // We store both the cleanup function AND a "cancelled" flag so that
-      // if the component unmounts before the promise resolves we still
-      // clean up properly.
-      let cancelled = false;
-      let unlisten: UnlistenFn | null = null;
+        // ─ Terminal → PTY size sync (primary resize mechanism) ───────────
+        resizeDispose = term.onResize(({ cols, rows }) => {
+          if (!isSpawnedRef.current) return;
+          const last = lastPtyColsRowsRef.current;
+          if (last && last.cols === cols && last.rows === rows) return;
+          lastPtyColsRowsRef.current = { cols, rows };
+          invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
+        });
 
-      const eventName = `pty-data-${sessionId}`;
-      // Registering a Tauri listener is async (IPC round-trip). We MUST spawn the
-      // PTY only after this resolves — otherwise the shell's initial output
-      // (cursor-home / clear sequences + first prompt) can be emitted before the
-      // listener attaches and is dropped, leaving a stray blank line / garbled top.
-      // One-shot: suppress a single leading prompt newline at session start
-      // (e.g. Git Bash PS1 begins with `\n`, which otherwise leaves a blank top row).
-      let leadingNewlineResolved = false;
-      const dataListenerReady = listen(eventName, (event: any) => {
-        const payload = event.payload as { session_id: string; data: string };
-        let data = payload.data;
-        if (!leadingNewlineResolved) {
-          const r = stripLeadingPromptNewline(data);
-          data = r.out;
-          leadingNewlineResolved = r.resolved;
-        }
-        term.write(data);
-      })
-        .then((fn) => {
-          if (cancelled) {
-            // Component already unmounted — immediately detach.
-            fn();
-          } else {
-            unlisten = fn;
-          }
-        })
-        .catch((err) =>
-          console.error('[TerminalTab] Failed to listen:', err),
-        );
+        // ─ Listen to session-scoped PTY-data event from Rust ─────────────
+        // Register the listener BEFORE spawning so the shell's initial output
+        // (cursor-home / clear + first prompt) isn't dropped. One-shot: strip a
+        // single leading prompt newline (e.g. Git Bash PS1 begins with `\n`).
+        const eventName = `pty-data-${sessionId}`;
+        let leadingNewlineResolved = false;
+        const dataListenerReady = listen(eventName, (event: any) => {
+            const payload = event.payload as { session_id: string; data: string };
+            let data = payload.data;
+            if (!leadingNewlineResolved) {
+              const r = stripLeadingPromptNewline(data);
+              data = r.out;
+              leadingNewlineResolved = r.resolved;
+            }
+            term!.write(data);
+          })
+          .then((fn) => {
+            if (disposed) {
+              fn();
+            } else {
+              unlisten = fn;
+            }
+          })
+          .catch((err) =>
+            console.error('[TerminalTab] Failed to listen:', err),
+          );
 
-      let unlistenExit: UnlistenFn | null = null;
-      listen(`pty-exit-${sessionId}`, () => {
-        term.write('\r\n\x1b[31m[Process Exited]\x1b[0m\r\n');
-        kitty.reset(); // PTY child gone — drop any leftover kitty flags
-        onExitRef.current?.();
-      }).then(fn => {
-        if (cancelled) fn();
-        else unlistenExit = fn;
-      });
+        listen(`pty-exit-${sessionId}`, () => {
+          if (disposed || !term) return;
+          term.write('\r\n\x1b[31m[Process Exited]\x1b[0m\r\n');
+          onExitRef.current?.();
+        }).then((fn) => {
+          if (disposed) fn();
+          else unlistenExit = fn;
+        });
 
-      // ─ ResizeObserver with debounce ──────────────────────────────────
-      // Only responsibility: call safeFit when the container element changes
-      // size. The term.onResize handler above forwards any resulting dimension
-      // change to the PTY — no resize_pty call needed here.
-      let resizeRaf: number;
-      const resizeObserver = new ResizeObserver(() => {
-        cancelAnimationFrame(resizeRaf);
-        
-        // Use a single requestAnimationFrame to throttle resizes to the display refresh rate.
-        // This prevents 'ResizeObserver loop limit exceeded' errors and keeps window 
-        // dragging smooth, while avoiding the 100ms lag of the old setTimeout.
-        resizeRaf = requestAnimationFrame(() => {
-          if (!fitAddonRef.current || !termRef.current) return;
-          (termRef.current as any)._core?._charSizeService?.measure();
-          safeFit(fitAddonRef.current);
-          
-          // A second pass to catch flexbox settling (e.g. scrollbars appearing/disappearing)
-          requestAnimationFrame(() => {
-            if (fitAddonRef.current) safeFit(fitAddonRef.current);
+        // ─ ResizeObserver with rAF throttle ──────────────────────────────
+        // Only job: call safeFit when the container resizes. term.onResize
+        // above forwards any resulting dimension change to the PTY.
+        resizeObserver = new ResizeObserver(() => {
+          cancelAnimationFrame(resizeRaf);
+          resizeRaf = requestAnimationFrame(() => {
+            if (disposed || !fitAddonRef.current || !termRef.current) return;
+            safeFit(fitAddonRef.current);
+            // Second pass to catch flexbox settling (scrollbars appearing/disappearing).
+            requestAnimationFrame(() => {
+              if (!disposed && fitAddonRef.current) safeFit(fitAddonRef.current);
+            });
           });
         });
-      });
-
-      if (containerRef.current) {
         resizeObserver.observe(containerRef.current);
-      }
 
-      // NOTE: OS file drag-drop (insert dropped paths) is intentionally NOT
-      // wired here. The window sets `dragDropEnabled: false` (required so the
-      // HTML5 tab drag-and-drop / split system works on Windows), which means
-      // Tauri never emits onDragDropEvent — the old handler here was dead code
-      // that never fired. Reinstating file-drop requires a different approach
-      // that doesn't break tab DnD.
+        // ─ Wait for custom fonts, then spawn once dims are real ──────────
+        // Deferring to rAF ensures CSS flex layout has resolved. A new tab can
+        // mount before its container is laid out (size 0) — proposeDimensions
+        // then returns undefined. Poll until safeFit yields valid dimensions,
+        // then spawn at the correct size so a later show-fit is a no-op.
+        const trySpawn = () => {
+          if (disposed || !fitAddon) return;
+          let spawnAttempts = 0;
+          const attempt = () => {
+            if (disposed) return;
+            const dims = safeFit(fitAddon);
+            if (!dims && spawnAttempts < 60) {
+              spawnAttempts++;
+              rafId = requestAnimationFrame(attempt);
+              return;
+            }
+            dataListenerReady.then(() => {
+              if (disposed) return;
+              spawnSession();
+            });
+          };
+          attempt();
+        };
 
-      // ─ Spawn the PTY process once dims are real and settled ────────────
-      // Deferring to rAF ensures CSS flex layout has resolved. But a new tab
-      // can mount before its container is laid out (size 0) — proposeDimensions
-      // then fails and the PTY would spawn at xterm's 80×24 default. When the
-      // tab later becomes visible the first real fit() resizes ConPTY, which
-      // reflows and leaves a stray blank line at the top. So we POLL until
-      // safeFit yields valid dimensions, then spawn at the correct size — the
-      // later show-fit is a no-op (same cols/rows) and triggers no resize.
-      let rafId = 0;
-      let spawnAttempts = 0;
-      const trySpawn = () => {
-        if (!effectActiveRef.current) return; // unmounted
-        // measure() refreshes char metrics so proposeDimensions is accurate.
-        (term as any)._core?._charSizeService?.measure();
-        const dims = safeFit(fitAddon); // null while container has no size
-        if (!dims && spawnAttempts < 60) {
-          spawnAttempts++;
-          rafId = requestAnimationFrame(trySpawn);
-          return;
-        }
-        // Wait for the data listener to attach before spawning, so no initial
-        // PTY output (cursor-home / clear + first prompt) is dropped.
-        dataListenerReady.then(() => {
-          if (!effectActiveRef.current) return; // unmounted while awaiting
-          // If container never reached valid size, spawn with default 80x24
-          // This ensures terminal always starts even in edge cases
-          if (!dims && spawnAttempts >= 60) {
-            console.warn('[TerminalTab] Container size timeout, using default 80x24');
-            // Force-fit to default size will happen in spawnSession
-          }
-          spawnSession();  // reads fitted dims, spawns PTY, then sets isSpawnedRef=true
+        document.fonts.ready.then(() => {
+          if (disposed || !fitAddon) return;
+          safeFit(fitAddon);
+          trySpawn();
         });
+        // Also kick off trySpawn immediately in case fonts are already loaded
+        // (document.fonts.ready still resolves, but we don't want to wait on it
+        // for the common case where the font is cached).
+        trySpawn();
       };
-      rafId = requestAnimationFrame(trySpawn);
+
+      setup();
 
       // ─ Cleanup ───────────────────────────────────────────────────────
       return () => {
-        // Reset the guard so a genuine re-run (deps change) works correctly.
-        effectActiveRef.current = false;
+        disposed = true;
         isSpawnedRef.current = false;
         lastPtyColsRowsRef.current = null;
-        cancelled = true;
         cancelAnimationFrame(rafId);
         cancelAnimationFrame(resizeRaf);
-        resizeObserver.disconnect();
-        term.element?.removeEventListener('mouseup', onMouseUp);
-        term.element?.removeEventListener('mousedown', onMouseDown);
-        // Context menu cleanup is handled by component unmount (state resets)
-        dataDispose.dispose();
-        selDispose.dispose();
-        bellDispose.dispose();
+        resizeObserver?.disconnect();
+        dataDispose?.dispose();
+        selDispose?.dispose();
+        bellDispose?.dispose();
+        resizeDispose?.dispose();
         if (unlisten) unlisten();
         if (unlistenExit) unlistenExit();
-        resizeDispose.dispose();
-        // Dispose the WebGL addon BEFORE term.dispose(): disposing it after the
-        // core RenderService is torn down throws inside term.dispose, and an
-        // unmount-time throw with no error boundary tears down the whole React
-        // root → blank/frozen app. Guard both for safety.
-        try { webglAddonRef.current?.dispose(); } catch { /* already disposed */ }
-        webglAddonRef.current = null;
-        try { term.dispose(); } catch (err) {
+        try { term?.dispose(); } catch (err) {
           console.error('[TerminalTab] term.dispose failed:', err);
         }
         termRef.current = null;
@@ -654,93 +551,22 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           console.error('[TerminalTab] kill_pty failed:', err),
         );
       };
-      }, [sessionId, workspacePath, shell, shellArgs]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId, workspacePath, shell, shellArgs]);
 
-    // ── GPU renderer lifecycle — attach/detach with visibility ───────────
-    // Far faster than xterm's default DOM renderer for heavy TUI output
-    // (Claude Code, vim, spinners, large logs), but Chromium caps concurrent
-    // WebGL contexts at ~16 and every tab/pane keeps its xterm instance
-    // mounted (so PTY output keeps streaming) even while hidden. So only the
-    // on-screen tab(s) hold a live context: attach when shown, dispose when
-    // hidden, re-attach on the next show. Falls back to xterm's DOM renderer
-    // whenever WebGL is unavailable, lost, or the tab isn't visible.
-    //
-    // Deps mirror the main effect's below (sessionId/workspacePath/shell/
-    // shellArgs) in addition to isVisible: when any of those change, the main
-    // effect tears down and recreates `term` entirely (e.g. editing a
-    // workspace's path while its console is open respawns every open tab's
-    // PTY). This effect must re-run in lockstep — termRef.current is a plain
-    // ref, so it can't itself be a dependency — or a visible tab whose
-    // terminal gets recreated would silently keep the DOM renderer until the
-    // user happens to toggle its visibility again.
-    useEffect(() => {
-      const term = termRef.current;
-      if (!term || !isVisible) return;
-
-      let addon: WebglAddon | null = null;
-      try {
-        addon = new WebglAddon();
-        addon.onContextLoss(() => {
-          // Dispose once and forget it — re-disposing (here or via term.dispose)
-          // hits an already-torn-down RenderService and throws.
-          try { addon?.dispose(); } catch { /* already gone */ }
-          if (webglAddonRef.current === addon) webglAddonRef.current = null;
-        });
-        term.loadAddon(addon);
-        webglAddonRef.current = addon;
-        term.refresh(0, term.rows - 1);
-      } catch {
-        /* WebGL unsupported — xterm keeps its DOM renderer */
-        addon = null;
-        webglAddonRef.current = null;
-      }
-
-      return () => {
-        if (addon) {
-          try { addon.dispose(); } catch { /* already gone (context loss, or term.dispose() beat us to it) */ }
-        }
-        if (webglAddonRef.current === addon) webglAddonRef.current = null;
-      };
-    }, [isVisible, sessionId, workspacePath, shell, shellArgs]);
-
-    // Apply config changes live to existing terminal instances.
+    // ── Apply config changes live to existing terminal instances ───────────
     useEffect(() => {
       const term = termRef.current;
       if (!term) return;
 
-      // Non-layout options — safe to apply synchronously.
-      term.options.theme           = terminalConfig.theme;
-      term.options.cursorStyle     = terminalConfig.cursorStyle;
-      term.options.cursorBlink     = terminalConfig.cursorBlink;
-      term.options.scrollback      = terminalConfig.scrollback;
-      term.options.macOptionIsMeta = terminalConfig.macOptionIsMeta;
-
-      // Font options change cell metrics — clamp to valid range so intermediate
-      // typed values (e.g. typing "14" passes through "1") never corrupt layout.
-      term.options.fontSize     = Math.max(8, Math.min(32, terminalConfig.fontSize));
-      term.options.fontFamily   = terminalConfig.fontFamily;
-      term.options.lineHeight   = Math.max(0.8, Math.min(2.0, terminalConfig.lineHeight));
-      const ls = terminalConfig.letterSpacing;
-      term.options.letterSpacing = Math.max(-2, Math.min(10, Number.isFinite(ls) ? ls : 0));
-
-      // Clear the glyph texture atlas so xterm rebuilds it at the new font size.
-      // Without this, cached bitmaps from the old size get reused and look wrong.
-      (term as any).clearTextureAtlas?.();
-
-      // Force re-measure then fit. Setting term.options.fontSize while
-      // display:none silently leaves charSizeService.width stale (offsetWidth=0).
-      // Calling measure() here handles the visible case; the ResizeObserver
-      // path handles the hidden→visible transition.
-      let id2: number;
-      const id1 = requestAnimationFrame(() => {
-        (term as any)._core?._charSizeService?.measure();
-        id2 = requestAnimationFrame(() => {
-          if (fitAddonRef.current) {
-            safeFit(fitAddonRef.current);
-          }
-        });
-      });
-      return () => { cancelAnimationFrame(id1); cancelAnimationFrame(id2); };
+      // ghostty-web supports these runtime options. lineHeight, letterSpacing
+      // and macOptionIsMeta are xterm-only and intentionally not applied.
+      term.options.theme = terminalConfig.theme;
+      term.options.cursorStyle = terminalConfig.cursorStyle;
+      term.options.cursorBlink = terminalConfig.cursorBlink;
+      term.options.scrollback = terminalConfig.scrollback;
+      term.options.fontSize = Math.max(8, Math.min(32, terminalConfig.fontSize));
+      term.options.fontFamily = terminalConfig.fontFamily;
     }, [terminalConfig]);
 
     // xterm only paints the cols×rows cell grid; the few px of leftover space
@@ -757,7 +583,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
         {/* Floating Copy Button */}
         {hasSelection && (
-          <button 
+          <button
             className={styles.floatingCopyBtn}
             title="Copy selection"
             onClick={() => {
@@ -766,7 +592,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
                 navigator.clipboard.writeText(term.getSelection()).catch(() => {});
                 setHasCopied(true);
                 setTimeout(() => setHasCopied(false), 2000);
-                // Keep the selection highlighted after copy.
               }
             }}
           >
@@ -807,27 +632,14 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
               onChange={(e) => {
                 const query = e.target.value;
                 setSearchQuery(query);
-                const addon = searchAddonRef.current;
-                if (addon) {
-                  if (query) {
-                    addon.findNext(query, { regex: false });
-                    setSearchResults(1);
-                  } else {
-                    addon.clearDecorations();
-                    setSearchResults(0);
-                  }
-                }
+                // Debounce — searchBuffer walks the whole scrollback.
+                if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+                searchDebounceRef.current = setTimeout(() => runSearch(query), 150);
               }}
               onKeyDown={(e) => {
-                const addon = searchAddonRef.current;
-                if (!addon) return;
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  if (e.shiftKey) {
-                    addon.findPrevious(searchQuery, { regex: false });
-                  } else {
-                    addon.findNext(searchQuery, { regex: false });
-                  }
+                  advanceSearch(!e.shiftKey);
                 }
               }}
             />
@@ -840,12 +652,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
               className={styles.searchCloseBtn}
               onClick={(e) => {
                 e.stopPropagation();
-                setSearchVisible(false);
-                searchAddonRef.current?.clearDecorations();
-                setSearchQuery('');
-                setSearchResults(0);
-                // Return focus to terminal
-                termRef.current?.focus();
+                closeSearch();
               }}
             >
               <X size={14} />
@@ -883,7 +690,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
               onClick={() => {
                 const term = termRef.current;
                 if (term && navigator.clipboard) {
-                  navigator.clipboard.readText().then(text => {
+                  navigator.clipboard.readText().then((text) => {
                     if (text) term.paste(text);
                   }).catch(() => {});
                 }
@@ -909,8 +716,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
             <div
               className={styles.contextMenuItem}
               onClick={() => {
-                const term = termRef.current;
-                if (term) term.clear();
+                termRef.current?.clear();
                 setContextMenu(null);
               }}
             >
@@ -949,9 +755,14 @@ const styles = {
     flex: 1;
     width: 100%;
     min-height: 0;
-    /* xterm renders its own canvas; this colour shows only in any gap
-       before the canvas is attached or while transitioning. */
+    /* ghostty-web renders into a <canvas> appended to this container. Give the
+       text the same 8px inset the old .xterm padding provided, and make the
+       canvas fill the resulting box. */
+    padding: 8px;
     background-color: #070d14;
+    & canvas {
+      display: block;
+    }
   `,
   floatingCopyBtn: css`
     position: absolute;
