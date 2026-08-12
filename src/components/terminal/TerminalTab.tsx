@@ -303,12 +303,12 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
 
-        // URL detection → opens via the Tauri opener plugin (replaces
-        // addon-web-links). ghostty-web also has built-in detection; this
-        // provider ensures clicks route through openUrl specifically.
-        term.registerLinkProvider(new UrlLinkProvider(term));
-
         term.open(containerRef.current);
+
+        // URL detection → opens via the Tauri opener plugin (replaces
+        // addon-web-links). MUST come after open(): ghostty-web wires its link
+        // detector during open() and throws if a provider is registered before.
+        term.registerLinkProvider(new UrlLinkProvider(term));
 
         termRef.current = term;
         fitAddonRef.current = fitAddon;

@@ -161,6 +161,23 @@ describe('ghostty-web runtime integration', () => {
     term.dispose();
   });
 
+  it('registerLinkProvider must be called AFTER open() (regression)', () => {
+    // ghostty-web wires its link detector during open(); registering before
+    // throws. TerminalTab must keep this order.
+    const before = new Terminal({ ghostty, cols: 20, rows: 3 });
+    expect(() =>
+      before.registerLinkProvider({ provideLinks(_y: number, cb: (l: any) => void) { cb(undefined); } }),
+    ).toThrow();
+    before.dispose();
+
+    const after = new Terminal({ ghostty, cols: 20, rows: 3 });
+    after.open(document.createElement('div'));
+    expect(() =>
+      after.registerLinkProvider({ provideLinks(_y: number, cb: (l: any) => void) { cb(undefined); } }),
+    ).not.toThrow();
+    after.dispose();
+  });
+
   it('honors constructor theme options without error', () => {
     const theme = {
       background: '#000000',
