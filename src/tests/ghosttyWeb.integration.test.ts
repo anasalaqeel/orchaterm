@@ -11,7 +11,7 @@
  * those (a Proxy 2D-context + RO/rAF polyfills). The WASM execution, VT
  * parsing, screen model and event wiring are all real.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { Ghostty, Terminal, FitAddon } from 'ghostty-web';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -19,8 +19,6 @@ import { resolve } from 'node:path';
 const WASM_PATH = resolve(process.cwd(), 'node_modules/ghostty-web/ghostty-vt.wasm');
 
 let ghostty: Awaited<ReturnType<typeof Ghostty.load>>;
-// Saved in beforeAll, restored in afterAll (declared here so afterAll can see it).
-let originalFetch: any;
 
 beforeAll(async () => {
   // --- jsdom polyfills ghostty-web's renderer/input touch -------------------
@@ -56,32 +54,12 @@ beforeAll(async () => {
   }
   if (!(globalThis as any).devicePixelRatio) (globalThis as any).devicePixelRatio = 1;
 
-  // --- serve the real WASM bytes to Ghostty.load via fetch ------------------
-  // ghostty-web's loader (Bun → fs → fetch) doesn't resolve a bare Windows
-  // path, so intercept fetch for the wasm and return the bytes read from disk.
-  // The wasm execution, VT parsing and screen model are then 100% real.
-  originalFetch = (globalThis as any).fetch;
-  (globalThis as any).fetch = async (input: any) => {
-    if (String(input).includes('ghostty-vt.wasm')) {
-      const buf = readFileSync(WASM_PATH);
-      return {
-        ok: true,
-        status: 200,
-        arrayBuffer: async () =>
-          buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
-      };
-    }
-    if (typeof originalFetch === 'function') return originalFetch(input);
-    throw new Error(`unexpected fetch in test: ${input}`);
-  };
-
-  ghostty = await Ghostty.load(WASM_PATH);
+  // --- load the real WASM core exactly as production does -------------------
+  // No-arg Ghostty.load() instantiates from the wasm inlined as a `data:` URL
+  // in ghostty-web.js. (Passing a path would force the Bun→fs→fetch loader,
+  // which is what broke in the Tauri WebView — see ghosttyInit.ts.)
+  ghostty = await Ghostty.load();
 }, 30_000);
-
-afterAll(() => {
-  // Restore fetch so the wasm-serving mock can't leak to other test files.
-  if (originalFetch !== undefined) (globalThis as any).fetch = originalFetch;
-});
 
 /** Read every line of the active buffer as plain text. */
 function bufferText(term: Terminal): string {

@@ -1,23 +1,23 @@
 import { Ghostty } from 'ghostty-web';
-// Vite emits the WASM binary as a fetchable asset URL. The `?url` suffix is the
-// documented way to obtain that URL for both `vite dev` and the production
-// build, and it sidesteps ghostty-web's own `import.meta.url`-based resolution
-// (which is unreliable inside a bundled module graph / Tauri asset origin).
-import wasmUrl from 'ghostty-web/ghostty-vt.wasm?url';
 
 let ghosttyPromise: Promise<Ghostty> | null = null;
 
 /**
  * Loads the Ghostty WASM VT core exactly once per app session and returns the
  * shared instance. Every Terminal is constructed with this instance
- * (`new Terminal({ ghostty })`); ghostty-web wires the rest.
+ * (`new Terminal({ ghostty })`).
  *
- * Must be awaited before the first `new Terminal(...)`. A failed load is not
- * cached, so a later call can retry.
+ * Called with NO argument on purpose. ghostty-web inlines the wasm as a
+ * `data:application/wasm;base64,…` URL inside its JS bundle, and `Ghostty.load()`
+ * (no path) instantiates straight from that — fully self-contained, no external
+ * asset to fetch or resolve. Passing a URL instead forces its Bun→fs→fetch
+ * loader onto a *real* path, which fails to resolve inside the Tauri WebView
+ * (and leaves the terminal pane blank). Must be awaited before the first
+ * `new Terminal(...)`. A failed load is not cached, so a later call can retry.
  */
 export function ensureGhostty(): Promise<Ghostty> {
   if (!ghosttyPromise) {
-    ghosttyPromise = Ghostty.load(wasmUrl).catch((err) => {
+    ghosttyPromise = Ghostty.load().catch((err) => {
       ghosttyPromise = null; // allow retry instead of caching the rejection
       throw err;
     });
