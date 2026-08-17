@@ -105,11 +105,9 @@ export const PromptVaultView: React.FC = () => {
         id: `qa-prompt-${prompt.id}`,
         label: prompt.title.length > 20 ? prompt.title.slice(0, 18) + '…' : prompt.title,
         iconName: 'Sparkles',
-        type: 'ai_prompt',
         command: prompt.content,
         autoExecute: false,
         color: '#a855f7',
-        target: 'modal',
         promptVaultId: prompt.id,
       };
       const updated = [...currentQuickActions, newAction];
@@ -607,7 +605,7 @@ export const PromptVaultView: React.FC = () => {
                   />
                 )}
                 <div className={styles.hintLine}>
-                  <span>Variables: <code>{`{{selection}}`}</code>, <code>{`{{terminal_output}}`}</code>, <code>{`{{workspace_name}}`}</code></span>
+                  <span>Variables expand when the prompt is injected into a terminal: <code>{`{{selection}}`}</code>, <code>{`{{terminal_output}}`}</code>, <code>{`{{workspace_name}}`}</code></span>
                 </div>
               </div>
 
@@ -724,7 +722,7 @@ export const PromptVaultView: React.FC = () => {
                   />
                 )}
                 <div className={styles.hintLine}>
-                  <span>Variables: <code>{`{{selection}}`}</code>, <code>{`{{terminal_output}}`}</code>, <code>{`{{workspace_name}}`}</code></span>
+                  <span>Variables expand when the prompt is injected into a terminal: <code>{`{{selection}}`}</code>, <code>{`{{terminal_output}}`}</code>, <code>{`{{workspace_name}}`}</code></span>
                 </div>
               </div>
 
