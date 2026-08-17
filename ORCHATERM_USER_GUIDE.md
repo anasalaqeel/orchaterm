@@ -12,20 +12,29 @@
 3. [App Layout](#3-app-layout)
 4. [First-Time Setup (Step by Step)](#4-first-time-setup-step-by-step)
 5. [Working with Workspaces](#5-working-with-workspaces)
-6. [The Terminal](#6-the-terminal)
-7. [The Conductor — Full Walkthrough](#7-the-conductor--full-walkthrough)
+6. [The Terminal & Quick Actions](#6-the-terminal--quick-actions)
+   - [Managing Tabs & Shells](#managing-tabs)
+   - [Floating Quick Actions Bar](#floating-quick-actions-bar)
+   - [AI Prompt Quick Actions (with Markdown)](#ai-prompt-quick-actions-with-markdown)
+   - [Context Interpolation Variables](#context-interpolation-variables)
+7. [Prompt Vault & AI Templates](#7-prompt-vault--ai-templates)
+   - [Storing Instructions & Templates](#storing-instructions--templates)
+   - [Markdown Preview vs. Raw Text](#markdown-preview-vs-raw-text)
+   - [Pin to Quick Actions](#pin-to-quick-actions)
+8. [The Conductor — Full Walkthrough](#8-the-conductor--full-walkthrough)
    - [Step 1: Set up terminal sessions (in workspace)](#step-1-set-up-terminal-sessions)
    - [Step 2: Build a Plan](#step-2-build-a-plan)
    - [Step 3: Generate a Plan with an Agent](#step-3-generate-a-plan-with-an-agent)
    - [Step 4: Approve & Run](#step-4-approve--run)
    - [Step 5: Monitor the Pipeline](#step-5-monitor-the-pipeline)
-8. [Manual Override](#8-manual-override)
-9. [Orchestrator Log](#9-orchestrator-log)
-10. [History Tab](#10-history-tab)
-11. [Settings Reference](#11-settings-reference)
-12. [Sentinel Protocol Reference](#12-sentinel-protocol-reference)
-13. [Keyboard Shortcuts](#13-keyboard-shortcuts)
-14. [Troubleshooting](#14-troubleshooting)
+9. [Manual Override](#9-manual-override)
+10. [Orchestrator Log](#10-orchestrator-log)
+11. [History Tab](#11-history-tab)
+12. [Settings Reference](#12-settings-reference)
+13. [Sentinel Protocol Reference](#13-sentinel-protocol-reference)
+14. [Keyboard Shortcuts](#14-keyboard-shortcuts)
+15. [Troubleshooting](#15-troubleshooting)
+
 
 ---
 
@@ -201,17 +210,11 @@ Go to **Settings** → scroll to the Workspaces section. Click the edit ✏ or d
 
 ---
 
-## 6. The Terminal
+## 6. The Terminal & Quick Actions
 
-### Shell detection
+### Shell detection & tabs
 
 When you open a workspace terminal, Orchaterm automatically detects available shells on your system and shows them in the **shell picker dropdown** (top-right of the terminal header). The preferred shell is the one configured in Settings.
-
-### Opening a terminal
-
-Click a workspace in the sidebar. The terminal panel opens with one default tab.
-
-### Managing tabs
 
 | Action | How |
 |--------|-----|
@@ -219,6 +222,30 @@ Click a workspace in the sidebar. The terminal panel opens with one default tab.
 | Switch tab | Click the tab title |
 | Rename tab | Double-click the tab title |
 | Close tab | Click **×** on the tab |
+
+### Floating Quick Actions Bar
+
+At the bottom of every active terminal tab is a floating, non-intrusive **Quick Actions Bar**. It allows one-click access to frequently used commands and AI prompt templates.
+
+* **CLI Commands** (e.g. `Status`, `Dev`): Immediately pastes or auto-executes a shell command directly into the terminal PTY.
+* **✨ AI Prompts** (e.g. `Explain Error`, `Review Selection`): Triggers an interactive Markdown AI Prompt workflow with contextual variable injection.
+
+### AI Prompt Quick Actions (with Markdown Input & Output)
+
+Quick Actions natively support multi-line **Markdown prompt templates** (Input) and **rich Markdown rendering** (Output):
+
+1. **Context Interpolation**: When clicked, Orchaterm automatically extracts terminal context and populates template placeholders:
+   - `{{selection}}`: The text currently highlighted/selected inside the terminal.
+   - `{{terminal_output}}` / `{{last_output}}`: The most recent output buffer from the active terminal (~60 lines).
+   - `{{workspace_name}}` & `{{workspace_path}}`: Current project workspace details.
+   - `{{space_name}}`, `{{date}}`, `{{time}}`.
+2. **Interactive AI Modal / Drawer**:
+   - Displays the interpolated prompt with an **[Edit] / [Preview Markdown]** toggle before executing.
+   - Streams the AI response in real-time with full **rich Markdown rendering** (syntax-highlighted code fences with copy buttons, lists, bold/italics, and tables).
+   - **Inject to Terminal**: Directly inserts the generated fix or command into the terminal PTY.
+   - **Send to AI Chat**: Forwards the prompt and AI response to the Space's AI GroupChat session.
+   - **Copy Output**: Copies formatted Markdown response to clipboard.
+   - **Save to Vault**: Saves the prompt template to your Prompt Vault with one click.
 
 ### Using the terminal
 
@@ -230,7 +257,31 @@ Switching to the **right panel** (Workspace ↔ Conductor tabs) or clicking nav 
 
 ---
 
-## 7. The Conductor — Full Walkthrough
+## 7. Prompt Vault & AI Templates
+
+The **Prompt Vault** (`/prompts`) is your centralized catalog for storing, organizing, and querying AI instructions, system guidelines, developer templates, and reusable prompts.
+
+### Storing & Categorizing Prompts
+
+- **Workspace Association**: Scope prompts to a specific workspace or mark them as global.
+- **Tags & Search**: Multi-tag classification and cross-field AND-search (searches title, content, and tags simultaneously).
+
+### Markdown Preview vs. Raw Text
+
+Every prompt card in the vault includes an instant view mode toggle:
+- **Markdown Preview**: Renders formatted Markdown headings, code blocks with copy buttons, bullet points, and tables.
+- **Raw Text**: Displays monospaced text for copying raw template strings.
+- **Authoring Previews**: When creating or editing prompts, switch between the **Edit** textarea and **Live Preview** tab.
+
+### Pin to Quick Actions
+
+Every card in the Prompt Vault includes a **"Pin to Actions"** button:
+- Clicking **Pin to Actions** instantly turns any vault prompt into a one-click Quick Action button displayed on all your terminal tabs.
+- The prompt template automatically inherits context variables (`{{selection}}`, `{{terminal_output}}`) when invoked from the terminal.
+
+---
+
+## 8. The Conductor — Full Walkthrough
 
 The Conductor is **embedded in the workspace console view** as a right-panel tab. Every workspace has its own Conductor with its own set of plans — there's no shared global plan list.
 
@@ -367,7 +418,7 @@ Click any task card to expand it and see output summary, files modified, and tim
 
 ---
 
-## 8. Manual Override
+## 9. Manual Override
 
 During a run, the **Manual Override** panel appears on the right side of the Pipeline tab.
 
@@ -391,7 +442,7 @@ Pick a task from the **Task** dropdown (only running or pending tasks are listed
 
 ---
 
-## 9. Orchestrator Log
+## 10. Orchestrator Log
 
 The **Orchestrator Log** (left side of the Pipeline tab) shows a real-time chronological feed of every engine event.
 
@@ -409,7 +460,7 @@ The log auto-scrolls to the latest entry. Scroll up to read history.
 
 ---
 
-## 10. History Tab
+## 11. History Tab
 
 The **History tab** shows all plans that reached a terminal state (`done` or `failed`). Plans are stored in `orchaterm_plans.json` on disk and survive restarts.
 
@@ -423,7 +474,7 @@ Click a card to **expand** it and see every task with its output summary, files 
 
 ---
 
-## 11. Settings Reference
+## 12. Settings Reference
 
 Click **Settings** in the sidebar.
 
@@ -432,9 +483,22 @@ Click **Settings** in the sidebar.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Terminal Shell Executable | `powershell.exe` | Shell used to open new terminal tabs. |
-| Ollama API Host | `http://localhost:11434` | URL where Ollama is listening. |
-| OpenAI API Key | — | Stored locally, never sent to any external server by Orchaterm. |
-| Anthropic API Key | — | Same. |
+| AI Master Switch | Enabled | Master switch for all AI orchestrations, live feed, auto-relay, and chat. |
+| Simple / Advanced Provider Mode | `advanced` | Use a single LLM provider for everything or configure per-use-case models. |
+| Per-Use-Case Providers | — | Configure specific models for Relay, Plan Gen, Auto-Answer, Chat, and Routing. |
+
+### Quick Actions Configuration
+
+Located under **Settings → Terminal & Quick Actions**:
+
+| Option | Values | Purpose |
+|--------|--------|---------|
+| **Action Type** | `Shell Command` / `✨ AI Prompt` | Run a terminal CLI command or invoke an AI prompt with Markdown. |
+| **Icon** | Lucide icon set | Choose an icon representing the action. |
+| **Color** | Hex color string | Custom button accent color. |
+| **Output Target** | `Modal` / `Terminal` / `Chat` | (AI Prompts only) Route output to floating Markdown dialog, direct PTY injection, or GroupChat. |
+| **Prompt Template** | Markdown string | Multi-line Markdown template with live preview and variable interpolation chips. |
+| **Auto-run** | Checked / Unchecked | Auto-execute immediately on click or open editor preview. |
 
 ### Conductor Settings
 
@@ -454,7 +518,7 @@ Click the 🌙 / ☀ button in the sidebar footer to toggle between dark and lig
 
 ---
 
-## 12. Sentinel Protocol Reference
+## 13. Sentinel Protocol Reference
 
 Orchaterm **automatically appends sentinel instructions** to every task prompt — you don't need to explain this to your agents manually.
 
@@ -511,20 +575,40 @@ needs: [what the next agent needs to know, or "none"]
 
 ---
 
-## 13. Keyboard Shortcuts
+## 14. Keyboard Shortcuts
 
-### Standalone Conductor page (`/conductor`)
+### Global & Navigation
+
+| Shortcut | Action | Scope |
+|----------|--------|-------|
+| `Ctrl+K` / `Cmd+K` | Open Quick Switcher | Global |
+| `Ctrl+H` / `Cmd+H` | Open Help & Shortcuts Modal | Global |
+| `Escape` | Close active modal, search bar, or AI Prompt Drawer | When modal/drawer is open |
+
+### Terminal & Quick Actions
+
+| Shortcut / Action | Action | Scope |
+|-------------------|--------|-------|
+| `Ctrl+Shift+C` | Copy selected terminal text | Active Terminal |
+| `Ctrl+Shift+V` | Paste clipboard into terminal | Active Terminal |
+| `Ctrl+F` / `Cmd+F` | Open in-terminal text search | Active Terminal |
+| `Ctrl+Enter` | Send message or submit prompt | AI Chat / Manual Override / Prompt Modal |
+| `Click Quick Action` | Execute shell command or open AI Prompt Drawer | Quick Actions Bar |
+| `Right-Click` | Open terminal context menu (copy, paste, clear) | Active Terminal |
+
+### Conductor & Pipeline
 
 | Key | Action | Condition |
 |-----|--------|-----------|
-| `P` | Pause the running pipeline | Not typing in an input field |
-| `R` | Resume a paused pipeline | Not typing in an input field |
-| `S` | Stop the running pipeline | Not typing in an input field |
-| `Esc` | Close the Protocol Instructions modal | Modal is open |
+| `P` | Pause the running pipeline | Conductor tab (not typing in an input) |
+| `R` | Resume a paused pipeline | Conductor tab (not typing in an input) |
+| `S` | Stop the running pipeline | Conductor tab (not typing in an input) |
+| `Esc` | Close Protocol Instructions or task detail dialogs | When dialog is open |
+
 
 ---
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 ### Sessions not showing in the Conductor
 
