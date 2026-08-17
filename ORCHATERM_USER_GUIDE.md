@@ -15,8 +15,7 @@
 6. [The Terminal & Quick Actions](#6-the-terminal--quick-actions)
    - [Managing Tabs & Shells](#managing-tabs)
    - [Floating Quick Actions Bar](#floating-quick-actions-bar)
-   - [AI Prompt Quick Actions (with Markdown)](#ai-prompt-quick-actions-with-markdown)
-   - [Context Interpolation Variables](#context-interpolation-variables)
+   - [Context Variables (expanded at paste time)](#context-variables-expanded-at-paste-time)
 7. [Prompt Vault & AI Templates](#7-prompt-vault--ai-templates)
    - [Storing Instructions & Templates](#storing-instructions--templates)
    - [Markdown Preview vs. Raw Text](#markdown-preview-vs-raw-text)
@@ -225,27 +224,21 @@ When you open a workspace terminal, Orchaterm automatically detects available sh
 
 ### Floating Quick Actions Bar
 
-At the bottom of every active terminal tab is a floating, non-intrusive **Quick Actions Bar**. It allows one-click access to frequently used commands and AI prompt templates.
+At the bottom of every active terminal tab is a floating, non-intrusive **Quick Actions Bar**. Every action does exactly one thing: injects its text into the active terminal — pasted for you to review, or auto-executed if the action has **Auto-run** enabled. No dialogs, no extra AI round-trips.
 
-* **CLI Commands** (e.g. `Status`, `Dev`): Immediately pastes or auto-executes a shell command directly into the terminal PTY.
-* **✨ AI Prompts** (e.g. `Explain Error`, `Review Selection`): Triggers an interactive Markdown AI Prompt workflow with contextual variable injection.
+* **Commands** (e.g. `Status`, `Dev`): Pastes or auto-executes a shell command directly into the terminal PTY.
+* **Prompts** (e.g. `Explain Error`, `Review Selection`): Pastes a multi-line Markdown prompt — handy inside a CLI agent terminal (`claude`, `aider`, etc.) or a plain shell. Prompt actions never auto-execute.
 
-### AI Prompt Quick Actions (with Markdown Input & Output)
+### Context Variables (expanded at paste time)
 
-Quick Actions natively support multi-line **Markdown prompt templates** (Input) and **rich Markdown rendering** (Output):
+If an action's text contains template variables, Orchaterm expands them with live terminal context **just before the text is written to the PTY**:
 
-1. **Context Interpolation**: When clicked, Orchaterm automatically extracts terminal context and populates template placeholders:
-   - `{{selection}}`: The text currently highlighted/selected inside the terminal.
-   - `{{terminal_output}}` / `{{last_output}}`: The most recent output buffer from the active terminal (~60 lines).
-   - `{{workspace_name}}` & `{{workspace_path}}`: Current project workspace details.
-   - `{{space_name}}`, `{{date}}`, `{{time}}`.
-2. **Interactive AI Modal / Drawer**:
-   - Displays the interpolated prompt with an **[Edit] / [Preview Markdown]** toggle before executing.
-   - Streams the AI response in real-time with full **rich Markdown rendering** (syntax-highlighted code fences with copy buttons, lists, bold/italics, and tables).
-   - **Inject to Terminal**: Directly inserts the generated fix or command into the terminal PTY.
-   - **Send to AI Chat**: Forwards the prompt and AI response to the Space's AI GroupChat session.
-   - **Copy Output**: Copies formatted Markdown response to clipboard.
-   - **Save to Vault**: Saves the prompt template to your Prompt Vault with one click.
+- `{{selection}}`: The text currently highlighted/selected inside the terminal.
+- `{{terminal_output}}` / `{{last_output}}`: The most recent output buffer from the active terminal (~60 lines).
+- `{{workspace_name}}` & `{{workspace_path}}`: Current project workspace details.
+- `{{space_name}}`, `{{date}}`, `{{time}}`.
+
+Actions without variables are pasted verbatim. To ask an LLM about your terminal, you can also just use the right-side AI Chat — it already receives each session's recent output automatically.
 
 ### Using the terminal
 
@@ -277,7 +270,7 @@ Every prompt card in the vault includes an instant view mode toggle:
 
 Every card in the Prompt Vault includes a **"Pin to Actions"** button:
 - Clicking **Pin to Actions** instantly turns any vault prompt into a one-click Quick Action button displayed on all your terminal tabs.
-- The prompt template automatically inherits context variables (`{{selection}}`, `{{terminal_output}}`) when invoked from the terminal.
+- Clicking the pinned action pastes the prompt text into the active terminal (never auto-executes), with context variables (`{{selection}}`, `{{terminal_output}}`) expanded at paste time.
 
 ---
 
@@ -493,12 +486,11 @@ Located under **Settings → Terminal & Quick Actions**:
 
 | Option | Values | Purpose |
 |--------|--------|---------|
-| **Action Type** | `Shell Command` / `✨ AI Prompt` | Run a terminal CLI command or invoke an AI prompt with Markdown. |
+| **Label** | Free text | Button name shown in the Quick Actions bar. |
 | **Icon** | Lucide icon set | Choose an icon representing the action. |
 | **Color** | Hex color string | Custom button accent color. |
-| **Output Target** | `Modal` / `Terminal` / `Chat` | (AI Prompts only) Route output to floating Markdown dialog, direct PTY injection, or GroupChat. |
-| **Prompt Template** | Markdown string | Multi-line Markdown template with live preview and variable interpolation chips. |
-| **Auto-run** | Checked / Unchecked | Auto-execute immediately on click or open editor preview. |
+| **Command / Prompt** | Markdown string | Text injected into the terminal. Multi-line Markdown editor with live preview and variable insertion chips. |
+| **Auto-run** | Checked / Unchecked | Execute immediately on click instead of pasting for review. |
 
 ### Conductor Settings
 
@@ -583,7 +575,7 @@ needs: [what the next agent needs to know, or "none"]
 |----------|--------|-------|
 | `Ctrl+K` / `Cmd+K` | Open Quick Switcher | Global |
 | `Ctrl+H` / `Cmd+H` | Open Help & Shortcuts Modal | Global |
-| `Escape` | Close active modal, search bar, or AI Prompt Drawer | When modal/drawer is open |
+| `Escape` | Close active modal or search bar | When modal/search is open |
 
 ### Terminal & Quick Actions
 
@@ -592,8 +584,8 @@ needs: [what the next agent needs to know, or "none"]
 | `Ctrl+Shift+C` | Copy selected terminal text | Active Terminal |
 | `Ctrl+Shift+V` | Paste clipboard into terminal | Active Terminal |
 | `Ctrl+F` / `Cmd+F` | Open in-terminal text search | Active Terminal |
-| `Ctrl+Enter` | Send message or submit prompt | AI Chat / Manual Override / Prompt Modal |
-| `Click Quick Action` | Execute shell command or open AI Prompt Drawer | Quick Actions Bar |
+| `Ctrl+Enter` | Send message or submit prompt | AI Chat / Manual Override |
+| `Click Quick Action` | Inject command/prompt text into the terminal (auto-runs if enabled) | Quick Actions Bar |
 | `Right-Click` | Open terminal context menu (copy, paste, clear) | Active Terminal |
 
 ### Conductor & Pipeline

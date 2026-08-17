@@ -498,25 +498,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
         agentTitle:    entry.agentTitle,
       }]);
     };
-    const onInsertChat = (e: CustomEvent<{ prompt: string; response?: string }>) => {
-      const { prompt, response } = e.detail || {};
-      if (!prompt) return;
-      setMessages(prev => {
-        const newMsgs: DisplayMessage[] = [
-          ...prev,
-          { id: crypto.randomUUID(), role: 'user', content: prompt }
-        ];
-        if (response) {
-          newMsgs.push({ id: crypto.randomUUID(), role: 'assistant', content: response });
-        }
-        return newMsgs;
-      });
-    };
     window.addEventListener('orchaterm:conductor-log', onLog as EventListener);
-    window.addEventListener('orchaterm:insert-chat', onInsertChat as EventListener);
     return () => {
       window.removeEventListener('orchaterm:conductor-log', onLog as EventListener);
-      window.removeEventListener('orchaterm:insert-chat', onInsertChat as EventListener);
     };
   }, [workspaceId]);
 

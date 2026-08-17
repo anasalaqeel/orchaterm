@@ -69,18 +69,20 @@ export interface TerminalConfig {
   keybindings: TerminalKeybinding[];
 }
 
-export type QuickActionType = 'command' | 'ai_prompt';
-export type QuickActionOutputTarget = 'modal' | 'terminal' | 'chat';
-
+/**
+ * A quick action injects its `command` text into the active terminal — pasted
+ * or auto-run depending on `autoExecute`. Template variables like
+ * {{selection}} / {{terminal_output}} are expanded from live terminal context
+ * right before the text is written to the PTY (see utils/promptTemplate.ts).
+ */
 export interface QuickAction {
   id: string;
   label: string;
   iconName?: string;
-  type?: QuickActionType;
   command: string;
   autoExecute: boolean;
   color?: string;
-  target?: QuickActionOutputTarget;
+  /** Set when this action was pinned from a Prompt Vault entry. */
   promptVaultId?: string;
 }
 
