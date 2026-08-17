@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useDashboard } from '../context/DashboardContext';
-import { ConfirmDialog, Input, InfoTooltip, Select } from '../components/ui';
-import { SavedPrompt } from '../types';
+import { ConfirmDialog, Input, InfoTooltip, Select, MarkdownViewer } from '../components/ui';
+import { SavedPrompt, QuickAction } from '../types';
+import { DEFAULT_QUICK_ACTIONS } from '../utils/terminalThemes';
 import {
   Search,
   Copy,
@@ -12,7 +13,11 @@ import {
   ChevronUp,
   Tag,
   Calendar,
-  X
+  X,
+  Sparkles,
+  Eye,
+  Edit3,
+  Code
 } from 'lucide-react';
 import { css, cx, keyframes } from '@emotion/css';
 
@@ -20,12 +25,15 @@ export const PromptVaultView: React.FC = () => {
   const {
     savedPrompts,
     workspaces,
+    settings,
+    updateSettings,
     addSavedPrompt,
     updateSavedPrompt,
     deleteSavedPrompt,
     copyPromptToClipboard,
     showToast
   } = useDashboard();
+
 
   // Filter states
   const [search, setSearch] = useState('');
@@ -55,6 +63,11 @@ export const PromptVaultView: React.FC = () => {
   // Expanded cards state
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
 
+  // View modes for cards (markdown vs raw)
+  const [cardViewModes, setCardViewModes] = useState<Record<string, 'markdown' | 'raw'>>({});
+  // View mode for add/edit modal (edit vs preview)
+  const [modalViewMode, setModalViewMode] = useState<'edit' | 'preview'>('edit');
+
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -71,6 +84,40 @@ export const PromptVaultView: React.FC = () => {
   const [promptWorkspaceId, setPromptWorkspaceId] = useState('');
   const [tagInput, setTagInput] = useState('');
 
+  const currentQuickActions = settings.quickActions ?? DEFAULT_QUICK_ACTIONS;
+  const isPromptPinned = (promptId: string) => {
+    return currentQuickActions.some(
+      qa => qa.promptVaultId === promptId || qa.id === `qa-prompt-${promptId}`
+    );
+  };
+
+  const handleTogglePin = (prompt: SavedPrompt, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const existing = currentQuickActions.find(
+      qa => qa.promptVaultId === prompt.id || qa.id === `qa-prompt-${prompt.id}`
+    );
+    if (existing) {
+      const updated = currentQuickActions.filter(qa => qa.id !== existing.id);
+      updateSettings({ quickActions: updated });
+      showToast(`Unpinned "${prompt.title}" from Quick Actions`, 'info');
+    } else {
+      const newAction: QuickAction = {
+        id: `qa-prompt-${prompt.id}`,
+        label: prompt.title.length > 20 ? prompt.title.slice(0, 18) + '…' : prompt.title,
+        iconName: 'Sparkles',
+        type: 'ai_prompt',
+        command: prompt.content,
+        autoExecute: false,
+        color: '#a855f7',
+        target: 'modal',
+        promptVaultId: prompt.id,
+      };
+      const updated = [...currentQuickActions, newAction];
+      updateSettings({ quickActions: updated });
+      showToast(`Pinned "${prompt.title}" to Terminal Quick Actions!`, 'success');
+    }
+  };
+
   const toggleExpand = (id: string) => {
     setExpandedIds(prev => ({
       ...prev,
@@ -83,6 +130,7 @@ export const PromptVaultView: React.FC = () => {
     setContent('');
     setPromptWorkspaceId('');
     setTagInput('');
+    setModalViewMode('edit');
   };
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -366,6 +414,16 @@ export const PromptVaultView: React.FC = () => {
                   {/* Actions Area */}
                   <div className={styles.actionsArea}>
                     <button
+                      onClick={(e) => handleTogglePin(prompt, e)}
+                      className={cx(styles.pinBtn, isPromptPinned(prompt.id) && styles.pinnedBtn)}
+                      title={isPromptPinned(prompt.id) ? "Pinned to Quick Actions (Click to unpin)" : "Pin to Terminal Quick Actions"}
+                      type="button"
+                    >
+                      <Sparkles className={styles.iconXs} />
+                      <span>{isPromptPinned(prompt.id) ? 'Pinned' : 'Pin to Actions'}</span>
+                    </button>
+
+                    <button
                       onClick={(e) => handleCopyClick(prompt.id, e)}
                       className={styles.copyBtn}
                       title="Copy Prompt Content"
@@ -400,19 +458,58 @@ export const PromptVaultView: React.FC = () => {
                 {isExpanded && (
                   <div className={styles.expandedDetails}>
                     <div className={styles.expandedContent}>
-                      {/* Monospaced prompt content block */}
-                      <div className={styles.preWrapper}>
-                        <pre className={styles.preContent}>
-                          {prompt.content}
-                        </pre>
-                        <button
-                          onClick={(e) => handleCopyClick(prompt.id, e)}
-                          className={styles.inlineCopyBtn}
-                          title="Copy block contents"
-                        >
-                          <Copy className={styles.iconSm} />
-                        </button>
+                      {/* Markdown Preview vs Raw Switcher */}
+                      <div className={styles.contentViewHeader}>
+                        <div className={styles.viewModeTabs}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCardViewModes(prev => ({ ...prev, [prompt.id]: 'markdown' }));
+                            }}
+                            className={cx(
+                              styles.viewModeTab,
+                              (cardViewModes[prompt.id] ?? 'markdown') === 'markdown' && styles.viewModeTabActive
+                            )}
+                          >
+                            <Eye className={styles.iconMin} />
+                            <span>Markdown Preview</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCardViewModes(prev => ({ ...prev, [prompt.id]: 'raw' }));
+                            }}
+                            className={cx(
+                              styles.viewModeTab,
+                              cardViewModes[prompt.id] === 'raw' && styles.viewModeTabActive
+                            )}
+                          >
+                            <Code className={styles.iconMin} />
+                            <span>Raw Text</span>
+                          </button>
+                        </div>
                       </div>
+
+                      {(cardViewModes[prompt.id] ?? 'markdown') === 'markdown' ? (
+                        <div className={styles.markdownWrapper}>
+                          <MarkdownViewer content={prompt.content} />
+                        </div>
+                      ) : (
+                        <div className={styles.preWrapper}>
+                          <pre className={styles.preContent}>
+                            {prompt.content}
+                          </pre>
+                          <button
+                            onClick={(e) => handleCopyClick(prompt.id, e)}
+                            className={styles.inlineCopyBtn}
+                            title="Copy block contents"
+                          >
+                            <Copy className={styles.iconSm} />
+                          </button>
+                        </div>
+                      )}
 
                       {/* Log Dates / Usage stats */}
                       <div className={styles.statsBar}>
@@ -473,15 +570,45 @@ export const PromptVaultView: React.FC = () => {
               </div>
 
               <div>
-                <label className={styles.fieldLabel}>Prompt Instructions Content</label>
-                <textarea
-                  placeholder="Paste instructions templates here..."
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  rows={6}
-                  className={cx(styles.input, styles.textareaMono)}
-                  required
-                />
+                <div className={styles.modalFieldHeader}>
+                  <label className={styles.fieldLabel}>Prompt Instructions (Markdown)</label>
+                  <div className={styles.modalTabs}>
+                    <button
+                      type="button"
+                      onClick={() => setModalViewMode('edit')}
+                      className={cx(styles.modalTabBtn, modalViewMode === 'edit' && styles.modalTabActive)}
+                    >
+                      <Edit3 size={11} />
+                      <span>Edit</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModalViewMode('preview')}
+                      className={cx(styles.modalTabBtn, modalViewMode === 'preview' && styles.modalTabActive)}
+                    >
+                      <Eye size={11} />
+                      <span>Preview</span>
+                    </button>
+                  </div>
+                </div>
+
+                {modalViewMode === 'preview' ? (
+                  <div className={styles.modalPreviewBox}>
+                    <MarkdownViewer content={content || '*No content entered yet.*'} />
+                  </div>
+                ) : (
+                  <textarea
+                    placeholder="Paste instructions or markdown templates here... Supports variables like {{selection}}, {{terminal_output}}, {{workspace_name}}"
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    rows={6}
+                    className={cx(styles.input, styles.textareaMono)}
+                    required
+                  />
+                )}
+                <div className={styles.hintLine}>
+                  <span>Variables: <code>{`{{selection}}`}</code>, <code>{`{{terminal_output}}`}</code>, <code>{`{{workspace_name}}`}</code></span>
+                </div>
               </div>
 
               <div className={styles.modalActions}>
@@ -561,14 +688,44 @@ export const PromptVaultView: React.FC = () => {
               </div>
 
               <div>
-                <label className={styles.fieldLabel}>Prompt Instructions Content</label>
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  rows={6}
-                  className={cx(styles.input, styles.textareaMono)}
-                  required
-                />
+                <div className={styles.modalFieldHeader}>
+                  <label className={styles.fieldLabel}>Prompt Instructions (Markdown)</label>
+                  <div className={styles.modalTabs}>
+                    <button
+                      type="button"
+                      onClick={() => setModalViewMode('edit')}
+                      className={cx(styles.modalTabBtn, modalViewMode === 'edit' && styles.modalTabActive)}
+                    >
+                      <Edit3 size={11} />
+                      <span>Edit</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModalViewMode('preview')}
+                      className={cx(styles.modalTabBtn, modalViewMode === 'preview' && styles.modalTabActive)}
+                    >
+                      <Eye size={11} />
+                      <span>Preview</span>
+                    </button>
+                  </div>
+                </div>
+
+                {modalViewMode === 'preview' ? (
+                  <div className={styles.modalPreviewBox}>
+                    <MarkdownViewer content={content || '*No content entered yet.*'} />
+                  </div>
+                ) : (
+                  <textarea
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    rows={6}
+                    className={cx(styles.input, styles.textareaMono)}
+                    required
+                  />
+                )}
+                <div className={styles.hintLine}>
+                  <span>Variables: <code>{`{{selection}}`}</code>, <code>{`{{terminal_output}}`}</code>, <code>{`{{workspace_name}}`}</code></span>
+                </div>
               </div>
 
               <div className={styles.modalActions}>
@@ -593,6 +750,7 @@ export const PromptVaultView: React.FC = () => {
           </div>
         </div>
       )}
+
 
     </div>
   );
@@ -1203,5 +1361,139 @@ const styles = {
     &:hover {
       filter: brightness(1.06);
     }
-  `
+  `,
+  pinBtn: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(168, 85, 247, 0.12);
+    border: 1px solid rgba(168, 85, 247, 0.3);
+    color: #c084fc;
+    padding: 6px var(--spacing-md);
+    border-radius: var(--border-radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover {
+      background: rgba(168, 85, 247, 0.22);
+      border-color: rgba(168, 85, 247, 0.5);
+      color: #e9d5ff;
+    }
+  `,
+  pinnedBtn: css`
+    background: rgba(168, 85, 247, 0.35);
+    border-color: #a855f7;
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.3);
+
+    &:hover {
+      background: rgba(168, 85, 247, 0.5);
+    }
+  `,
+  contentViewHeader: css`
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: 6px;
+  `,
+  viewModeTabs: css`
+    display: inline-flex;
+    align-items: center;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+  `,
+  viewModeTab: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      color: var(--text-primary);
+    }
+  `,
+  viewModeTabActive: css`
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  `,
+  markdownWrapper: css`
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    padding: var(--spacing-md);
+    min-height: 80px;
+  `,
+  modalFieldHeader: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  `,
+  modalTabs: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  `,
+  modalTabBtn: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+  `,
+  modalTabActive: css`
+    background: rgba(59, 130, 246, 0.15);
+    border-color: var(--color-brand);
+    color: var(--color-brand);
+    font-weight: 600;
+  `,
+  modalPreviewBox: css`
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    padding: var(--spacing-md);
+    min-height: 140px;
+    max-height: 220px;
+    overflow-y: auto;
+  `,
+  hintLine: css`
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+
+    code {
+      background: var(--bg-primary);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-family: var(--font-family-mono);
+      color: var(--text-secondary);
+    }
+  `,
 };
+

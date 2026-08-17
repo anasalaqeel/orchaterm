@@ -22,6 +22,10 @@ import { useDashboard } from '../../context/DashboardContext';
 import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey, kittyEncodeKey, attachKittyProtocol } from '../../utils/terminalThemes';
 import { writePtyChunked } from '../../utils/ptyUtils';
 import { QuickActionsBar } from './QuickActionsBar';
+import { QuickActionPromptModal } from './QuickActionPromptModal';
+import { extractTerminalBuffer, PromptContext } from '../../utils/promptTemplate';
+import type { QuickAction } from '../../types';
+
 
 // ── Public ref handle exposed to TerminalContainer ─────────────────────────
 export interface TerminalTabHandle {
@@ -107,7 +111,7 @@ function stripLeadingPromptNewline(data: string): { out: string; resolved: boole
 
 export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
   ({ sessionId, workspacePath, shell, shellArgs, onExit, isVisible = true }, ref) => {
-    const { settings } = useDashboard();
+    const { settings, workspaces, spaces, activeWorkspaceId, activeSpaceId } = useDashboard();
     const terminalConfig = useMemo(
       () => settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG,
       [settings.terminalConfig]
@@ -122,6 +126,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     const [hasSelection, setHasSelection] = useState(false);
     const [hasCopied, setHasCopied] = useState(false);
 
+    // AI Quick Action Modal state
+    const [aiModalOpen, setAiModalOpen] = useState(false);
+    const [activeAiAction, setActiveAiAction] = useState<QuickAction | null>(null);
+    const [aiPromptContext, setAiPromptContext] = useState<PromptContext>({});
+
     // Search state
     const [searchVisible, setSearchVisible] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -132,6 +141,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
     // Visual bell state
     const [bellActive, setBellActive] = useState(false);
+
 
     // Search addon ref
     const searchAddonRef = useRef<SearchAddon | null>(null);
@@ -209,6 +219,31 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         console.error('[TerminalTab] write_pty failed:', err),
       );
     }, [sessionId]);
+
+    const handleRunAction = useCallback((action: QuickAction) => {
+      if (action.type === 'ai_prompt') {
+        const term = termRef.current;
+        const selection = (term && term.hasSelection()) ? term.getSelection() : '';
+        const terminalOutput = extractTerminalBuffer(term);
+        const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
+        const activeSpace = spaces.find(s => s.id === activeSpaceId);
+
+        const ctx: PromptContext = {
+          selection,
+          terminalOutput,
+          workspaceName: activeWorkspace?.name,
+          workspacePath: activeWorkspace?.path || workspacePath,
+          spaceName: activeSpace?.name,
+        };
+
+        setActiveAiAction(action);
+        setAiPromptContext(ctx);
+        setAiModalOpen(true);
+      } else {
+        runQuickActionCommand(action.command, action.autoExecute);
+      }
+    }, [workspaces, spaces, activeWorkspaceId, activeSpaceId, workspacePath, runQuickActionCommand]);
+
 
     // ── Spawn helper (used for initial spawn AND retry) ──────────────────
     const spawnSession = useCallback(async () => {
@@ -753,7 +788,28 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         {/* Terminal canvas */}
         <div ref={containerRef} className={styles.terminalContainer} style={{ backgroundColor: themeBg }} />
 
-        <QuickActionsBar onRunCommand={runQuickActionCommand} />
+        <QuickActionsBar onRunAction={handleRunAction} onRunCommand={runQuickActionCommand} />
+
+        {activeAiAction && (
+          <QuickActionPromptModal
+            isOpen={aiModalOpen}
+            onClose={() => {
+              setAiModalOpen(false);
+              setActiveAiAction(null);
+            }}
+            action={activeAiAction}
+            context={aiPromptContext}
+            onInjectToTerminal={(text) => runQuickActionCommand(text, true)}
+            onSendToChat={(prompt, response) => {
+              window.dispatchEvent(
+                new CustomEvent('orchaterm:insert-chat', {
+                  detail: { prompt, response },
+                })
+              );
+            }}
+          />
+        )}
+
 
         {/* Floating Copy Button */}
         {hasSelection && (

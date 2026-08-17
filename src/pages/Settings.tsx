@@ -7,7 +7,7 @@ import { useDashboard } from '../context/DashboardContext';
 import { Workspace } from '../types';
 import { DEFAULT_TERMINAL_CONFIG, TERMINAL_THEME_PRESETS, DEFAULT_QUICK_ACTIONS } from '../utils/terminalThemes';
 import type { TerminalConfig, TerminalKeybinding, QuickAction } from '../types';
-import { ConfirmDialog, Input, InfoTooltip, NumberField, Select } from '../components/ui';
+import { ConfirmDialog, Input, InfoTooltip, NumberField, Select, MarkdownViewer } from '../components/ui';
 import { createProvider } from '../services/llm';
 import type { ProviderConfig, UseCaseProviders } from '../services/llm/types';
 import {
@@ -20,11 +20,14 @@ import {
   RefreshCw,
   Network,
   Terminal,
+  Eye,
+  Edit3,
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 
 const COMMON_ICONS = [
   { value: 'Terminal', name: 'Terminal', icon: LucideIcons.Terminal as any },
+  { value: 'Sparkles', name: 'Sparkles (AI)', icon: LucideIcons.Sparkles as any },
   { value: 'Play', name: 'Play', icon: LucideIcons.Play as any },
   { value: 'GitBranch', name: 'Git Branch', icon: LucideIcons.GitBranch as any },
   { value: 'Wand2', name: 'Magic Wand', icon: LucideIcons.Wand2 as any },
@@ -330,9 +333,10 @@ export const SettingsView: React.FC = () => {
     settings.quickActions ?? DEFAULT_QUICK_ACTIONS
   );
   const [newQuickAction, setNewQuickAction] = useState<QuickAction>({
-    id: '', label: '', command: '', autoExecute: false
+    id: '', label: '', type: 'command', command: '', autoExecute: false, target: 'modal'
   });
   const [editingQuickActionId, setEditingQuickActionId] = useState<string | null>(null);
+  const [quickActionPreviewMode, setQuickActionPreviewMode] = useState<'edit' | 'preview'>('edit');
 
   const [showCustomColors, setShowCustomColors] = useState(false);
 
@@ -1435,9 +1439,10 @@ export const SettingsView: React.FC = () => {
                 <thead>
                   <tr className={css`color:var(--text-secondary);font-weight:700;text-transform:uppercase;font-size:10px;border-bottom:1px solid var(--border-color);`}>
                     <th className={css`text-align:left;padding:6px 8px;`}>Label</th>
+                    <th className={css`text-align:left;padding:6px 8px;`}>Type</th>
                     <th className={css`text-align:left;padding:6px 8px;`}>Icon</th>
-                    <th className={css`text-align:left;padding:6px 8px;`}>Command</th>
-                    <th className={css`text-align:left;padding:6px 8px;`}>Auto Run</th>
+                    <th className={css`text-align:left;padding:6px 8px;`}>Command / Prompt</th>
+                    <th className={css`text-align:left;padding:6px 8px;`}>Target</th>
                     <th className={css`text-align:left;padding:6px 8px;`}>Color</th>
                     <th className={css`padding:6px 8px;width:64px;`} />
                   </tr>
@@ -1445,12 +1450,27 @@ export const SettingsView: React.FC = () => {
                 <tbody>
                   {quickActions.map((action, idx) => {
                     const isEditing = editingQuickActionId === action.id;
+                    const isAi = action.type === 'ai_prompt';
                     return (
                       <tr key={action.id || idx} className={css`border-bottom:1px solid var(--border-color); ${isEditing ? 'background: rgba(123, 104, 238, 0.05);' : ''}`}>
                         <td className={css`padding:6px 8px;font-weight:600;color:var(--text-primary);`}>{action.label}</td>
-                        <td className={css`padding:6px 8px;color:var(--text-secondary);`}>{action.iconName || 'Terminal'}</td>
-                        <td className={css`padding:6px 8px;font-family:var(--font-family-mono);color:var(--color-brand);font-size:11px;`}>{action.command}</td>
-                        <td className={css`padding:6px 8px;color:var(--text-secondary);`}>{action.autoExecute ? 'Yes' : 'No'}</td>
+                        <td className={css`padding:6px 8px;`}>
+                          <span className={css`
+                            font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+                            background: ${isAi ? 'rgba(168, 85, 247, 0.15)' : 'rgba(255, 255, 255, 0.05)'};
+                            color: ${isAi ? '#c084fc' : 'var(--text-secondary)'};
+                            border: 1px solid ${isAi ? 'rgba(168, 85, 247, 0.3)' : 'var(--border-color)'};
+                          `}>
+                            {isAi ? '✨ AI Prompt' : 'CLI'}
+                          </span>
+                        </td>
+                        <td className={css`padding:6px 8px;color:var(--text-secondary);`}>{action.iconName || (isAi ? 'Sparkles' : 'Terminal')}</td>
+                        <td className={css`padding:6px 8px;font-family:var(--font-family-mono);color:var(--color-brand);font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`}>
+                          {action.command}
+                        </td>
+                        <td className={css`padding:6px 8px;color:var(--text-secondary);font-size:11px;`}>
+                          {isAi ? (action.target || 'modal') : (action.autoExecute ? 'Auto-run' : 'Paste')}
+                        </td>
                         <td className={css`padding:6px 8px;`}>
                           {action.color && (
                             <div className={css`width:16px;height:16px;border-radius:50%;background:${action.color};border:1px solid rgba(255,255,255,0.1);`} />
@@ -1465,11 +1485,14 @@ export const SettingsView: React.FC = () => {
                                 setNewQuickAction({
                                   id: action.id,
                                   label: action.label,
+                                  type: action.type || 'command',
                                   command: action.command,
                                   autoExecute: action.autoExecute,
+                                  target: action.target || 'modal',
                                   iconName: action.iconName,
                                   color: action.color
                                 });
+                                setQuickActionPreviewMode('edit');
                               }}
                               className={css`background:none;border:none;cursor:pointer;color:${isEditing ? 'var(--color-brand)' : 'var(--text-secondary)'};&:hover{color:var(--color-brand);}`}
                               title="Edit action"
@@ -1481,7 +1504,7 @@ export const SettingsView: React.FC = () => {
                               onClick={() => {
                                 if (isEditing) {
                                   setEditingQuickActionId(null);
-                                  setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
+                                  setNewQuickAction({ id: '', label: '', type: 'command', command: '', autoExecute: false, target: 'modal' });
                                 }
                                 setQuickActions(prev => {
                                   const next = prev.filter((_, i) => i !== idx);
@@ -1514,9 +1537,12 @@ export const SettingsView: React.FC = () => {
                     if (prompt) {
                       setNewQuickAction(a => ({
                         ...a,
-                        label: prompt.title.substring(0, 15),
+                        label: prompt.title.length > 15 ? prompt.title.substring(0, 15) : prompt.title,
+                        type: 'ai_prompt',
                         command: prompt.content,
-                        iconName: 'Wand2'
+                        iconName: 'Sparkles',
+                        target: 'modal',
+                        promptVaultId: prompt.id,
                       }));
                     }
                   }}
@@ -1532,133 +1558,256 @@ export const SettingsView: React.FC = () => {
               </div>
             )}
 
-            {/* Add new quick action */}
-            <div className={css`display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;`}>
-              <div className={css`display:flex;flex-direction:column;gap:4px;min-width:110px;`}>
-                <label className={styles.formLabel}>Label</label>
-                <Input
-                  type="text"
-                  className={styles.integrationInput}
-                  value={newQuickAction.label}
-                  onChange={e => setNewQuickAction(a => ({ ...a, label: e.target.value }))}
-                  placeholder="e.g. Build"
-                />
+            {/* Add / Edit quick action form */}
+            <div className={css`
+              display: flex; flex-direction: column; gap: 12px; padding: 14px;
+              background-color: var(--bg-tertiary); border: 1px solid var(--border-color);
+              border-radius: var(--border-radius-md);
+            `}>
+              <div className={css`display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;`}>
+                <div className={css`display:flex;flex-direction:column;gap:4px;min-width:120px;`}>
+                  <label className={styles.formLabel}>Action Type</label>
+                  <Select
+                    value={newQuickAction.type || 'command'}
+                    onChange={v => setNewQuickAction(a => ({
+                      ...a,
+                      type: v as any,
+                      iconName: v === 'ai_prompt' ? (a.iconName || 'Sparkles') : (a.iconName || 'Terminal')
+                    }))}
+                    options={[
+                      { value: 'command', name: 'Shell Command' },
+                      { value: 'ai_prompt', name: '✨ AI Prompt' },
+                    ]}
+                  />
+                </div>
+
+                <div className={css`display:flex;flex-direction:column;gap:4px;min-width:140px;`}>
+                  <label className={styles.formLabel}>Label</label>
+                  <Input
+                    type="text"
+                    className={styles.integrationInput}
+                    value={newQuickAction.label}
+                    onChange={e => setNewQuickAction(a => ({ ...a, label: e.target.value }))}
+                    placeholder="e.g. Status or Explain Error"
+                  />
+                </div>
+
+                <div className={css`display:flex;flex-direction:column;gap:4px;min-width:130px;`}>
+                  <label className={styles.formLabel}>Icon</label>
+                  <Select
+                    value={newQuickAction.iconName || (newQuickAction.type === 'ai_prompt' ? 'Sparkles' : 'Terminal')}
+                    onChange={v => setNewQuickAction(a => ({ ...a, iconName: v }))}
+                    options={COMMON_ICONS}
+                  />
+                </div>
+
+                {newQuickAction.type === 'ai_prompt' && (
+                  <div className={css`display:flex;flex-direction:column;gap:4px;min-width:150px;`}>
+                    <label className={styles.formLabel}>Output Target</label>
+                    <Select
+                      value={newQuickAction.target || 'modal'}
+                      onChange={v => setNewQuickAction(a => ({ ...a, target: v as any }))}
+                      options={[
+                        { value: 'modal', name: 'Markdown Modal Dialog' },
+                        { value: 'terminal', name: 'Inject to Active Terminal' },
+                        { value: 'chat', name: 'Send to AI Chat' },
+                      ]}
+                    />
+                  </div>
+                )}
+
+                <div className={css`display:flex;flex-direction:column;gap:4px;min-width:90px;`}>
+                  <label className={styles.formLabel}>Color (opt)</label>
+                  <Input
+                    type="text"
+                    className={styles.integrationInput}
+                    value={newQuickAction.color || ''}
+                    onChange={e => setNewQuickAction(a => ({ ...a, color: e.target.value }))}
+                    placeholder="#a855f7"
+                  />
+                </div>
+
+                <label className={css`display:flex;align-items:center;gap:6px;cursor:pointer;padding-bottom:10px;`}>
+                  <input
+                    type="checkbox"
+                    checked={newQuickAction.autoExecute}
+                    onChange={e => setNewQuickAction(a => ({ ...a, autoExecute: e.target.checked }))}
+                  />
+                  <span className={styles.formLabel} style={{ margin: 0 }}>
+                    {newQuickAction.type === 'ai_prompt' ? 'Auto-run on click' : 'Auto-run command'}
+                  </span>
+                </label>
               </div>
 
-              <div className={css`display:flex;flex-direction:column;gap:4px;min-width:110px;`}>
-                <label className={styles.formLabel}>Icon (Lucide)</label>
-                <Select
-                  value={newQuickAction.iconName || 'Terminal'}
-                  onChange={v => setNewQuickAction(a => ({ ...a, iconName: v }))}
-                  options={COMMON_ICONS}
-                />
+              {/* Command / Prompt Input */}
+              <div className={css`display:flex;flex-direction:column;gap:6px;`}>
+                <div className={css`display:flex;align-items:center;justify-content:space-between;`}>
+                  <label className={styles.formLabel}>
+                    {newQuickAction.type === 'ai_prompt' ? 'AI Prompt Template (Markdown)' : 'Command Line Snippet'}
+                  </label>
+                  {newQuickAction.type === 'ai_prompt' && (
+                    <div className={css`display:flex;gap:4px;`}>
+                      <button
+                        type="button"
+                        onClick={() => setQuickActionPreviewMode('edit')}
+                        className={css`
+                          display:inline-flex;align-items:center;gap:4px;background:${quickActionPreviewMode === 'edit' ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
+                          border:1px solid ${quickActionPreviewMode === 'edit' ? 'var(--color-brand)' : 'var(--border-color)'};
+                          color:${quickActionPreviewMode === 'edit' ? 'var(--color-brand)' : 'var(--text-secondary)'};
+                          font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer;
+                        `}
+                      >
+                        <Edit3 size={11} />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQuickActionPreviewMode('preview')}
+                        className={css`
+                          display:inline-flex;align-items:center;gap:4px;background:${quickActionPreviewMode === 'preview' ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
+                          border:1px solid ${quickActionPreviewMode === 'preview' ? 'var(--color-brand)' : 'var(--border-color)'};
+                          color:${quickActionPreviewMode === 'preview' ? 'var(--color-brand)' : 'var(--text-secondary)'};
+                          font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer;
+                        `}
+                      >
+                        <Eye size={11} />
+                        <span>Preview</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {newQuickAction.type === 'ai_prompt' ? (
+                  quickActionPreviewMode === 'preview' ? (
+                    <div className={css`
+                      background-color: var(--bg-primary); border: 1px solid var(--border-color);
+                      border-radius: 6px; padding: 10px 12px; min-height: 90px; max-height: 180px; overflow-y: auto;
+                    `}>
+                      <MarkdownViewer content={newQuickAction.command || '*Empty prompt template.*'} />
+                    </div>
+                  ) : (
+                    <textarea
+                      rows={3}
+                      className={cx(styles.integrationInput, css`font-family: var(--font-family-mono); resize: vertical; min-height: 70px;`)}
+                      value={newQuickAction.command}
+                      onChange={e => setNewQuickAction(a => ({ ...a, command: e.target.value }))}
+                      placeholder="e.g. Review the following code snippet:\n\n```\n{{selection}}\n```"
+                      spellCheck={false}
+                    />
+                  )
+                ) : (
+                  <Input
+                    type="text"
+                    className={styles.integrationInput}
+                    value={newQuickAction.command}
+                    onChange={e => setNewQuickAction(a => ({ ...a, command: e.target.value }))}
+                    placeholder="e.g. git status or npm run dev"
+                    spellCheck={false}
+                  />
+                )}
+
+                {/* Variable insertion buttons for AI Prompts */}
+                {newQuickAction.type === 'ai_prompt' && (
+                  <div className={css`display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text-tertiary);`}>
+                    <span>Click to insert context:</span>
+                    {['{{selection}}', '{{terminal_output}}', '{{workspace_name}}', '{{workspace_path}}'].map(v => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setNewQuickAction(a => ({ ...a, command: (a.command ? a.command + ' ' : '') + v }))}
+                        className={css`
+                          background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color);
+                          color: var(--text-secondary); border-radius: 4px; padding: 2px 6px;
+                          font-family: var(--font-family-mono); font-size: 10px; cursor: pointer;
+                          &:hover { background: rgba(59, 130, 246, 0.15); border-color: var(--color-brand); color: var(--color-brand); }
+                        `}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className={css`display:flex;flex-direction:column;gap:4px;flex:1;min-width:160px;`}>
-                <label className={styles.formLabel}>Command</label>
-                <Input
-                  type="text"
-                  className={styles.integrationInput}
-                  value={newQuickAction.command}
-                  onChange={e => setNewQuickAction(a => ({ ...a, command: e.target.value }))}
-                  placeholder="npm run build"
-                  spellCheck={false}
-                />
-              </div>
-
-              <div className={css`display:flex;flex-direction:column;gap:4px;min-width:80px;`}>
-                <label className={styles.formLabel}>Color (opt)</label>
-                <Input
-                  type="text"
-                  className={styles.integrationInput}
-                  value={newQuickAction.color || ''}
-                  onChange={e => setNewQuickAction(a => ({ ...a, color: e.target.value }))}
-                  placeholder="#3b82f6"
-                />
-              </div>
-
-              <label className={css`display:flex;align-items:center;gap:6px;cursor:pointer;padding-bottom:10px;`}>
-                <input
-                  type="checkbox"
-                  checked={newQuickAction.autoExecute}
-                  onChange={e => setNewQuickAction(a => ({ ...a, autoExecute: e.target.checked }))}
-                />
-                <span className={styles.formLabel} style={{ margin: 0 }}>Auto-run</span>
-              </label>
-
-              {editingQuickActionId ? (
-                <div className={css`display:flex;gap:8px;`}>
+              <div className={css`display:flex;justify-content:flex-end;gap:8px;padding-top:4px;`}>
+                {editingQuickActionId ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={!newQuickAction.label.trim() || !newQuickAction.command.trim()}
+                      onClick={() => {
+                        setQuickActions(prev => {
+                          const next = prev.map(a => a.id === editingQuickActionId ? {
+                            ...newQuickAction,
+                            label: newQuickAction.label.trim(),
+                            type: newQuickAction.type || 'command',
+                            command: newQuickAction.command.trim(),
+                            target: newQuickAction.target || 'modal',
+                            iconName: newQuickAction.iconName?.trim() || undefined,
+                            color: newQuickAction.color?.trim() || undefined,
+                          } : a);
+                          updateSettings({ quickActions: next });
+                          return next;
+                        });
+                        setEditingQuickActionId(null);
+                        setNewQuickAction({ id: '', label: '', type: 'command', command: '', autoExecute: false, target: 'modal' });
+                      }}
+                      className={css`
+                        padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
+                        cursor:pointer;background:var(--color-brand);color:#fff;border:1px solid var(--color-brand);
+                        &:hover:not(:disabled){filter:brightness(1.15);}
+                        &:disabled{opacity:0.4;cursor:not-allowed;}
+                      `}
+                    >
+                      Save Action
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingQuickActionId(null);
+                        setNewQuickAction({ id: '', label: '', type: 'command', command: '', autoExecute: false, target: 'modal' });
+                      }}
+                      className={css`
+                        padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
+                        cursor:pointer;border:1px solid var(--border-color);color:var(--text-secondary);background:transparent;
+                        &:hover{background:var(--bg-hover);}
+                      `}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
                   <button
                     type="button"
                     disabled={!newQuickAction.label.trim() || !newQuickAction.command.trim()}
                     onClick={() => {
                       setQuickActions(prev => {
-                        const next = prev.map(a => a.id === editingQuickActionId ? {
+                        const next = [...prev, {
                           ...newQuickAction,
+                          id: 'qa-' + Date.now().toString(36),
                           label: newQuickAction.label.trim(),
+                          type: newQuickAction.type || 'command',
                           command: newQuickAction.command.trim(),
+                          target: newQuickAction.target || 'modal',
                           iconName: newQuickAction.iconName?.trim() || undefined,
                           color: newQuickAction.color?.trim() || undefined,
-                        } : a);
+                        }];
                         updateSettings({ quickActions: next });
                         return next;
                       });
-                      setEditingQuickActionId(null);
-                      setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
+                      setNewQuickAction({ id: '', label: '', type: 'command', command: '', autoExecute: false, target: 'modal' });
                     }}
                     className={css`
                       padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
-                      cursor:pointer;background:var(--color-brand);color:#fff;border:1px solid var(--color-brand);
-                      &:hover:not(:disabled){filter:brightness(1.15);}
+                      cursor:pointer;border:1px solid var(--color-brand);color:var(--color-brand);background:transparent;
+                      &:hover:not(:disabled){background:rgba(123,104,238,0.1);}
                       &:disabled{opacity:0.4;cursor:not-allowed;}
                     `}
                   >
-                    Save Action
+                    + Add Quick Action
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingQuickActionId(null);
-                      setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
-                    }}
-                    className={css`
-                      padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
-                      cursor:pointer;border:1px solid var(--border-color);color:var(--text-secondary);background:transparent;
-                      &:hover{background:var(--bg-hover);}
-                    `}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  disabled={!newQuickAction.label.trim() || !newQuickAction.command.trim()}
-                  onClick={() => {
-                    setQuickActions(prev => {
-                      const next = [...prev, {
-                        ...newQuickAction,
-                        id: 'qa-' + Date.now().toString(36),
-                        label: newQuickAction.label.trim(),
-                        command: newQuickAction.command.trim(),
-                        iconName: newQuickAction.iconName?.trim() || undefined,
-                        color: newQuickAction.color?.trim() || undefined,
-                      }];
-                      updateSettings({ quickActions: next });
-                      return next;
-                    });
-                    setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
-                  }}
-                  className={css`
-                    padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
-                    cursor:pointer;border:1px solid var(--color-brand);color:var(--color-brand);background:transparent;
-                    &:hover:not(:disabled){background:rgba(123,104,238,0.1);}
-                    &:disabled{opacity:0.4;cursor:not-allowed;}
-                  `}
-                >
-                  + Add
-                </button>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
