@@ -158,10 +158,17 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // a stale value. keybindings: lets the custom key handler stay on THIS term
     // and pick up config edits without re-attaching. onExit: avoids a stale
     // callback firing on process exit after the parent re-rendered.
+    // searchVisible/contextMenu: the custom key handler checks these to close
+    // the overlays on Escape — captured state would stay frozen at its
+    // mount-time value (false/null) and the Escape branches would never fire.
     const keybindingsRef = useRef(terminalConfig.keybindings);
     keybindingsRef.current = terminalConfig.keybindings;
     const onExitRef = useRef(onExit);
     onExitRef.current = onExit;
+    const searchVisibleRef = useRef(searchVisible);
+    searchVisibleRef.current = searchVisible;
+    const contextMenuRef = useRef(contextMenu);
+    contextMenuRef.current = contextMenu;
 
     // ── Expose fit() to parent via ref ───────────────────────────────────
     // safeFit → fit() → term.onResize fires → resize_pty (if spawned).
@@ -440,7 +447,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
         // When search is visible, only pass through Escape to close it
         // All other keys are handled by the search input
-        if (searchVisible) {
+        if (searchVisibleRef.current) {
           if (e.key === 'Escape') {
             setSearchVisible(false);
             searchAddonRef.current?.clearDecorations();
@@ -464,7 +471,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         }
 
         // Escape to close context menu
-        if (e.key === 'Escape' && contextMenu) {
+        if (e.key === 'Escape' && contextMenuRef.current) {
           setContextMenu(null);
           return false;
         }
