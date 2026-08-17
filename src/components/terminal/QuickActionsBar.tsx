@@ -9,11 +9,10 @@ import * as LucideIcons from 'lucide-react';
 import { useNavigate } from 'react-router';
 
 interface QuickActionsBarProps {
-  onRunCommand?: (command: string, autoExecute: boolean) => void;
-  onRunAction?: (action: QuickAction) => void;
+  onRunAction: (action: QuickAction) => void;
 }
 
-export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({ onRunCommand, onRunAction }) => {
+export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({ onRunAction }) => {
   const { settings } = useDashboard();
   const navigate = useNavigate();
   const actions = settings.quickActions && settings.quickActions.length > 0 
@@ -80,14 +79,6 @@ export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({ onRunCommand, 
     return () => clearTimeout(timer);
   }, [actions, updateScrollIndicator]);
 
-  const handleAction = (action: QuickAction) => {
-    if (onRunAction) {
-      onRunAction(action);
-    } else if (onRunCommand) {
-      onRunCommand(action.command, action.autoExecute);
-    }
-  };
-
   return (
     <div className={styles.container}>
       <div className={styles.bar}>
@@ -97,23 +88,19 @@ export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({ onRunCommand, 
           onScroll={updateScrollIndicator}
         >
           {actions.map((action) => {
-            const isAi = action.type === 'ai_prompt';
-            const IconComponent = (action.iconName && (LucideIcons as any)[action.iconName]) || (isAi ? LucideIcons.Sparkles : LucideIcons.Terminal);
-            const titleTooltip = isAi 
-              ? `AI Prompt: ${action.label} (${action.autoExecute ? 'Auto-run' : 'Open Preview'})` 
-              : action.autoExecute ? `Run: ${action.command}` : `Paste: ${action.command}`;
+            const IconComponent = (action.iconName && (LucideIcons as any)[action.iconName]) || LucideIcons.Terminal;
+            const titleTooltip = action.autoExecute ? `Run: ${action.command}` : `Paste: ${action.command}`;
 
             return (
             <button
               key={action.id}
-              className={cx(styles.actionBtn, isAi && styles.aiActionBtn)}
-              onClick={() => handleAction(action)}
+              className={styles.actionBtn}
+              onClick={() => onRunAction(action)}
               title={titleTooltip}
               style={action.color ? { '--action-color': action.color } as React.CSSProperties : undefined}
             >
               <IconComponent size={14} />
               <span>{action.label}</span>
-              {isAi && <span className={styles.aiPill}>AI</span>}
             </button>
             );
           })}
@@ -282,28 +269,6 @@ const styles = {
     background: rgba(255, 255, 255, 0.45);
     border-radius: 1px;
     transition: transform 0.05s ease-out;
-  `,
-  aiActionBtn: css`
-    background: rgba(168, 85, 247, 0.08);
-    border-color: rgba(168, 85, 247, 0.2);
-    color: #d8b4fe;
-
-    &:hover {
-      background: rgba(168, 85, 247, 0.16);
-      border-color: rgba(168, 85, 247, 0.4);
-      color: #f3e8ff;
-    }
-  `,
-  aiPill: css`
-    font-size: 9px;
-    font-weight: 800;
-    padding: 1px 4px;
-    border-radius: 4px;
-    background: rgba(168, 85, 247, 0.25);
-    color: #e9d5ff;
-    letter-spacing: 0.05em;
-    line-height: 1;
-    margin-left: 2px;
   `,
 };
 

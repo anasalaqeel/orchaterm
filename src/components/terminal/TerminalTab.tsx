@@ -22,8 +22,8 @@ import { useDashboard } from '../../context/DashboardContext';
 import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey, kittyEncodeKey, attachKittyProtocol } from '../../utils/terminalThemes';
 import { writePtyChunked } from '../../utils/ptyUtils';
 import { QuickActionsBar } from './QuickActionsBar';
-import { QuickActionPromptModal } from './QuickActionPromptModal';
-import { extractTerminalBuffer, PromptContext } from '../../utils/promptTemplate';
+import { interpolatePromptTemplate } from '../../utils/promptTemplate';
+import { buildPromptContext, formatTerminalWrite } from '../../utils/quickActionInject';
 import type { QuickAction } from '../../types';
 
 
@@ -126,11 +126,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     const [hasSelection, setHasSelection] = useState(false);
     const [hasCopied, setHasCopied] = useState(false);
 
-    // AI Quick Action Modal state
-    const [aiModalOpen, setAiModalOpen] = useState(false);
-    const [activeAiAction, setActiveAiAction] = useState<QuickAction | null>(null);
-    const [aiPromptContext, setAiPromptContext] = useState<PromptContext>({});
-
     // Search state
     const [searchVisible, setSearchVisible] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -205,43 +200,30 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // term.paste() and then a separate write_pty for '\r': write_pty is an
     // async Tauri command, so two independent invokes here would have no
     // guaranteed ordering — a single combined write does.
-    //
-    // Enter must sit outside the closing marker: bracketed paste treats an
-    // embedded \r as a literal newline in the line buffer, not "run this
-    // now" (that's what stops a pasted multi-line script from
-    // auto-executing), so it has to be appended after `\x1b[201~`.
     const runQuickActionCommand = useCallback((command: string, autoExecute: boolean) => {
       const term = termRef.current;
       if (!term) return;
-      const bracketed = term.modes.bracketedPasteMode ? `\x1b[200~${command}\x1b[201~` : command;
-      const data = autoExecute ? `${bracketed}\r` : bracketed;
+      const data = formatTerminalWrite(command, autoExecute, term.modes.bracketedPasteMode);
       writePtyChunked(sessionId, data).catch((err) =>
         console.error('[TerminalTab] write_pty failed:', err),
       );
     }, [sessionId]);
 
+    // Every quick action injects its text into the terminal (paste or auto-run).
+    // {{selection}} / {{terminal_output}} / etc. are expanded from live terminal
+    // context just before the text is written to the PTY — no modal, no extra
+    // AI round-trip; whatever shell or CLI agent is running in the tab receives
+    // the final text.
     const handleRunAction = useCallback((action: QuickAction) => {
-      if (action.type === 'ai_prompt') {
-        const term = termRef.current;
-        const selection = (term && term.hasSelection()) ? term.getSelection() : '';
-        const terminalOutput = extractTerminalBuffer(term);
-        const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
-        const activeSpace = spaces.find(s => s.id === activeSpaceId);
-
-        const ctx: PromptContext = {
-          selection,
-          terminalOutput,
-          workspaceName: activeWorkspace?.name,
-          workspacePath: activeWorkspace?.path || workspacePath,
-          spaceName: activeSpace?.name,
-        };
-
-        setActiveAiAction(action);
-        setAiPromptContext(ctx);
-        setAiModalOpen(true);
-      } else {
-        runQuickActionCommand(action.command, action.autoExecute);
-      }
+      const ctx = buildPromptContext(termRef.current, {
+        workspaces,
+        spaces,
+        activeWorkspaceId,
+        activeSpaceId,
+        fallbackWorkspacePath: workspacePath,
+      });
+      const text = interpolatePromptTemplate(action.command, ctx);
+      runQuickActionCommand(text, action.autoExecute);
     }, [workspaces, spaces, activeWorkspaceId, activeSpaceId, workspacePath, runQuickActionCommand]);
 
 
@@ -788,27 +770,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         {/* Terminal canvas */}
         <div ref={containerRef} className={styles.terminalContainer} style={{ backgroundColor: themeBg }} />
 
-        <QuickActionsBar onRunAction={handleRunAction} onRunCommand={runQuickActionCommand} />
-
-        {activeAiAction && (
-          <QuickActionPromptModal
-            isOpen={aiModalOpen}
-            onClose={() => {
-              setAiModalOpen(false);
-              setActiveAiAction(null);
-            }}
-            action={activeAiAction}
-            context={aiPromptContext}
-            onInjectToTerminal={(text) => runQuickActionCommand(text, true)}
-            onSendToChat={(prompt, response) => {
-              window.dispatchEvent(
-                new CustomEvent('orchaterm:insert-chat', {
-                  detail: { prompt, response },
-                })
-              );
-            }}
-          />
-        )}
+        <QuickActionsBar onRunAction={handleRunAction} />
 
 
         {/* Floating Copy Button */}
