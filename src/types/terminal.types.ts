@@ -69,11 +69,18 @@ export interface TerminalConfig {
   keybindings: TerminalKeybinding[];
 }
 
+export type QuickActionType = 'command' | 'ai_prompt';
+export type QuickActionOutputTarget = 'modal' | 'terminal' | 'chat';
+
 export interface QuickAction {
   id: string;
   label: string;
   iconName?: string;
+  type?: QuickActionType;
   command: string;
   autoExecute: boolean;
   color?: string;
+  target?: QuickActionOutputTarget;
+  promptVaultId?: string;
 }
+

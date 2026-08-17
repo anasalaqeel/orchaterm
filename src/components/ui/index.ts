@@ -13,3 +13,5 @@ export { Tooltip }            from './Tooltip';
 export { InfoTooltip }        from './InfoTooltip';
 export type { InfoTooltipProps } from './InfoTooltip';
 export { HelpModal }          from './HelpModal';
+export { MarkdownViewer }      from './MarkdownViewer';
+

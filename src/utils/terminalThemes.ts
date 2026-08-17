@@ -48,10 +48,10 @@ export const DEFAULT_TERMINAL_CONFIG: TerminalConfig = {
 import type { QuickAction } from '../types';
 
 export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
-  { id: 'git-status', label: 'Status', iconName: 'GitBranch', command: 'git status', autoExecute: true },
-  { id: 'npm-dev', label: 'Dev', iconName: 'Play', command: 'npm run dev', autoExecute: true },
-  { id: 'ai-explain', label: 'Explain Error', iconName: 'Wand2', command: 'explain the last error in detail', autoExecute: false, color: '#a855f7' },
-  { id: 'ai-refactor', label: 'Refactor', iconName: 'Zap', command: 'refactor this file to improve readability', autoExecute: false, color: '#3b82f6' },
+  { id: 'git-status', label: 'Status', iconName: 'GitBranch', type: 'command', command: 'git status', autoExecute: true },
+  { id: 'npm-dev', label: 'Dev', iconName: 'Play', type: 'command', command: 'npm run dev', autoExecute: true },
+  { id: 'ai-explain', label: 'Explain Error', iconName: 'Wand2', type: 'ai_prompt', command: 'Analyze and explain the following terminal output or error, and provide clear step-by-step fix instructions:\n\n```\n{{terminal_output}}\n```', autoExecute: true, color: '#a855f7', target: 'modal' },
+  { id: 'ai-refactor', label: 'Review Selection', iconName: 'Zap', type: 'ai_prompt', command: 'Review the following code or command snippet. Suggest improvements, optimizations, and best practices:\n\n```\n{{selection}}\n```', autoExecute: false, color: '#3b82f6', target: 'modal' },
 ];
 
 export interface ThemePreset {
