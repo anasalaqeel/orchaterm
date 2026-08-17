@@ -33,60 +33,12 @@ vi.mock('../context/DashboardContext', () => ({
   useDashboard: () => mockDashboard,
 }));
 
-// ── Fake xterm Terminal: just the surface TerminalTab touches ────────────────
-const { FakeTerminal, getLastTerminal } = vi.hoisted(() => {
-  class FakeTerminal {
-    lines: string[] = [];
-    selectionText = '';
-    modes = { bracketedPasteMode: true };
-    options: Record<string, unknown> = {};
-    unicode = { activeVersion: '' };
-    element: HTMLElement | null = null;
-    cols = 80;
-    rows = 24;
-    parser = {
-      registerCsiHandler: () => () => {},
-      registerEscHandler: () => () => {},
-    };
-    buffer: unknown;
-    constructor(_opts: unknown) {
-      const self = this;
-      (globalThis as any).__lastTerminal = this;
-      this.buffer = {
-        active: {
-          get length() { return self.lines.length; },
-          getLine: (r: number) =>
-            self.lines[r] !== undefined
-              ? { translateToString: (trimRight: boolean) => (trimRight ? self.lines[r].trimEnd() : self.lines[r]) }
-              : undefined,
-        },
-      };
-    }
-    open(el: HTMLElement) { this.element = el; }
-    loadAddon(_a: unknown) {}
-    onData(_cb: unknown) { return { dispose: () => {} }; }
-    onSelectionChange(_cb: unknown) { return { dispose: () => {} }; }
-    onBell(_cb: unknown) { return { dispose: () => {} }; }
-    onResize(_cb: unknown) { return { dispose: () => {} }; }
-    attachCustomKeyEventHandler(_fn: unknown) {}
-    focus() {}
-    write(_d: string) {}
-    refresh(_s: number, _e: number) {}
-    clear() {}
-    scrollToTop() {}
-    scrollToBottom() {}
-    paste(_t: string) {}
-    hasSelection() { return this.selectionText !== ''; }
-    getSelection() { return this.selectionText; }
-    dispose() {}
-  }
-  return {
-    FakeTerminal,
-    getLastTerminal: (): FakeTerminal => (globalThis as any).__lastTerminal,
-  };
+// ── Fake xterm Terminal shared with the other TerminalTab test file ──────────
+vi.mock('@xterm/xterm', async () => {
+  const { FakeTerminal } = await import('./helpers/fakeTerminal');
+  return { Terminal: FakeTerminal };
 });
-
-vi.mock('@xterm/xterm', () => ({ Terminal: FakeTerminal }));
+const { getLastTerminal } = await import('./helpers/fakeTerminal');
 vi.mock('@xterm/addon-fit', () => ({
   FitAddon: class {
     proposeDimensions() { return { cols: 80, rows: 24 }; }
@@ -130,7 +82,7 @@ async function renderTerminalTab() {
   await act(async () => {
     root!.render(
       <MemoryRouter>
-        <TerminalTab sessionId="s-test" workspacePath="C:\\dev\\orchaterm" shell="pwsh.exe" />
+        <TerminalTab sessionId="s-test" workspacePath={'C:\\dev\\orchaterm'} shell="pwsh.exe" />
       </MemoryRouter>,
     );
   });
