@@ -30,3 +30,9 @@ if (!('fonts' in document)) {
     value: { ready: Promise.resolve() },
   });
 }
+
+// jsdom does not implement Element.scrollIntoView. Settings scrolls to the
+// quick-actions section when opened with #terminal; stub the gap.
+if (typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = () => {};
+}
