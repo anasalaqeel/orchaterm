@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Terminal } from '@xterm/xterm';
-import { buildCombo, resolveTerminalKey, mergeTerminalConfig, DEFAULT_TERMINAL_CONFIG, kittyEncodeKey, attachKittyProtocol } from '../utils/terminalThemes';
+import { buildCombo, resolveTerminalKey, mergeTerminalConfig, DEFAULT_TERMINAL_CONFIG, DEFAULT_QUICK_ACTIONS, kittyEncodeKey, attachKittyProtocol } from '../utils/terminalThemes';
 import type { TerminalKeybinding } from '../types';
 
 function makeEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
@@ -293,5 +293,30 @@ describe('mergeTerminalConfig', () => {
     const c = merged.keybindings.filter(b => b.key === 'ctrl+shift+c');
     expect(c).toHaveLength(1);
     expect(c[0].action).toBe('passthrough');
+  });
+});
+
+describe('DEFAULT_QUICK_ACTIONS', () => {
+  it('are plain inject actions — the modal-era type/target fields stay gone', () => {
+    for (const a of DEFAULT_QUICK_ACTIONS) {
+      expect(Object.keys(a), `action "${a.id}"`).not.toContain('type');
+      expect(Object.keys(a), `action "${a.id}"`).not.toContain('target');
+    }
+  });
+
+  it('never auto-executes variable-expanding prompt actions', () => {
+    // An expanded {{terminal_output}} can be ~60 lines — firing that into a
+    // shell blind would execute garbage. Paste for review instead.
+    for (const a of DEFAULT_QUICK_ACTIONS) {
+      if (a.command.includes('{{')) {
+        expect(a.autoExecute, `action "${a.id}"`).toBe(false);
+      }
+    }
+  });
+
+  it('keeps auto-run for plain commands', () => {
+    const git = DEFAULT_QUICK_ACTIONS.find(a => a.id === 'git-status')!;
+    expect(git.autoExecute).toBe(true);
+    expect(git.command).toBe('git status');
   });
 });
