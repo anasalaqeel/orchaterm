@@ -16,6 +16,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { css } from '@emotion/css';
 import { Copy, Check, Search, X } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
@@ -375,8 +376,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           const selection = term.getSelection();
           if (selection) {
             term.paste(selection);
-          } else if (navigator.clipboard) {
-            navigator.clipboard.readText().then(text => {
+          } else {
+            readText().then(text => {
               if (text) term.paste(text);
             }).catch(() => {});
           }
@@ -488,8 +489,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
               invoke('write_pty', { sessionId, data: binding.text ?? '' }).catch(() => {});
               break;
             case 'copy':
-              if (term.hasSelection() && navigator.clipboard) {
-                navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+              if (term.hasSelection()) {
+                writeText(term.getSelection()).catch(() => {});
               }
               break;
             case 'paste':
@@ -787,8 +788,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
             title="Copy selection"
             onClick={() => {
               const term = termRef.current;
-              if (term && term.hasSelection() && navigator.clipboard) {
-                navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+              if (term && term.hasSelection()) {
+                writeText(term.getSelection()).catch(() => {});
                 setHasCopied(true);
                 setTimeout(() => setHasCopied(false), 2000);
                 // Keep the selection highlighted after copy.
@@ -895,8 +896,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
               className={styles.contextMenuItem}
               onClick={() => {
                 const term = termRef.current;
-                if (term && term.hasSelection() && navigator.clipboard) {
-                  navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+                if (term && term.hasSelection()) {
+                  writeText(term.getSelection()).catch(() => {});
                 }
                 setContextMenu(null);
               }}
@@ -907,8 +908,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
               className={styles.contextMenuItem}
               onClick={() => {
                 const term = termRef.current;
-                if (term && navigator.clipboard) {
-                  navigator.clipboard.readText().then(text => {
+                if (term) {
+                  readText().then(text => {
                     if (text) term.paste(text);
                   }).catch(() => {});
                 }
