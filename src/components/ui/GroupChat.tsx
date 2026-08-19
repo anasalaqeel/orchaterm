@@ -22,6 +22,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { css, cx } from '@emotion/css';
 import {
   Send, Bot, User, WifiOff, RefreshCw, Users,
@@ -1018,7 +1019,7 @@ const MessageRow: React.FC<{
   const [copied, setCopied]   = useState(false);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(msg.content).then(() => {
+    writeText(msg.content).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
