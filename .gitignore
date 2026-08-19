@@ -67,3 +67,8 @@ src-tauri/gen/schemas/
 .fallow/
 
 .orchaterm
+# Local test scripts
+src-tauri/src/bin/test_bash_echo.rs
+
+# Playwright MCP artifacts
+.playwright-mcp/
