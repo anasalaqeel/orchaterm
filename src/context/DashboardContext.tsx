@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import {
   Workspace, Space, TaskLog, SavedPrompt, AppData, AppSettings,
   OrchestratorPlan, TerminalSession, PipelineTemplate,
@@ -599,7 +600,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const pr = savedPrompts.find(p => p.id === promptId);
     if (!pr) { showToast('Prompt not found', 'error'); return; }
     try {
-      await navigator.clipboard.writeText(pr.content);
+      await writeText(pr.content);
       const next = savedPrompts.map(p =>
         p.id === promptId ? { ...p, usedAt: new Date().toISOString() } : p,
       );

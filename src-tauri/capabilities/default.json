@@ -9,6 +9,7 @@
     "core:default",
     "core:webview:allow-set-webview-zoom",
     "opener:default",
+    "clipboard-manager:default",
     "dialog:allow-open",
     "fs:default",
     "fs:allow-appdata-read-recursive",
