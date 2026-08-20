@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "version": "node scripts/sync-version.js && cd src-tauri && cargo check && git add ../src-tauri/tauri.conf.json ../src-tauri/Cargo.toml ../src-tauri/Cargo.lock"
   },
   "dependencies": {
     "@emotion/css": "^11.13.5",
