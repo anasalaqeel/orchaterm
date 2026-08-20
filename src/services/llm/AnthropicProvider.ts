@@ -37,7 +37,7 @@ export class AnthropicProvider implements LLMProvider {
     const body: Record<string, unknown> = {
       model: this.model,
       max_tokens: 4096,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
     };
     if (systemPrompt) body.system = systemPrompt;
 
@@ -53,7 +53,9 @@ export class AnthropicProvider implements LLMProvider {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error(`Anthropic error: ${response.status} — ${(err as any)?.error?.message ?? response.statusText}`);
+        throw new Error(
+          `Anthropic error: ${response.status} — ${(err as any)?.error?.message ?? response.statusText}`
+        );
       }
       const data = await response.json();
       const text = (data.content?.[0]?.text ?? '').trim();
@@ -71,24 +73,33 @@ export class AnthropicProvider implements LLMProvider {
     const { onToken, onDone, onError } = callbacks;
     const controller = new AbortController();
     const body: Record<string, unknown> = {
-      model: this.model, max_tokens: 4096, stream: true,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      model: this.model,
+      max_tokens: 4096,
+      stream: true,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
     };
     if (systemPrompt) body.system = systemPrompt;
 
     (async () => {
       try {
         const res = await fetch(`${this.baseUrl}/v1/messages`, {
-          method: 'POST', headers: this.headers,
-          signal: controller.signal, body: JSON.stringify(body),
+          method: 'POST',
+          headers: this.headers,
+          signal: controller.signal,
+          body: JSON.stringify(body),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          onError(`Anthropic error ${res.status}: ${(err as any)?.error?.message ?? res.statusText}`);
+          onError(
+            `Anthropic error ${res.status}: ${(err as any)?.error?.message ?? res.statusText}`
+          );
           return;
         }
         const reader = res.body?.getReader();
-        if (!reader) { onError('No response body'); return; }
+        if (!reader) {
+          onError('No response body');
+          return;
+        }
         const decoder = new TextDecoder();
         let buf = '';
 
@@ -106,9 +117,12 @@ export class AnthropicProvider implements LLMProvider {
               if (obj.type === 'content_block_delta' && obj.delta?.type === 'text_delta') {
                 onToken(obj.delta.text);
               } else if (obj.type === 'message_stop') {
-                onDone(); return;
+                onDone();
+                return;
               }
-            } catch { /* skip */ }
+            } catch {
+              /* skip */
+            }
           }
         }
         onDone();
@@ -129,13 +143,21 @@ export class AnthropicProvider implements LLMProvider {
     const timer = setTimeout(() => controller.abort(), 2000);
     try {
       const res = await fetch(`${this.baseUrl}/v1/messages`, {
-        method: 'POST', headers: this.headers,
+        method: 'POST',
+        headers: this.headers,
         signal: controller.signal,
-        body: JSON.stringify({ model: this.model, max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] }),
+        body: JSON.stringify({
+          model: this.model,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
       });
       // 4xx means server is reachable (bad key/request), 5xx means server error
       return res.status < 500;
-    } catch { return false; }
-    finally { clearTimeout(timer); }
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

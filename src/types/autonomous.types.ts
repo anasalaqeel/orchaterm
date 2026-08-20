@@ -2,9 +2,9 @@
 
 /** Controls when automated messages may be injected into a terminal session. */
 export type InterruptPolicy =
-  | 'never'        // Never auto-inject (safe for all agents, default)
-  | 'prompt-only'  // Only inject when the buffer ends with a recognizable shell/agent prompt
-  | 'always';      // Inject at any time (for agents known to handle interruptions)
+  | 'never' // Never auto-inject (safe for all agents, default)
+  | 'prompt-only' // Only inject when the buffer ends with a recognizable shell/agent prompt
+  | 'always'; // Inject at any time (for agents known to handle interruptions)
 
 /** Emitted by NeedsBroker when an agent requests help. */
 export interface AgentNeedsRequest {

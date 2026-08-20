@@ -3,11 +3,13 @@ import { buildPromptContext, formatTerminalWrite, TerminalLike } from '../utils/
 import { interpolatePromptTemplate } from '../utils/promptTemplate';
 
 /** Minimal xterm-shaped terminal double. */
-function makeTerm(opts: {
-  selection?: string;
-  lines?: string[];
-  bracketedPasteMode?: boolean;
-} = {}): TerminalLike {
+function makeTerm(
+  opts: {
+    selection?: string;
+    lines?: string[];
+    bracketedPasteMode?: boolean;
+  } = {}
+): TerminalLike {
   const lines = opts.lines ?? [];
   return {
     hasSelection: () => (opts.selection ?? '') !== '',
@@ -18,8 +20,10 @@ function makeTerm(opts: {
         length: lines.length,
         getLine: (row: number) =>
           lines[row] !== undefined
-            ? { translateToString: (trimRight: boolean) =>
-                trimRight ? lines[row].trimEnd() : lines[row] }
+            ? {
+                translateToString: (trimRight: boolean) =>
+                  trimRight ? lines[row].trimEnd() : lines[row],
+              }
             : undefined,
       },
     },
@@ -28,13 +32,11 @@ function makeTerm(opts: {
 
 describe('formatTerminalWrite', () => {
   it('wraps auto-run text in bracketed-paste markers with Enter outside', () => {
-    expect(formatTerminalWrite('git status', true, true))
-      .toBe('\x1b[200~git status\x1b[201~\r');
+    expect(formatTerminalWrite('git status', true, true)).toBe('\x1b[200~git status\x1b[201~\r');
   });
 
   it('wraps paste-only text without a trailing Enter', () => {
-    expect(formatTerminalWrite('git status', false, true))
-      .toBe('\x1b[200~git status\x1b[201~');
+    expect(formatTerminalWrite('git status', false, true)).toBe('\x1b[200~git status\x1b[201~');
   });
 
   it('sends raw text plus Enter when the shell lacks bracketed paste', () => {
@@ -67,7 +69,10 @@ describe('buildPromptContext', () => {
   };
 
   it('collects selection, buffer, workspace and space', () => {
-    const term = makeTerm({ selection: 'npm ERR!', lines: ['$ npm run buld', 'npm ERR! missing script'] });
+    const term = makeTerm({
+      selection: 'npm ERR!',
+      lines: ['$ npm run buld', 'npm ERR! missing script'],
+    });
     expect(buildPromptContext(term, source)).toEqual({
       selection: 'npm ERR!',
       terminalOutput: '$ npm run buld\nnpm ERR! missing script',
@@ -103,22 +108,28 @@ describe('quick action composition (context → interpolation → write format)'
   it('expands {{terminal_output}} into the payload without auto-executing', () => {
     const term = makeTerm({ lines: ['npm ERR! missing script: buld'] });
     const ctx = buildPromptContext(term, {
-      workspaces: [], spaces: [],
-      activeWorkspaceId: null, activeSpaceId: null,
+      workspaces: [],
+      spaces: [],
+      activeWorkspaceId: null,
+      activeSpaceId: null,
     });
     const text = interpolatePromptTemplate(
       'Explain this error:\n```\n{{terminal_output}}\n```',
-      ctx,
+      ctx
     );
     expect(formatTerminalWrite(text, false, true)).toBe(
-      '\x1b[200~Explain this error:\n```\nnpm ERR! missing script: buld\n```\x1b[201~',
+      '\x1b[200~Explain this error:\n```\nnpm ERR! missing script: buld\n```\x1b[201~'
     );
   });
 
   it('passes variable-free actions through byte-identical', () => {
-    const text = interpolatePromptTemplate('git status', buildPromptContext(makeTerm(), {
-      workspaces: [], spaces: [],
-    }));
+    const text = interpolatePromptTemplate(
+      'git status',
+      buildPromptContext(makeTerm(), {
+        workspaces: [],
+        spaces: [],
+      })
+    );
     expect(formatTerminalWrite(text, true, true)).toBe('\x1b[200~git status\x1b[201~\r');
   });
 });

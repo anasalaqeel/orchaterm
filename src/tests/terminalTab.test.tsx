@@ -40,7 +40,9 @@ vi.mock('@xterm/xterm', async () => {
 });
 vi.mock('@xterm/addon-fit', () => ({
   FitAddon: class {
-    proposeDimensions() { return { cols: 80, rows: 24 }; }
+    proposeDimensions() {
+      return { cols: 80, rows: 24 };
+    }
     fit() {}
   },
 }));
@@ -49,9 +51,15 @@ vi.mock('@xterm/addon-search', () => ({
   SearchAddon: class {
     queries: string[] = [];
     cleared = 0;
-    findNext(q: string) { this.queries.push(q); }
-    findPrevious(q: string) { this.queries.push(q); }
-    clearDecorations() { this.cleared++; }
+    findNext(q: string) {
+      this.queries.push(q);
+    }
+    findPrevious(q: string) {
+      this.queries.push(q);
+    }
+    clearDecorations() {
+      this.cleared++;
+    }
   },
 }));
 vi.mock('@xterm/addon-unicode11', () => ({ Unicode11Addon: class {} }));
@@ -93,13 +101,16 @@ function commandsCalled(cmd: string): Record<string, unknown>[] {
 }
 
 function writtenPayloads(): string[] {
-  return commandsCalled('write_pty').map(a => (a as { data: string }).data);
+  return commandsCalled('write_pty').map((a) => (a as { data: string }).data);
 }
 
 function resetDashboard() {
   mockDashboard.settings = {
     quickActions: [],
-    terminalConfig: { ...DEFAULT_TERMINAL_CONFIG, keybindings: [...DEFAULT_TERMINAL_CONFIG.keybindings] },
+    terminalConfig: {
+      ...DEFAULT_TERMINAL_CONFIG,
+      keybindings: [...DEFAULT_TERMINAL_CONFIG.keybindings],
+    },
   };
 }
 
@@ -121,11 +132,13 @@ async function renderTerminalTab() {
           shell="pwsh.exe"
           onExit={onExit}
         />
-      </MemoryRouter>,
+      </MemoryRouter>
     );
   });
   // Let the mount effect settle (spawn polling runs on rAF timers).
-  await act(async () => { await new Promise(r => setTimeout(r, 50)); });
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 50));
+  });
 }
 
 function firePtyData(data: string) {
@@ -133,8 +146,9 @@ function firePtyData(data: string) {
 }
 
 function clickElementByText(text: string, selector = 'button, div') {
-  const el = Array.from(container.querySelectorAll(selector))
-    .find(n => n.textContent?.trim() === text);
+  const el = Array.from(container.querySelectorAll(selector)).find(
+    (n) => n.textContent?.trim() === text
+  );
   expect(el, `element "${text}" should be rendered`).toBeTruthy();
   el!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 }
@@ -154,7 +168,10 @@ describe('TerminalTab PTY lifecycle', () => {
   });
 
   afterEach(async () => {
-    if (root) await act(async () => { root!.unmount(); });
+    if (root)
+      await act(async () => {
+        root!.unmount();
+      });
     container.remove();
     root = null;
   });
@@ -162,9 +179,18 @@ describe('TerminalTab PTY lifecycle', () => {
   it('spawns the PTY with fitted dims and shell args, after the data listener attaches', async () => {
     await renderTerminalTab();
     expect(commandsCalled('spawn_pty')).toEqual([
-      { sessionId: 's1', workspacePath: 'C:\\dev\\orchaterm', cols: 80, rows: 24, shell: 'pwsh.exe', shellArgs: [] },
+      {
+        sessionId: 's1',
+        workspacePath: 'C:\\dev\\orchaterm',
+        cols: 80,
+        rows: 24,
+        shell: 'pwsh.exe',
+        shellArgs: [],
+      },
     ]);
-    expect(Object.keys(ptyListeners)).toEqual(expect.arrayContaining(['pty-data-s1', 'pty-exit-s1']));
+    expect(Object.keys(ptyListeners)).toEqual(
+      expect.arrayContaining(['pty-data-s1', 'pty-exit-s1'])
+    );
     // Listener registration must precede spawn, else initial output is dropped.
     const listenOrder = mockedListen.mock.invocationCallOrder[0];
     const spawnCall = mockedInvoke.mock.calls.findIndex(([c]) => c === 'spawn_pty');
@@ -182,10 +208,16 @@ describe('TerminalTab PTY lifecycle', () => {
 
     expect(container.textContent).toContain('Terminal failed to start');
     expect(container.textContent).toContain('shell not found');
-    expect(getLastTerminal().writes.join('')).toContain('[Error] Failed to spawn shell: shell not found');
+    expect(getLastTerminal().writes.join('')).toContain(
+      '[Error] Failed to spawn shell: shell not found'
+    );
 
-    await act(async () => { clickElementByText('Retry', 'button'); });
-    await act(async () => { await new Promise(r => setTimeout(r, 30)); });
+    await act(async () => {
+      clickElementByText('Retry', 'button');
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
     expect(commandsCalled('spawn_pty')).toHaveLength(2);
     expect(container.textContent).not.toContain('Terminal failed to start');
   });
@@ -194,32 +226,46 @@ describe('TerminalTab PTY lifecycle', () => {
     await renderTerminalTab();
     const term = getLastTerminal();
 
-    await act(async () => { firePtyData('\x1b[2J\x1b[H'); }); // escapes only → keep waiting
+    await act(async () => {
+      firePtyData('\x1b[2J\x1b[H');
+    }); // escapes only → keep waiting
     expect(term.writes).toEqual(['\x1b[2J\x1b[H']);
 
-    await act(async () => { firePtyData('\r\n$ '); }); // Git-Bash-style leading newline → strip
+    await act(async () => {
+      firePtyData('\r\n$ ');
+    }); // Git-Bash-style leading newline → strip
     expect(term.writes[term.writes.length - 1]).toBe('$ ');
 
-    await act(async () => { firePtyData('\nmore output'); }); // one-shot: later newlines kept
+    await act(async () => {
+      firePtyData('\nmore output');
+    }); // one-shot: later newlines kept
     expect(term.writes[term.writes.length - 1]).toBe('\nmore output');
   });
 
   it('marks the process exited and reports onExit', async () => {
     await renderTerminalTab();
-    await act(async () => { ptyListeners['pty-exit-s1'](undefined); });
+    await act(async () => {
+      ptyListeners['pty-exit-s1'](undefined);
+    });
     expect(getLastTerminal().writes.join('')).toContain('[Process Exited]');
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
   it('forwards small keystrokes directly and chunks large pastes', async () => {
     await renderTerminalTab();
-    await act(async () => { getLastTerminal().fireData('x'); });
+    await act(async () => {
+      getLastTerminal().fireData('x');
+    });
     expect(writtenPayloads()).toEqual(['x']);
 
     mockedInvoke.mockClear();
     const big = 'a'.repeat(200);
-    await act(async () => { getLastTerminal().fireData(big); });
-    await act(async () => { await new Promise(r => setTimeout(r, 50)); });
+    await act(async () => {
+      getLastTerminal().fireData(big);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
     const chunks = writtenPayloads();
     expect(chunks.length).toBeGreaterThanOrEqual(3); // went through chunking
     expect(chunks.join('')).toBe(big);
@@ -227,17 +273,23 @@ describe('TerminalTab PTY lifecycle', () => {
 
   it('forwards grid changes to resize_pty only when dimensions actually change', async () => {
     await renderTerminalTab(); // spawns at 80x24
-    await act(async () => { getLastTerminal().fireResize(120, 40); });
+    await act(async () => {
+      getLastTerminal().fireResize(120, 40);
+    });
     expect(commandsCalled('resize_pty')).toEqual([{ sessionId: 's1', cols: 120, rows: 40 }]);
 
-    await act(async () => { getLastTerminal().fireResize(120, 40); }); // same size → suppressed
+    await act(async () => {
+      getLastTerminal().fireResize(120, 40);
+    }); // same size → suppressed
     expect(commandsCalled('resize_pty')).toHaveLength(1);
   });
 
   it('kills the PTY and disposes the terminal on unmount', async () => {
     await renderTerminalTab();
     const term = getLastTerminal();
-    await act(async () => { root!.unmount(); });
+    await act(async () => {
+      root!.unmount();
+    });
     root = null;
     expect(commandsCalled('kill_pty')).toEqual([{ sessionId: 's1' }]);
     expect(term.disposed).toBe(true);
@@ -253,7 +305,10 @@ describe('TerminalTab keyboard handling', () => {
   });
 
   afterEach(async () => {
-    if (root) await act(async () => { root!.unmount(); });
+    if (root)
+      await act(async () => {
+        root!.unmount();
+      });
     container.remove();
     root = null;
   });
@@ -265,7 +320,9 @@ describe('TerminalTab keyboard handling', () => {
     expect(await act(async () => term.fireKey({ ctrlKey: true, key: 'f' }))).toBe(false);
     expect(container.querySelector('[data-search-input="true"]')).toBeTruthy();
 
-    await act(async () => { await new Promise(r => setTimeout(r, 20)); }); // rAF focus pass
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    }); // rAF focus pass
     expect(await act(async () => term.fireKey({ key: 'Escape' }))).toBe(false);
     expect(container.querySelector('[data-search-input="true"]')).toBeNull();
   });
@@ -273,11 +330,16 @@ describe('TerminalTab keyboard handling', () => {
   it('executes a configured send-text keybinding', async () => {
     mockDashboard.settings.terminalConfig = {
       ...DEFAULT_TERMINAL_CONFIG,
-      keybindings: [...DEFAULT_TERMINAL_CONFIG.keybindings, { key: 'ctrl+g', action: 'send-text', text: 'git status\r' }],
+      keybindings: [
+        ...DEFAULT_TERMINAL_CONFIG.keybindings,
+        { key: 'ctrl+g', action: 'send-text', text: 'git status\r' },
+      ],
     };
     await renderTerminalTab();
 
-    expect(await act(async () => getLastTerminal().fireKey({ ctrlKey: true, key: 'g' }))).toBe(false);
+    expect(await act(async () => getLastTerminal().fireKey({ ctrlKey: true, key: 'g' }))).toBe(
+      false
+    );
     expect(writtenPayloads()).toContain('git status\r');
   });
 
@@ -287,7 +349,9 @@ describe('TerminalTab keyboard handling', () => {
     term.selectionText = 'selected text';
 
     // ctrl+shift+c is a default keybinding
-    expect(await act(async () => term.fireKey({ ctrlKey: true, shiftKey: true, key: 'c' }))).toBe(false);
+    expect(await act(async () => term.fireKey({ ctrlKey: true, shiftKey: true, key: 'c' }))).toBe(
+      false
+    );
     expect(clipboardStub.writeText).toHaveBeenCalledWith('selected text');
   });
 
@@ -296,14 +360,18 @@ describe('TerminalTab keyboard handling', () => {
     const term = getLastTerminal();
 
     // App asks for active flags → reply CSI ? 0 u before any push.
-    await act(async () => { term.fireCsi('?', 'u', []); });
+    await act(async () => {
+      term.fireCsi('?', 'u', []);
+    });
     expect(writtenPayloads()).toContain('\x1b[?0u');
 
     // Without the disambiguate flag, Enter stays legacy (passthrough).
     expect(await act(async () => term.fireKey({ key: 'Enter' }))).toBe(true);
 
     // App pushes flags=1 (disambiguate escape codes).
-    await act(async () => { term.fireCsi('=', 'u', [1, 1]); });
+    await act(async () => {
+      term.fireCsi('=', 'u', [1, 1]);
+    });
 
     // Shift+Enter and bare Escape must now be CSI-u encoded, not legacy bytes.
     expect(await act(async () => term.fireKey({ shiftKey: true, key: 'Enter' }))).toBe(false);
@@ -323,7 +391,10 @@ describe('TerminalTab UI surfaces', () => {
   });
 
   afterEach(async () => {
-    if (root) await act(async () => { root!.unmount(); });
+    if (root)
+      await act(async () => {
+        root!.unmount();
+      });
     container.remove();
     root = null;
   });
@@ -333,7 +404,9 @@ describe('TerminalTab UI surfaces', () => {
     const term = getLastTerminal();
     term.selectionText = 'copy me';
 
-    await act(async () => { term.fireSelectionChange(); });
+    await act(async () => {
+      term.fireSelectionChange();
+    });
     clickElementByText('Copy', 'button');
     await act(async () => {});
     expect(clipboardStub.writeText).toHaveBeenCalledWith('copy me');
@@ -344,7 +417,9 @@ describe('TerminalTab UI surfaces', () => {
     await renderTerminalTab();
     const term = getLastTerminal();
     await act(async () => {
-      term.element!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
+      term.element!.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })
+      );
     });
     expect(container.textContent).toContain('Select All');
 
@@ -360,25 +435,35 @@ describe('TerminalTab UI surfaces', () => {
     expect(term.element).toBeTruthy();
 
     await act(async () => {
-      term.element!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
+      term.element!.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })
+      );
     });
     expect(container.textContent).toContain('Select All');
 
-    await act(async () => { clickElementByText('Select All', 'div'); });
+    await act(async () => {
+      clickElementByText('Select All', 'div');
+    });
     expect(term.selectAllCalled).toBe(true);
     expect(container.textContent).not.toContain('Select All'); // menu closed
 
     await act(async () => {
-      term.element!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
+      term.element!.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })
+      );
     });
-    await act(async () => { clickElementByText('Clear', 'div'); });
+    await act(async () => {
+      clickElementByText('Clear', 'div');
+    });
     expect(term.cleared).toBe(1);
   });
 
   it('search input drives the search addon and shows the result count', async () => {
     await renderTerminalTab();
     const term = getLastTerminal();
-    await act(async () => { term.fireKey({ ctrlKey: true, key: 'f' }); });
+    await act(async () => {
+      term.fireKey({ ctrlKey: true, key: 'f' });
+    });
 
     const input = container.querySelector('[data-search-input="true"]') as HTMLInputElement;
     expect(input).toBeTruthy();
@@ -388,7 +473,9 @@ describe('TerminalTab UI surfaces', () => {
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
 
-    const addon = term.loadedAddons.find(a => 'findNext' in (a as object)) as { queries: string[] };
+    const addon = term.loadedAddons.find((a) => 'findNext' in (a as object)) as {
+      queries: string[];
+    };
     expect(addon.queries).toContain('error');
     expect(container.textContent).toContain('1 result');
   });

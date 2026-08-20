@@ -52,23 +52,60 @@ const SECTIONS: Section[] = [
     icon: Keyboard,
     description: 'Essential keyboard shortcuts to navigate and control Orchaterm efficiently',
     shortcuts: [
-      { key: 'Ctrl+K / Cmd+K', description: 'Open Quick Switcher to jump between workspaces & pages', category: 'Global' },
-      { key: 'Ctrl+H / Cmd+H', description: 'Open this interactive User Guide & Shortcuts modal', category: 'Global' },
-      { key: 'Ctrl+F / Cmd+F', description: 'Search text inside active terminal output', category: 'Terminal' },
-      { key: 'Ctrl+Shift+C', description: 'Copy selected text from terminal', category: 'Terminal' },
-      { key: 'Ctrl+Shift+V', description: 'Paste clipboard content into active terminal', category: 'Terminal' },
-      { key: 'Ctrl+Enter', description: 'Submit prompt or send message in AI Chat / Manual Override', category: 'Chat & AI' },
-      { key: 'Click Quick Action', description: 'Inject command or prompt text into the active terminal', category: 'Terminal' },
-      { key: 'P / R / S', description: 'Pause, Resume, or Stop running Conductor pipeline', category: 'Conductor' },
+      {
+        key: 'Ctrl+K / Cmd+K',
+        description: 'Open Quick Switcher to jump between workspaces & pages',
+        category: 'Global',
+      },
+      {
+        key: 'Ctrl+H / Cmd+H',
+        description: 'Open this interactive User Guide & Shortcuts modal',
+        category: 'Global',
+      },
+      {
+        key: 'Ctrl+F / Cmd+F',
+        description: 'Search text inside active terminal output',
+        category: 'Terminal',
+      },
+      {
+        key: 'Ctrl+Shift+C',
+        description: 'Copy selected text from terminal',
+        category: 'Terminal',
+      },
+      {
+        key: 'Ctrl+Shift+V',
+        description: 'Paste clipboard content into active terminal',
+        category: 'Terminal',
+      },
+      {
+        key: 'Ctrl+Enter',
+        description: 'Submit prompt or send message in AI Chat / Manual Override',
+        category: 'Chat & AI',
+      },
+      {
+        key: 'Click Quick Action',
+        description: 'Inject command or prompt text into the active terminal',
+        category: 'Terminal',
+      },
+      {
+        key: 'P / R / S',
+        description: 'Pause, Resume, or Stop running Conductor pipeline',
+        category: 'Conductor',
+      },
       { key: 'Escape', description: 'Close modal or search overlay', category: 'Global' },
-      { key: 'Right Click', description: 'Open terminal context menu (copy, paste, clear buffer)', category: 'Terminal' },
+      {
+        key: 'Right Click',
+        description: 'Open terminal context menu (copy, paste, clear buffer)',
+        category: 'Terminal',
+      },
     ],
   },
   {
     id: 'quick_actions',
     title: 'Quick Actions',
     icon: Sparkles,
-    description: 'The floating toolbar at the bottom of each terminal injects ready-made commands and prompts straight into your shell or CLI agent — 1 click, no dialogs.',
+    description:
+      'The floating toolbar at the bottom of each terminal injects ready-made commands and prompts straight into your shell or CLI agent — 1 click, no dialogs.',
     guides: [
       {
         title: 'Injecting a Command or Prompt',
@@ -100,19 +137,30 @@ const SECTIONS: Section[] = [
       },
     ],
     variables: [
-      { tag: '{{selection}}', description: 'Text currently highlighted/selected inside the terminal canvas' },
-      { tag: '{{terminal_output}}', description: 'Recent output buffer from the active terminal (~60 lines)' },
+      {
+        tag: '{{selection}}',
+        description: 'Text currently highlighted/selected inside the terminal canvas',
+      },
+      {
+        tag: '{{terminal_output}}',
+        description: 'Recent output buffer from the active terminal (~60 lines)',
+      },
       { tag: '{{workspace_name}}', description: 'Active project workspace folder name' },
-      { tag: '{{workspace_path}}', description: 'Absolute filesystem directory path of the project' },
+      {
+        tag: '{{workspace_path}}',
+        description: 'Absolute filesystem directory path of the project',
+      },
       { tag: '{{space_name}}', description: 'Active Agent Space / Team name' },
     ],
-    proTip: 'Highlight a specific error trace in the terminal before clicking "Explain Error" — the expanded prompt then contains exactly the lines you care about.',
+    proTip:
+      'Highlight a specific error trace in the terminal before clicking "Explain Error" — the expanded prompt then contains exactly the lines you care about.',
   },
   {
     id: 'prompts',
     title: 'Prompt Vault & Templates',
     icon: BookOpen,
-    description: 'Store, organize, and reuse developer instructions, coding guidelines, and prompt templates.',
+    description:
+      'Store, organize, and reuse developer instructions, coding guidelines, and prompt templates.',
     guides: [
       {
         title: 'Finding & Using Saved Prompts',
@@ -142,13 +190,15 @@ const SECTIONS: Section[] = [
         ],
       },
     ],
-    proTip: 'Use {{selection}} and {{terminal_output}} in your vault templates so they automatically pull live terminal context when pinned as Quick Actions.',
+    proTip:
+      'Use {{selection}} and {{terminal_output}} in your vault templates so they automatically pull live terminal context when pinned as Quick Actions.',
   },
   {
     id: 'terminal',
     title: 'Terminal & Workspaces',
     icon: Terminal,
-    description: 'Real GPU-accelerated PTY terminals with multi-tab management, spaces, and search.',
+    description:
+      'Real GPU-accelerated PTY terminals with multi-tab management, spaces, and search.',
     guides: [
       {
         title: 'Launching & Managing Terminals',
@@ -177,13 +227,15 @@ const SECTIONS: Section[] = [
         ],
       },
     ],
-    proTip: 'Terminal processes continue running seamlessly in the background when switching between Workspace, Chat, and Conductor tabs.',
+    proTip:
+      'Terminal processes continue running seamlessly in the background when switching between Workspace, Chat, and Conductor tabs.',
   },
   {
     id: 'conductor',
     title: 'Conductor Multi-Agent',
     icon: MessageSquare,
-    description: 'Orchestrate complex tasks across multiple AI coding agents with dependency graphs and automated handoffs.',
+    description:
+      'Orchestrate complex tasks across multiple AI coding agents with dependency graphs and automated handoffs.',
     guides: [
       {
         title: 'Running a Multi-Agent Pipeline',
@@ -214,7 +266,8 @@ const SECTIONS: Section[] = [
         ],
       },
     ],
-    proTip: 'Click the 📖 icon in Conductor to copy or download CLAUDE.md protocol instructions into your project root.',
+    proTip:
+      'Click the 📖 icon in Conductor to copy or download CLAUDE.md protocol instructions into your project root.',
   },
   {
     id: 'settings',
@@ -240,7 +293,8 @@ const SECTIONS: Section[] = [
         ],
       },
     ],
-    proTip: 'Test provider endpoints anytime with the "Check Online" button in Settings to verify connectivity.',
+    proTip:
+      'Test provider endpoints anytime with the "Check Online" button in Settings to verify connectivity.',
   },
 ];
 
@@ -257,25 +311,30 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
 
   // Filter sections based on search
   const filteredSections = searchQuery
-    ? SECTIONS.filter(section => {
+    ? SECTIONS.filter((section) => {
         const query = searchQuery.toLowerCase();
         const titleMatch = section.title.toLowerCase().includes(query);
         const descMatch = section.description.toLowerCase().includes(query);
-        const shortcutMatch = section.shortcuts?.some(s =>
-          s.key.toLowerCase().includes(query) || s.description.toLowerCase().includes(query) || s.category?.toLowerCase().includes(query)
+        const shortcutMatch = section.shortcuts?.some(
+          (s) =>
+            s.key.toLowerCase().includes(query) ||
+            s.description.toLowerCase().includes(query) ||
+            s.category?.toLowerCase().includes(query)
         );
-        const guideMatch = section.guides?.some(g =>
-          g.title.toLowerCase().includes(query) || g.steps.some(step => step.toLowerCase().includes(query))
+        const guideMatch = section.guides?.some(
+          (g) =>
+            g.title.toLowerCase().includes(query) ||
+            g.steps.some((step) => step.toLowerCase().includes(query))
         );
-        const variableMatch = section.variables?.some(v =>
-          v.tag.toLowerCase().includes(query) || v.description.toLowerCase().includes(query)
+        const variableMatch = section.variables?.some(
+          (v) => v.tag.toLowerCase().includes(query) || v.description.toLowerCase().includes(query)
         );
         const tipMatch = section.proTip?.toLowerCase().includes(query);
         return titleMatch || descMatch || shortcutMatch || guideMatch || variableMatch || tipMatch;
       })
     : SECTIONS;
 
-  const activeSectionData = SECTIONS.find(s => s.id === activeSection) || SECTIONS[0];
+  const activeSectionData = SECTIONS.find((s) => s.id === activeSection) || SECTIONS[0];
   const Icon = activeSectionData.icon;
 
   return (
@@ -294,7 +353,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             className={s.modal}
-            onClick={e => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div className={s.header}>
@@ -314,7 +373,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 type="text"
                 placeholder="Search how-to guides, actions, context variables, or shortcuts..."
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className={s.searchInput}
                 autoFocus
               />
@@ -333,9 +392,9 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             <div className={s.content}>
               {/* Sidebar */}
               <div className={s.sidebar}>
-                {SECTIONS.map(section => {
+                {SECTIONS.map((section) => {
                   const SectionIcon = section.icon;
-                  const hasResults = filteredSections.some(s => s.id === section.id);
+                  const hasResults = filteredSections.some((s) => s.id === section.id);
                   return (
                     <button
                       key={section.id}
@@ -477,7 +536,9 @@ const s = {
     border-radius: var(--border-radius-lg);
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-lg), 0 0 20px -3px rgba(123, 104, 238, 0.25);
+    box-shadow:
+      var(--shadow-lg),
+      0 0 20px -3px rgba(123, 104, 238, 0.25);
     overflow: hidden;
     display: flex;
     flex-direction: column;

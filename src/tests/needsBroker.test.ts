@@ -46,14 +46,14 @@ describe('NeedsBroker', () => {
     ]);
 
     const onAnswer = vi.fn();
-    const onError  = vi.fn();
+    const onError = vi.fn();
 
     await broker.handleNeedsRequest(
       'sess-a',
       'space-1',
       { ask: 'What is the API contract?', context: 'Building the client' },
       onAnswer,
-      onError,
+      onError
     );
 
     expect(mockProvider.complete).toHaveBeenCalled();
@@ -63,14 +63,14 @@ describe('NeedsBroker', () => {
 
   it('calls onError when space is not registered', async () => {
     const onAnswer = vi.fn();
-    const onError  = vi.fn();
+    const onError = vi.fn();
 
     await broker.handleNeedsRequest(
       'sess-a',
       'unknown-space',
       { ask: 'x', context: '' },
       onAnswer,
-      onError,
+      onError
     );
 
     expect(onError).toHaveBeenCalledWith(expect.stringContaining('not registered'));

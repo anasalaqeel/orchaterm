@@ -5,10 +5,7 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useDashboard, DEFAULT_TERMINAL_WORKSPACE } from '../context/DashboardContext';
 import { WorkspaceConsole } from '../components/workspace/WorkspaceConsole';
 import { Input } from '../components/ui';
-import {
-  Plus, ChevronRight, Edit2,
-  Terminal, FolderOpen,
-} from 'lucide-react';
+import { Plus, ChevronRight, Edit2, Terminal, FolderOpen } from 'lucide-react';
 
 /* ── Animation variants ─────────────────────────────────────────────────────── */
 
@@ -17,7 +14,7 @@ const ease = [0.4, 0, 0.2, 1] as [number, number, number, number];
 const pageVariants = {
   initial: { opacity: 0, y: 10 },
   animate: { opacity: 1, y: 0, transition: { duration: 0.25, ease } },
-  exit:    { opacity: 0, y: -6, transition: { duration: 0.18 } },
+  exit: { opacity: 0, y: -6, transition: { duration: 0.18 } },
 };
 
 const gridVariants = {
@@ -27,7 +24,9 @@ const gridVariants = {
 const cardVariants = {
   initial: { opacity: 0, y: 20, scale: 0.97 },
   animate: {
-    opacity: 1, y: 0, scale: 1,
+    opacity: 1,
+    y: 0,
+    scale: 1,
     transition: { duration: 0.28, ease },
   },
 };
@@ -36,19 +35,25 @@ const cardVariants = {
 
 export const DashboardView: React.FC = () => {
   const {
-    workspaces, spaces,
-    activeWorkspaceId, setActiveWorkspaceId,
+    workspaces,
+    spaces,
+    activeWorkspaceId,
+    setActiveWorkspaceId,
     activeSpaceId,
-    updateWorkspace, showToast, addWorkspace,
-    viewMode, setViewMode,
-    newWorkspaceModalOpen, setNewWorkspaceModalOpen,
+    updateWorkspace,
+    showToast,
+    addWorkspace,
+    viewMode,
+    setViewMode,
+    newWorkspaceModalOpen,
+    setNewWorkspaceModalOpen,
   } = useDashboard();
 
-  const [showAddProj,   setShowAddProj]   = useState(false);
-  const [newProjName,   setNewProjName]   = useState('');
-  const [newProjPath,   setNewProjPath]   = useState('');
-  const [newProjDesc,   setNewProjDesc]   = useState('');
-  const [newProjColor,  setNewProjColor]  = useState('#7c3aed');
+  const [showAddProj, setShowAddProj] = useState(false);
+  const [newProjName, setNewProjName] = useState('');
+  const [newProjPath, setNewProjPath] = useState('');
+  const [newProjDesc, setNewProjDesc] = useState('');
+  const [newProjColor, setNewProjColor] = useState('#7c3aed');
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editTaskValue, setEditTaskValue] = useState('');
 
@@ -61,7 +66,7 @@ export const DashboardView: React.FC = () => {
   // Mark the active workspace as mounted whenever console view is active.
   useEffect(() => {
     if (viewMode === 'console' && activeWorkspaceId) {
-      setMountedConsoleIds(prev => {
+      setMountedConsoleIds((prev) => {
         if (prev.has(activeWorkspaceId)) return prev;
         return new Set([...prev, activeWorkspaceId]);
       });
@@ -76,13 +81,10 @@ export const DashboardView: React.FC = () => {
     }
   }, [newWorkspaceModalOpen, setNewWorkspaceModalOpen]);
 
-  const activeProject = useMemo(
-    () => {
-      if (activeWorkspaceId === DEFAULT_TERMINAL_WORKSPACE.id) return DEFAULT_TERMINAL_WORKSPACE;
-      return workspaces.find(p => p.id === activeWorkspaceId) || workspaces[0];
-    },
-    [workspaces, activeWorkspaceId],
-  );
+  const activeProject = useMemo(() => {
+    if (activeWorkspaceId === DEFAULT_TERMINAL_WORKSPACE.id) return DEFAULT_TERMINAL_WORKSPACE;
+    return workspaces.find((p) => p.id === activeWorkspaceId) || workspaces[0];
+  }, [workspaces, activeWorkspaceId]);
 
   const handleTaskSave = (projId: string) => {
     updateWorkspace(projId, { currentTask: editTaskValue });
@@ -104,12 +106,21 @@ export const DashboardView: React.FC = () => {
 
   const handleAddProjectSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProjName.trim()) { showToast('Name required', 'error'); return; }
+    if (!newProjName.trim()) {
+      showToast('Name required', 'error');
+      return;
+    }
     addWorkspace({
-      name: newProjName, path: newProjPath, description: newProjDesc,
-      color: newProjColor, status: 'active', currentTask: '',
+      name: newProjName,
+      path: newProjPath,
+      description: newProjDesc,
+      color: newProjColor,
+      status: 'active',
+      currentTask: '',
     });
-    setNewProjName(''); setNewProjPath(''); setNewProjDesc('');
+    setNewProjName('');
+    setNewProjPath('');
+    setNewProjDesc('');
     setNewProjColor('#7c3aed');
     setShowAddProj(false);
   };
@@ -124,27 +135,30 @@ export const DashboardView: React.FC = () => {
    */
   return (
     <div className={s.pageRoot}>
-
       {/* ── Per-workspace consoles: lazy-mounted on first open, never unmounted ── */}
-      {[...workspaces, DEFAULT_TERMINAL_WORKSPACE].filter(w => mountedConsoleIds.has(w.id)).map(workspace => {
-        const isThisActive = workspace.id === activeWorkspaceId;
-        // Only resolve the active space for the currently visible workspace.
-        // Non-active workspaces always get a stable panelKey so their
-        // TerminalContainer never remounts due to space changes elsewhere.
-        const thisSpace = isThisActive && activeSpaceId
-          ? spaces.find(sp => sp.id === activeSpaceId && sp.workspaceId === workspace.id) ?? null
-          : null;
-        return (
-          <WorkspaceConsole
-            key={workspace.id}
-            active={showConsole && isThisActive}
-            project={workspace}
-            space={thisSpace}
-            panelKey={`${workspace.id}::${thisSpace?.id ?? 'workspace'}`}
-            onBack={handleBackToGrid}
-          />
-        );
-      })}
+      {[...workspaces, DEFAULT_TERMINAL_WORKSPACE]
+        .filter((w) => mountedConsoleIds.has(w.id))
+        .map((workspace) => {
+          const isThisActive = workspace.id === activeWorkspaceId;
+          // Only resolve the active space for the currently visible workspace.
+          // Non-active workspaces always get a stable panelKey so their
+          // TerminalContainer never remounts due to space changes elsewhere.
+          const thisSpace =
+            isThisActive && activeSpaceId
+              ? (spaces.find((sp) => sp.id === activeSpaceId && sp.workspaceId === workspace.id) ??
+                null)
+              : null;
+          return (
+            <WorkspaceConsole
+              key={workspace.id}
+              active={showConsole && isThisActive}
+              project={workspace}
+              space={thisSpace}
+              panelKey={`${workspace.id}::${thisSpace?.id ?? 'workspace'}`}
+              onBack={handleBackToGrid}
+            />
+          );
+        })}
 
       {/* ── Grid — absolute overlay, animates in/out over the console ───────── */}
       <AnimatePresence>
@@ -186,7 +200,9 @@ export const DashboardView: React.FC = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1, duration: 0.3 }}
               >
-                <div className={s.emptyIcon}><FolderOpen size={32} /></div>
+                <div className={s.emptyIcon}>
+                  <FolderOpen size={32} />
+                </div>
                 <p className={s.emptyTitle}>No workspaces yet</p>
                 <p className={s.emptyText}>Add a project directory to start orchestrating agents</p>
                 <motion.button
@@ -200,10 +216,15 @@ export const DashboardView: React.FC = () => {
                 </motion.button>
               </motion.div>
             ) : (
-              <motion.div className={s.cardsGrid} variants={gridVariants} initial="initial" animate="animate">
+              <motion.div
+                className={s.cardsGrid}
+                variants={gridVariants}
+                initial="initial"
+                animate="animate"
+              >
                 {workspaces.map((proj) => {
-                  const isActive   = proj.id === activeProject?.id;
-                  const spaceCount = spaces.filter(sp => sp.workspaceId === proj.id).length;
+                  const isActive = proj.id === activeProject?.id;
+                  const spaceCount = spaces.filter((sp) => sp.workspaceId === proj.id).length;
                   return (
                     <motion.div
                       key={proj.id}
@@ -212,9 +233,20 @@ export const DashboardView: React.FC = () => {
                       className={cx(s.card, isActive && s.cardActive)}
                       style={{ '--card-color': proj.color } as React.CSSProperties}
                     >
-                      <div className={s.cardBar} style={{ background: `linear-gradient(90deg, ${proj.color}, ${proj.color}80)` }} />
+                      <div
+                        className={s.cardBar}
+                        style={{
+                          background: `linear-gradient(90deg, ${proj.color}, ${proj.color}80)`,
+                        }}
+                      />
                       <div className={s.cardHeader}>
-                        <div className={s.cardAvatar} style={{ backgroundColor: proj.color + '1a', border: `1px solid ${proj.color}30` }}>
+                        <div
+                          className={s.cardAvatar}
+                          style={{
+                            backgroundColor: proj.color + '1a',
+                            border: `1px solid ${proj.color}30`,
+                          }}
+                        >
                           <Terminal size={14} style={{ color: proj.color }} />
                         </div>
                         <div className={s.cardMeta}>
@@ -225,7 +257,9 @@ export const DashboardView: React.FC = () => {
                       {proj.description && <p className={s.cardDesc}>{proj.description}</p>}
                       {spaceCount > 0 && (
                         <div className={s.cardBadges}>
-                          <span className={s.spaceBadge}>{spaceCount} space{spaceCount !== 1 ? 's' : ''}</span>
+                          <span className={s.spaceBadge}>
+                            {spaceCount} space{spaceCount !== 1 ? 's' : ''}
+                          </span>
                         </div>
                       )}
                       <div className={s.taskBlock}>
@@ -234,9 +268,9 @@ export const DashboardView: React.FC = () => {
                             <Input
                               type="text"
                               value={editTaskValue}
-                              onChange={e => setEditTaskValue(e.target.value)}
+                              onChange={(e) => setEditTaskValue(e.target.value)}
                               onBlur={() => handleTaskSave(proj.id)}
-                              onKeyDown={e => {
+                              onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleTaskSave(proj.id);
                                 if (e.key === 'Escape') setEditingTaskId(null);
                               }}
@@ -244,14 +278,24 @@ export const DashboardView: React.FC = () => {
                               autoFocus
                               placeholder="What are you working on?"
                             />
-                            <button onClick={() => handleTaskSave(proj.id)} className={s.taskSaveBtn}>Save</button>
+                            <button
+                              onClick={() => handleTaskSave(proj.id)}
+                              className={s.taskSaveBtn}
+                            >
+                              Save
+                            </button>
                           </div>
                         ) : (
                           <div
-                            onClick={() => { setEditingTaskId(proj.id); setEditTaskValue(proj.currentTask || ''); }}
+                            onClick={() => {
+                              setEditingTaskId(proj.id);
+                              setEditTaskValue(proj.currentTask || '');
+                            }}
                             className={s.taskDisplay}
                           >
-                            <span className={cx(s.taskText, !proj.currentTask && s.taskPlaceholder)}>
+                            <span
+                              className={cx(s.taskText, !proj.currentTask && s.taskPlaceholder)}
+                            >
                               {proj.currentTask || 'Set a focus…'}
                             </span>
                             <Edit2 size={11} className={s.taskEditIcon} />
@@ -262,7 +306,10 @@ export const DashboardView: React.FC = () => {
                         whileHover={{ scale: 1.01 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => {
-                          if (!isActive) { setActiveWorkspaceId(proj.id); showToast(`Switched to ${proj.name}`, 'info'); }
+                          if (!isActive) {
+                            setActiveWorkspaceId(proj.id);
+                            showToast(`Switched to ${proj.name}`, 'info');
+                          }
                           setViewMode('console');
                         }}
                         className={isActive ? s.openBtnActive : s.openBtn}
@@ -285,7 +332,9 @@ export const DashboardView: React.FC = () => {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  onClick={e => { if (e.target === e.currentTarget) setShowAddProj(false); }}
+                  onClick={(e) => {
+                    if (e.target === e.currentTarget) setShowAddProj(false);
+                  }}
                 >
                   <motion.div
                     className={s.dialog}
@@ -299,33 +348,97 @@ export const DashboardView: React.FC = () => {
                     <form onSubmit={handleAddProjectSubmit} className={s.dialogForm}>
                       <div className={s.fieldGroup}>
                         <label className={s.fieldLabel}>Name</label>
-                        <Input type="text" placeholder="e.g. My API" value={newProjName} onChange={e => setNewProjName(e.target.value)} className={s.fieldInput} required />
+                        <Input
+                          type="text"
+                          placeholder="e.g. My API"
+                          value={newProjName}
+                          onChange={(e) => setNewProjName(e.target.value)}
+                          className={s.fieldInput}
+                          required
+                        />
                       </div>
                       <div className={s.fieldGroup}>
-                        <label className={s.fieldLabel}>Directory path <span className={s.optional}>(optional)</span></label>
+                        <label className={s.fieldLabel}>
+                          Directory path <span className={s.optional}>(optional)</span>
+                        </label>
                         <div className={s.pathInputRow}>
-                          <Input type="text" placeholder="C:\Users\me\projects\my-app" value={newProjPath} onChange={e => setNewProjPath(e.target.value)} className={cx(s.fieldInput, s.pathInput)} />
-                          <button type="button" className={s.browseBtn} onClick={handleBrowseDirectory} title="Browse for folder">
-                            <FolderOpen size={14} /><span>Browse</span>
+                          <Input
+                            type="text"
+                            placeholder="C:\Users\me\projects\my-app"
+                            value={newProjPath}
+                            onChange={(e) => setNewProjPath(e.target.value)}
+                            className={cx(s.fieldInput, s.pathInput)}
+                          />
+                          <button
+                            type="button"
+                            className={s.browseBtn}
+                            onClick={handleBrowseDirectory}
+                            title="Browse for folder"
+                          >
+                            <FolderOpen size={14} />
+                            <span>Browse</span>
                           </button>
                         </div>
                       </div>
                       <div className={s.fieldGroup}>
-                        <label className={s.fieldLabel}>Description <span className={s.optional}>(optional)</span></label>
-                        <textarea placeholder="What does this workspace do?" value={newProjDesc} onChange={e => setNewProjDesc(e.target.value)} rows={2} className={s.fieldInput} />
+                        <label className={s.fieldLabel}>
+                          Description <span className={s.optional}>(optional)</span>
+                        </label>
+                        <textarea
+                          placeholder="What does this workspace do?"
+                          value={newProjDesc}
+                          onChange={(e) => setNewProjDesc(e.target.value)}
+                          rows={2}
+                          className={s.fieldInput}
+                        />
                       </div>
                       <div className={s.fieldGroup}>
                         <label className={s.fieldLabel}>Color</label>
                         <div className={s.colorRow}>
-                          {['#7B68EE','#6B5CE7','#3b82f6','#10b981','#ef4444','#ec4899','#06b6d4','#f59e0b'].map(c => (
-                            <button key={c} type="button" className={cx(s.colorSwatch, newProjColor === c && s.colorSwatchActive)} style={{ backgroundColor: c }} onClick={() => setNewProjColor(c)} />
+                          {[
+                            '#7B68EE',
+                            '#6B5CE7',
+                            '#3b82f6',
+                            '#10b981',
+                            '#ef4444',
+                            '#ec4899',
+                            '#06b6d4',
+                            '#f59e0b',
+                          ].map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              className={cx(
+                                s.colorSwatch,
+                                newProjColor === c && s.colorSwatchActive
+                              )}
+                              style={{ backgroundColor: c }}
+                              onClick={() => setNewProjColor(c)}
+                            />
                           ))}
-                          <input type="color" value={newProjColor} onChange={e => setNewProjColor(e.target.value)} className={s.colorCustom} title="Custom color" />
+                          <input
+                            type="color"
+                            value={newProjColor}
+                            onChange={(e) => setNewProjColor(e.target.value)}
+                            className={s.colorCustom}
+                            title="Custom color"
+                          />
                         </div>
                       </div>
                       <div className={s.dialogActions}>
-                        <button type="button" onClick={() => setShowAddProj(false)} className={s.cancelBtn}>Cancel</button>
-                        <motion.button type="submit" className={s.submitBtn} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddProj(false)}
+                          className={s.cancelBtn}
+                        >
+                          Cancel
+                        </button>
+                        <motion.button
+                          type="submit"
+                          className={s.submitBtn}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.97 }}
+                        >
                           Create Workspace
                         </motion.button>
                       </div>
@@ -334,11 +447,9 @@ export const DashboardView: React.FC = () => {
                 </motion.div>
               )}
             </AnimatePresence>
-
           </motion.div>
         )}
       </AnimatePresence>
-
     </div>
   );
 };
@@ -346,29 +457,38 @@ export const DashboardView: React.FC = () => {
 /* ── Styles ─────────────────────────────────────────────────────────────────── */
 
 const s = {
-
   /* ── Page shell (single always-rendered root) ── */
   pageRoot: css`
-    display: flex; flex-direction: column;
-    flex: 1; height: 100%; overflow: hidden;
-    position: relative;          /* grid overlay anchors here */
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100%;
+    overflow: hidden;
+    position: relative; /* grid overlay anchors here */
     background: var(--bg-canvas);
   `,
 
   /* ── Grid view — absolute overlay so console stays mounted beneath ── */
   gridRoot: css`
-    position: absolute; inset: 0; z-index: 10;
+    position: absolute;
+    inset: 0;
+    z-index: 10;
     overflow-y: auto;
     padding: 36px 36px 48px;
-    display: flex; flex-direction: column; gap: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
     background: var(--bg-primary);
     scrollbar-width: thin;
   `,
   gridHeader: css`
-    display: flex; align-items: flex-start; justify-content: space-between;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
   `,
   gridTitle: css`
-    font-size: 26px; font-weight: 800;
+    font-size: 26px;
+    font-weight: 800;
     letter-spacing: -0.03em;
     color: var(--text-primary);
     line-height: 1.1;
@@ -380,22 +500,34 @@ const s = {
     font-weight: 500;
   `,
   createBtn: css`
-    display: flex; align-items: center; gap: 7px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
     background: var(--gradient-brand);
     color: #fff;
     padding: 9px 18px;
     border-radius: 10px;
-    font-size: 12px; font-weight: 700;
-    border: none; cursor: pointer;
-    box-shadow: 0 4px 16px rgba(123, 104, 238, 0.30);
-    transition: box-shadow 0.2s, filter 0.2s;
-    &:hover { box-shadow: 0 6px 24px rgba(123, 104, 238, 0.40); filter: brightness(1.06); }
+    font-size: 12px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(123, 104, 238, 0.3);
+    transition:
+      box-shadow 0.2s,
+      filter 0.2s;
+    &:hover {
+      box-shadow: 0 6px 24px rgba(123, 104, 238, 0.4);
+      filter: brightness(1.06);
+    }
   `,
 
   /* Empty state */
   emptyState: css`
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
     padding: 64px 32px;
     text-align: center;
     border: 1px dashed var(--border-color-hover);
@@ -403,15 +535,19 @@ const s = {
     background: var(--bg-secondary);
   `,
   emptyIcon: css`
-    width: 64px; height: 64px;
+    width: 64px;
+    height: 64px;
     border-radius: 16px;
     background: var(--bg-hover);
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: var(--text-tertiary);
     margin-bottom: 4px;
   `,
   emptyTitle: css`
-    font-size: 16px; font-weight: 700;
+    font-size: 16px;
+    font-weight: 700;
     color: var(--text-primary);
   `,
   emptyText: css`
@@ -433,66 +569,90 @@ const s = {
     border-radius: 14px;
     border: 1px solid var(--border-color);
     background: var(--bg-secondary);
-    display: flex; flex-direction: column;
+    display: flex;
+    flex-direction: column;
     gap: 14px;
     overflow: hidden;
     cursor: default;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    transition:
+      border-color 0.2s,
+      box-shadow 0.2s;
     &:hover {
       border-color: var(--border-color-hover);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
     }
   `,
   cardActive: css`
     border-color: rgba(var(--color-brand-rgb), 0.3) !important;
-    box-shadow: 0 0 0 1px rgba(var(--color-brand-rgb), 0.15), 0 8px 32px rgba(0,0,0,0.3) !important;
+    box-shadow:
+      0 0 0 1px rgba(var(--color-brand-rgb), 0.15),
+      0 8px 32px rgba(0, 0, 0, 0.3) !important;
   `,
   cardBar: css`
-    height: 3px; width: 100%;
+    height: 3px;
+    width: 100%;
     flex-shrink: 0;
   `,
   cardHeader: css`
-    display: flex; align-items: flex-start; gap: 12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
     padding: 14px 16px 0;
   `,
   cardAvatar: css`
-    width: 36px; height: 36px;
+    width: 36px;
+    height: 36px;
     border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
   `,
   cardMeta: css`
-    flex: 1; min-width: 0;
+    flex: 1;
+    min-width: 0;
   `,
   cardName: css`
-    font-size: 14px; font-weight: 700;
+    font-size: 14px;
+    font-weight: 700;
     color: var(--text-primary);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   `,
   cardPath: css`
     font-size: 10px;
     font-family: var(--font-family-mono);
     color: var(--text-tertiary);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     margin-top: 2px;
   `,
   cardDesc: css`
-    font-size: 11px; color: var(--text-secondary);
+    font-size: 11px;
+    color: var(--text-secondary);
     line-height: 1.55;
     padding: 0 16px;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   `,
   cardBadges: css`
-    display: flex; gap: 6px;
+    display: flex;
+    gap: 6px;
     padding: 0 16px;
   `,
   spaceBadge: css`
-    display: inline-flex; align-items: center;
+    display: inline-flex;
+    align-items: center;
     background: var(--bg-hover);
     border: 1px solid var(--border-color);
     border-radius: 99px;
     padding: 2px 8px;
-    font-size: 10px; font-weight: 600;
+    font-size: 10px;
+    font-weight: 600;
     color: var(--text-tertiary);
   `,
 
@@ -504,7 +664,9 @@ const s = {
     margin: 0 -1px;
   `,
   taskEditRow: css`
-    display: flex; align-items: center; gap: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   `,
   taskInput: css`
     flex: 1;
@@ -516,34 +678,51 @@ const s = {
     color: var(--text-primary);
     outline: none;
     font-family: var(--font-family);
-    transition: border-color 0.15s, box-shadow 0.15s;
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
     &:focus {
       border-color: var(--color-brand);
       box-shadow: 0 0 0 3px rgba(var(--color-brand-rgb), 0.15);
     }
-    &::placeholder { color: var(--text-tertiary); }
+    &::placeholder {
+      color: var(--text-tertiary);
+    }
   `,
   taskSaveBtn: css`
     font-size: 11px;
     background: var(--gradient-brand);
     padding: 5px 11px;
     border-radius: 6px;
-    color: #fff; font-weight: 700;
-    border: none; cursor: pointer;
+    color: #fff;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
     white-space: nowrap;
-    &:hover { filter: brightness(1.1); }
+    &:hover {
+      filter: brightness(1.1);
+    }
   `,
   taskDisplay: css`
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     cursor: pointer;
     padding: 2px 0;
     transition: opacity 0.15s;
-    &:hover { opacity: 0.8; }
+    &:hover {
+      opacity: 0.8;
+    }
   `,
   taskText: css`
-    font-size: 12px; color: var(--text-secondary);
-    line-height: 1.4; flex: 1;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   `,
   taskPlaceholder: css`
     color: var(--text-tertiary);
@@ -557,66 +736,96 @@ const s = {
 
   /* Open button */
   openBtn: css`
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     width: 100%;
     padding: 11px 16px;
-    font-size: 12px; font-weight: 600;
+    font-size: 12px;
+    font-weight: 600;
     color: var(--text-secondary);
-    border: none; border-top: 1px solid var(--border-color);
+    border: none;
+    border-top: 1px solid var(--border-color);
     background: transparent;
     cursor: pointer;
-    transition: color 0.15s, background 0.15s;
-    &:hover { color: var(--text-primary); background: var(--bg-hover); }
+    transition:
+      color 0.15s,
+      background 0.15s;
+    &:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
   `,
   openBtnActive: css`
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     width: 100%;
     padding: 11px 16px;
-    font-size: 12px; font-weight: 700;
+    font-size: 12px;
+    font-weight: 700;
     color: var(--color-brand);
-    border: none; border-top: 1px solid rgba(var(--color-brand-rgb), 0.2);
+    border: none;
+    border-top: 1px solid rgba(var(--color-brand-rgb), 0.2);
     background: rgba(var(--color-brand-rgb), 0.06);
     cursor: pointer;
     transition: background 0.15s;
-    &:hover { background: rgba(var(--color-brand-rgb), 0.1); }
+    &:hover {
+      background: rgba(var(--color-brand-rgb), 0.1);
+    }
   `,
 
   /* Dialog */
   overlay: css`
-    position: fixed; inset: 0; z-index: 100;
-    display: flex; align-items: center; justify-content: center;
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 16px;
-    background: rgba(0,0,0,0.7);
+    background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(6px);
   `,
   dialog: css`
-    width: 100%; max-width: 460px;
+    width: 100%;
+    max-width: 460px;
     border-radius: 16px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color-hover);
-    box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
     padding: 28px;
   `,
   dialogTitle: css`
-    font-size: 20px; font-weight: 800;
+    font-size: 20px;
+    font-weight: 800;
     letter-spacing: -0.02em;
     color: var(--text-primary);
     margin-bottom: 4px;
   `,
   dialogSubtitle: css`
-    font-size: 12px; color: var(--text-tertiary);
+    font-size: 12px;
+    color: var(--text-tertiary);
     margin-bottom: 24px;
   `,
   dialogForm: css`
-    display: flex; flex-direction: column; gap: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
   `,
-  fieldGroup: css`display: flex; flex-direction: column; gap: 6px;`,
+  fieldGroup: css`
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  `,
   fieldLabel: css`
-    font-size: 11px; font-weight: 600;
+    font-size: 11px;
+    font-weight: 600;
     color: var(--text-secondary);
   `,
   optional: css`
-    color: var(--text-tertiary); font-weight: 400;
+    color: var(--text-tertiary);
+    font-weight: 400;
   `,
   fieldInput: css`
     width: 100%;
@@ -628,32 +837,47 @@ const s = {
     color: var(--text-primary);
     outline: none;
     font-family: var(--font-family);
-    transition: border-color 0.15s, box-shadow 0.15s;
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
     &:focus {
       border-color: var(--color-brand);
       box-shadow: 0 0 0 3px rgba(var(--color-brand-rgb), 0.12);
     }
-    &::placeholder { color: var(--text-tertiary); }
+    &::placeholder {
+      color: var(--text-tertiary);
+    }
     resize: none;
   `,
   pathInputRow: css`
-    display: flex; align-items: center; gap: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   `,
   pathInput: css`
-    flex: 1; min-width: 0;
+    flex: 1;
+    min-width: 0;
     font-family: var(--font-family-mono);
     font-size: 11px;
   `,
   browseBtn: css`
-    display: inline-flex; align-items: center; gap: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 8px 14px;
     background: var(--bg-hover);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     color: var(--text-secondary);
-    font-size: 12px; font-weight: 600;
-    cursor: pointer; white-space: nowrap; flex-shrink: 0;
-    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition:
+      background 0.15s,
+      border-color 0.15s,
+      color 0.15s;
     &:hover {
       background: var(--bg-secondary);
       border-color: var(--color-brand);
@@ -661,22 +885,31 @@ const s = {
     }
   `,
   colorRow: css`
-    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
   `,
   colorSwatch: css`
-    width: 24px; height: 24px;
+    width: 24px;
+    height: 24px;
     border-radius: 6px;
     border: 2px solid transparent;
     cursor: pointer;
-    transition: transform 0.12s, border-color 0.12s;
-    &:hover { transform: scale(1.15); }
+    transition:
+      transform 0.12s,
+      border-color 0.12s;
+    &:hover {
+      transform: scale(1.15);
+    }
   `,
   colorSwatchActive: css`
-    border-color: rgba(255,255,255,0.8) !important;
+    border-color: rgba(255, 255, 255, 0.8) !important;
     transform: scale(1.1);
   `,
   colorCustom: css`
-    width: 28px; height: 28px;
+    width: 28px;
+    height: 28px;
     border-radius: 6px;
     border: none;
     background: transparent;
@@ -684,29 +917,43 @@ const s = {
     padding: 0;
   `,
   dialogActions: css`
-    display: flex; justify-content: flex-end; gap: 10px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
     padding-top: 6px;
   `,
   cancelBtn: css`
     background: transparent;
-    font-size: 12px; font-weight: 600;
+    font-size: 12px;
+    font-weight: 600;
     color: var(--text-tertiary);
     border: 1px solid var(--border-color);
     padding: 9px 18px;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.15s;
-    &:hover { color: var(--text-primary); border-color: var(--border-color-hover); background: var(--bg-hover); }
+    &:hover {
+      color: var(--text-primary);
+      border-color: var(--border-color-hover);
+      background: var(--bg-hover);
+    }
   `,
   submitBtn: css`
     background: var(--gradient-brand);
     color: #fff;
-    font-size: 12px; font-weight: 700;
+    font-size: 12px;
+    font-weight: 700;
     padding: 9px 20px;
     border-radius: 8px;
-    border: none; cursor: pointer;
-    box-shadow: 0 4px 14px rgba(123, 104, 238, 0.30);
-    transition: box-shadow 0.2s, filter 0.2s;
-    &:hover { box-shadow: 0 6px 20px rgba(123, 104, 238, 0.40); filter: brightness(1.06); }
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(123, 104, 238, 0.3);
+    transition:
+      box-shadow 0.2s,
+      filter 0.2s;
+    &:hover {
+      box-shadow: 0 6px 20px rgba(123, 104, 238, 0.4);
+      filter: brightness(1.06);
+    }
   `,
 };

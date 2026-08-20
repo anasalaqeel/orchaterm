@@ -27,10 +27,7 @@ export const Toast: React.FC = () => {
       <div className={cx(styles.toastBox, typeStyle)}>
         <Icon className={cx(styles.icon, toast.type === 'loading' && styles.loaderIcon)} />
         <span className={styles.message}>{toast.message}</span>
-        <button
-          onClick={() => setToast(null)}
-          className={styles.closeBtn}
-        >
+        <button onClick={() => setToast(null)} className={styles.closeBtn}>
           <X className={styles.closeIcon} />
         </button>
       </div>
@@ -45,7 +42,7 @@ const styles = {
     right: 24px;
     z-index: 1050;
     animation: toast-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    
+
     @keyframes toast-in {
       from {
         transform: translateY(1rem) scale(0.95);
@@ -72,7 +69,7 @@ const styles = {
     border-color: rgba(52, 211, 153, 0.3);
     color: #a7f3d0;
     box-shadow: 0 0 15px -3px rgba(34, 197, 94, 0.2);
-    
+
     body.light & {
       background-color: #ecfdf5;
       border-color: #a7f3d0;
@@ -118,8 +115,12 @@ const styles = {
   loaderIcon: css`
     animation: spin 1s linear infinite;
     @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
     }
   `,
   icon: css`
@@ -142,7 +143,9 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: opacity 150ms ease, background-color 150ms ease;
+    transition:
+      opacity 150ms ease,
+      background-color 150ms ease;
 
     &:hover {
       opacity: 1;
@@ -152,5 +155,5 @@ const styles = {
   closeIcon: css`
     width: 16px;
     height: 16px;
-  `
+  `,
 };

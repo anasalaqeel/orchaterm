@@ -77,7 +77,7 @@ describe('SessionContinuationService', () => {
       defaultMeta,
       { ...defaultConfig, enabled: false },
       mockProvider,
-      mockProvider,
+      mockProvider
     );
     expect(bufferWatcher.watchForSummary).not.toHaveBeenCalled();
     expect(service.isMonitoring('sess-a')).toBe(false);
@@ -86,12 +86,10 @@ describe('SessionContinuationService', () => {
   it('calls detection provider when a summary delta arrives', async () => {
     const capturedCallbacks: Array<(chunk: string) => void> = [];
     const { bufferWatcher } = await import('../services/bufferWatcher');
-    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(
-      async (_id, onChunk) => {
-        capturedCallbacks.push(onChunk);
-        return () => {};
-      }
-    );
+    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(async (_id, onChunk) => {
+      capturedCallbacks.push(onChunk);
+      return () => {};
+    });
 
     await service.startMonitoring(defaultMeta, defaultConfig, mockProvider, mockProvider);
     if (capturedCallbacks[0]) await capturedCallbacks[0]('new output delta');
@@ -101,28 +99,30 @@ describe('SessionContinuationService', () => {
   it('emits detection-update event after classification', async () => {
     const capturedCallbacks: Array<(chunk: string) => void> = [];
     const { bufferWatcher } = await import('../services/bufferWatcher');
-    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(
-      async (_id, onChunk) => { capturedCallbacks.push(onChunk); return () => {}; }
-    );
+    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(async (_id, onChunk) => {
+      capturedCallbacks.push(onChunk);
+      return () => {};
+    });
 
     const events: any[] = [];
-    service.onEvent(e => events.push(e));
+    service.onEvent((e) => events.push(e));
 
     await service.startMonitoring(defaultMeta, defaultConfig, mockProvider, mockProvider);
     if (capturedCallbacks[0]) await capturedCallbacks[0]('delta');
-    expect(events.some(e => e.type === 'detection-update')).toBe(true);
+    expect(events.some((e) => e.type === 'detection-update')).toBe(true);
   });
 
   it('triggers checkpoint after 2 consecutive LIMIT_HIT classifications', async () => {
     const capturedCallbacks: Array<(chunk: string) => void> = [];
     const { bufferWatcher } = await import('../services/bufferWatcher');
-    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(
-      async (_id, onChunk) => { capturedCallbacks.push(onChunk); return () => {}; }
-    );
+    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(async (_id, onChunk) => {
+      capturedCallbacks.push(onChunk);
+      return () => {};
+    });
     mockProvider.complete.mockResolvedValue('LIMIT_HIT');
 
     const events: any[] = [];
-    service.onEvent(e => events.push(e));
+    service.onEvent((e) => events.push(e));
 
     const { generateCheckpoint } = await import('../services/checkpointGenerator');
 
@@ -133,15 +133,16 @@ describe('SessionContinuationService', () => {
       await cb('delta 2');
     }
     expect(generateCheckpoint).toHaveBeenCalledTimes(1);
-    expect(events.some(e => e.type === 'checkpoint-written')).toBe(true);
+    expect(events.some((e) => e.type === 'checkpoint-written')).toBe(true);
   });
 
   it('does not trigger checkpoint on first LIMIT_HIT (needs 2 consecutive)', async () => {
     const capturedCallbacks: Array<(chunk: string) => void> = [];
     const { bufferWatcher } = await import('../services/bufferWatcher');
-    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(
-      async (_id, onChunk) => { capturedCallbacks.push(onChunk); return () => {}; }
-    );
+    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(async (_id, onChunk) => {
+      capturedCallbacks.push(onChunk);
+      return () => {};
+    });
     mockProvider.complete.mockResolvedValue('LIMIT_HIT');
 
     const { generateCheckpoint } = await import('../services/checkpointGenerator');
@@ -157,7 +158,7 @@ describe('SessionContinuationService', () => {
     const snapshot = await service.captureNow('sess-a');
     expect(generateCheckpoint).toHaveBeenCalledWith(
       expect.objectContaining({ triggeredBy: 'manual', sessionId: 'sess-a' }),
-      mockProvider,
+      mockProvider
     );
     expect(snapshot).not.toBeNull();
   });
@@ -167,12 +168,14 @@ describe('SessionContinuationService', () => {
     let idleCallback: (() => void) | undefined;
 
     const { bufferWatcher } = await import('../services/bufferWatcher');
-    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(
-      async (_id, onChunk) => { summaryCallbacks.push(onChunk); return () => {}; }
-    );
-    vi.mocked(bufferWatcher.watchForIdle).mockImplementation(
-      async (_id, onIdle) => { idleCallback = onIdle; return () => {}; }
-    );
+    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(async (_id, onChunk) => {
+      summaryCallbacks.push(onChunk);
+      return () => {};
+    });
+    vi.mocked(bufferWatcher.watchForIdle).mockImplementation(async (_id, onIdle) => {
+      idleCallback = onIdle;
+      return () => {};
+    });
     mockProvider.complete.mockResolvedValue('LIMIT_HIT');
 
     const { generateCheckpoint } = await import('../services/checkpointGenerator');
@@ -186,7 +189,7 @@ describe('SessionContinuationService', () => {
     // Idle shell fires — consecutiveStopCount is 1 (> 0), so trigger immediately
     if (idleCallback) idleCallback();
     // Give the async doCheckpoint a tick to resolve
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(generateCheckpoint).toHaveBeenCalledTimes(1);
   });
 });

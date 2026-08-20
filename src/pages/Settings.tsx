@@ -5,9 +5,20 @@ import { useLocation } from 'react-router';
 import { invoke } from '@tauri-apps/api/core';
 import { useDashboard } from '../context/DashboardContext';
 import { Workspace } from '../types';
-import { DEFAULT_TERMINAL_CONFIG, TERMINAL_THEME_PRESETS, DEFAULT_QUICK_ACTIONS } from '../utils/terminalThemes';
+import {
+  DEFAULT_TERMINAL_CONFIG,
+  TERMINAL_THEME_PRESETS,
+  DEFAULT_QUICK_ACTIONS,
+} from '../utils/terminalThemes';
 import type { TerminalConfig, TerminalKeybinding, QuickAction } from '../types';
-import { ConfirmDialog, Input, InfoTooltip, NumberField, Select, MarkdownViewer } from '../components/ui';
+import {
+  ConfirmDialog,
+  Input,
+  InfoTooltip,
+  NumberField,
+  Select,
+  MarkdownViewer,
+} from '../components/ui';
 import { createProvider } from '../services/llm';
 import type { ProviderConfig, UseCaseProviders } from '../services/llm/types';
 import {
@@ -50,22 +61,28 @@ interface ShellInfo {
 
 const FALLBACK_SHELLS: ShellInfo[] = navigator.userAgent.toLowerCase().includes('win')
   ? [
-      { name: 'PowerShell',     path: 'powershell.exe', args: [] },
-      { name: 'Command Prompt', path: 'cmd.exe',        args: [] },
-      { name: 'WSL',            path: 'wsl',            args: [] },
-      { name: 'Git Bash',       path: 'bash',           args: [] },
+      { name: 'PowerShell', path: 'powershell.exe', args: [] },
+      { name: 'Command Prompt', path: 'cmd.exe', args: [] },
+      { name: 'WSL', path: 'wsl', args: [] },
+      { name: 'Git Bash', path: 'bash', args: [] },
     ]
   : [
-      { name: 'zsh',  path: '/bin/zsh',  args: [] },
+      { name: 'zsh', path: '/bin/zsh', args: [] },
       { name: 'bash', path: '/bin/bash', args: [] },
-      { name: 'sh',   path: '/bin/sh',   args: [] },
+      { name: 'sh', path: '/bin/sh', args: [] },
     ];
 
 function shellDisplayName(path: string, shells: ShellInfo[]): string {
-  const match = shells.find(s => s.path === path);
+  const match = shells.find((s) => s.path === path);
   if (match) return match.name;
   // strip directory and extension for custom paths
-  return path.replace(/\\/g, '/').split('/').pop()?.replace(/\.(exe|cmd|bat|sh)$/i, '') ?? path;
+  return (
+    path
+      .replace(/\\/g, '/')
+      .split('/')
+      .pop()
+      ?.replace(/\.(exe|cmd|bat|sh)$/i, '') ?? path
+  );
 }
 
 // ── LLM Provider editor ──────────────────────────────────────────────────────
@@ -73,22 +90,34 @@ function shellDisplayName(path: string, shells: ShellInfo[]): string {
 type ProviderPreset = { label: string; config: Omit<ProviderConfig, 'model'> };
 
 const PROVIDER_PRESETS: ProviderPreset[] = [
-  { label: 'Ollama (local)',         config: { provider: 'ollama',            baseUrl: 'http://localhost:11434' } },
-  { label: 'LM Studio (local)',      config: { provider: 'openai-compatible', baseUrl: 'http://localhost:1234' } },
-  { label: 'OpenAI',                 config: { provider: 'openai-compatible', baseUrl: 'https://api.openai.com' } },
-  { label: 'DeepSeek',               config: { provider: 'openai-compatible', baseUrl: 'https://api.deepseek.com' } },
-  { label: 'Together.ai',            config: { provider: 'openai-compatible', baseUrl: 'https://api.together.xyz' } },
-  { label: 'Anthropic',              config: { provider: 'anthropic',         baseUrl: 'https://api.anthropic.com' } },
-  { label: 'Google Gemini',          config: { provider: 'gemini',            baseUrl: 'https://generativelanguage.googleapis.com' } },
+  { label: 'Ollama (local)', config: { provider: 'ollama', baseUrl: 'http://localhost:11434' } },
+  {
+    label: 'LM Studio (local)',
+    config: { provider: 'openai-compatible', baseUrl: 'http://localhost:1234' },
+  },
+  { label: 'OpenAI', config: { provider: 'openai-compatible', baseUrl: 'https://api.openai.com' } },
+  {
+    label: 'DeepSeek',
+    config: { provider: 'openai-compatible', baseUrl: 'https://api.deepseek.com' },
+  },
+  {
+    label: 'Together.ai',
+    config: { provider: 'openai-compatible', baseUrl: 'https://api.together.xyz' },
+  },
+  { label: 'Anthropic', config: { provider: 'anthropic', baseUrl: 'https://api.anthropic.com' } },
+  {
+    label: 'Google Gemini',
+    config: { provider: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com' },
+  },
   { label: 'Custom (OpenAI-compat)', config: { provider: 'openai-compatible', baseUrl: '' } },
 ];
 
 const USE_CASE_LABELS: Record<keyof UseCaseProviders, string> = {
-  relay:      'Relay (task handoff)',
-  planGen:    'Plan Generation',
+  relay: 'Relay (task handoff)',
+  planGen: 'Plan Generation',
   autoAnswer: 'Auto-Answer',
-  chat:       'Chat',
-  routing:    'Routing',
+  chat: 'Chat',
+  routing: 'Routing',
 };
 
 interface ProviderConfigEditorProps {
@@ -102,23 +131,34 @@ interface ProviderConfigEditorProps {
 const providerKey = (cfg: Pick<ProviderConfig, 'provider' | 'baseUrl'>) =>
   `${cfg.provider}:${cfg.baseUrl ?? ''}`;
 
-const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, value, onChange, providerApiKeys, onKeyChange }) => {
+const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({
+  label,
+  value,
+  onChange,
+  providerApiKeys,
+  onKeyChange,
+}) => {
   const [models, setModels] = React.useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = React.useState(false);
   const [modelsError, setModelsError] = React.useState<string | null>(null);
   const [testStatus, setTestStatus] = React.useState<'idle' | 'ok' | 'fail'>('idle');
 
   const currentPreset = PROVIDER_PRESETS.find(
-    p => p.config.provider === value.provider && p.config.baseUrl === value.baseUrl,
+    (p) => p.config.provider === value.provider && p.config.baseUrl === value.baseUrl
   );
 
   const handlePresetChange = (presetLabel: string) => {
-    const preset = PROVIDER_PRESETS.find(p => p.label === presetLabel);
+    const preset = PROVIDER_PRESETS.find((p) => p.label === presetLabel);
     if (!preset) return;
     onKeyChange(providerKey(value), value.apiKey ?? '');
     const providerChanged = preset.config.provider !== value.provider;
     const restoredKey = providerApiKeys[providerKey(preset.config)] ?? '';
-    onChange({ ...value, ...preset.config, apiKey: restoredKey, model: providerChanged ? '' : value.model });
+    onChange({
+      ...value,
+      ...preset.config,
+      apiKey: restoredKey,
+      model: providerChanged ? '' : value.model,
+    });
   };
 
   const needsApiKey = value.provider !== 'ollama' && value.baseUrl !== 'http://localhost:1234';
@@ -137,8 +177,9 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
     } catch (err: any) {
       setModels([]);
       setModelsError(err?.message ?? 'Failed to fetch models');
+    } finally {
+      setModelsLoading(false);
     }
-    finally { setModelsLoading(false); }
   };
 
   React.useEffect(() => {
@@ -153,22 +194,60 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
       const provider = createProvider(value);
       const ok = await provider.checkOnline();
       setTestStatus(ok ? 'ok' : 'fail');
-    } catch { setTestStatus('fail'); }
+    } catch {
+      setTestStatus('fail');
+    }
     setTimeout(() => setTestStatus('idle'), 3000);
   };
 
   const editorStyles = {
-    wrapper: css`display:flex;flex-direction:column;gap:8px;padding:12px 0;border-bottom:1px solid var(--border-color);`,
-    sectionLabel: css`font-weight:600;font-size:13px;color:var(--text-primary);`,
-    fieldLabel: css`font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;`,
-    modelRow: css`display:flex;gap:6px;align-items:flex-end;`,
+    wrapper: css`
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border-color);
+    `,
+    sectionLabel: css`
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text-primary);
+    `,
+    fieldLabel: css`
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      display: block;
+      margin-bottom: 4px;
+    `,
+    modelRow: css`
+      display: flex;
+      gap: 6px;
+      align-items: flex-end;
+    `,
     iconBtn: css`
-      background-color:var(--bg-tertiary);border:1px solid var(--border-color);
-      border-radius:var(--border-radius-sm);padding:7px 8px;cursor:pointer;
-      color:var(--text-secondary);display:flex;align-items:center;justify-content:center;
-      transition:color 0.15s,background-color 0.15s;font-size:13px;line-height:1;
-      &:hover:not(:disabled){color:var(--text-primary);background-color:var(--bg-hover);}
-      &:disabled{opacity:0.4;cursor:not-allowed;}
+      background-color: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius-sm);
+      padding: 7px 8px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition:
+        color 0.15s,
+        background-color 0.15s;
+      font-size: 13px;
+      line-height: 1;
+      &:hover:not(:disabled) {
+        color: var(--text-primary);
+        background-color: var(--bg-hover);
+      }
+      &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
     `,
   };
 
@@ -180,7 +259,7 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
         label="Provider"
         value={currentPreset?.label ?? 'Custom (OpenAI-compat)'}
         onChange={handlePresetChange}
-        options={PROVIDER_PRESETS.map(p => ({ value: p.label, name: p.label }))}
+        options={PROVIDER_PRESETS.map((p) => ({ value: p.label, name: p.label }))}
       />
 
       {needsBaseUrl && (
@@ -190,7 +269,7 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
             type="text"
             className={providerInputStyle}
             value={value.baseUrl ?? ''}
-            onChange={e => onChange({ ...value, baseUrl: e.target.value })}
+            onChange={(e) => onChange({ ...value, baseUrl: e.target.value })}
             placeholder="http://localhost:11434"
           />
         </div>
@@ -203,7 +282,7 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
             type="password"
             className={providerInputStyle}
             value={value.apiKey ?? ''}
-            onChange={e => {
+            onChange={(e) => {
               onKeyChange(providerKey(value), e.target.value);
               onChange({ ...value, apiKey: e.target.value });
             }}
@@ -215,7 +294,16 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
       {needsApiKey && !value.apiKey ? (
         <div>
           <label className={editorStyles.fieldLabel}>Model</label>
-          <div className={css`font-size:11px;color:var(--text-secondary);padding:8px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:var(--border-radius-sm);`}>
+          <div
+            className={css`
+              font-size: 11px;
+              color: var(--text-secondary);
+              padding: 8px;
+              background: var(--bg-tertiary);
+              border: 1px solid var(--border-color);
+              border-radius: var(--border-radius-sm);
+            `}
+          >
             Enter an API key above to load available models.
           </div>
         </div>
@@ -227,8 +315,8 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
                 <Select
                   label="Model"
                   value={value.model}
-                  onChange={m => onChange({ ...value, model: m })}
-                  options={models.map(m => ({ value: m, name: m }))}
+                  onChange={(m) => onChange({ ...value, model: m })}
+                  options={models.map((m) => ({ value: m, name: m }))}
                 />
               ) : (
                 <div>
@@ -237,27 +325,65 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
                     type="text"
                     className={providerInputStyle}
                     value={value.model}
-                    onChange={e => onChange({ ...value, model: e.target.value })}
+                    onChange={(e) => onChange({ ...value, model: e.target.value })}
                     placeholder="e.g. llama3.2"
                   />
                 </div>
               )}
             </div>
-            <button type="button" className={editorStyles.iconBtn} onClick={handleRefreshModels} disabled={modelsLoading} title="Fetch model list">
-              <RefreshCw className={cx(css`width:14px;height:14px;`, modelsLoading && css`animation:spin 1s linear infinite;@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}`)} />
+            <button
+              type="button"
+              className={editorStyles.iconBtn}
+              onClick={handleRefreshModels}
+              disabled={modelsLoading}
+              title="Fetch model list"
+            >
+              <RefreshCw
+                className={cx(
+                  css`
+                    width: 14px;
+                    height: 14px;
+                  `,
+                  modelsLoading &&
+                    css`
+                      animation: spin 1s linear infinite;
+                      @keyframes spin {
+                        from {
+                          transform: rotate(0deg);
+                        }
+                        to {
+                          transform: rotate(360deg);
+                        }
+                      }
+                    `
+                )}
+              />
             </button>
             <button
               type="button"
               className={editorStyles.iconBtn}
               onClick={handleTest}
               title="Test connection"
-              style={{ color: testStatus === 'ok' ? 'var(--color-success)' : testStatus === 'fail' ? 'var(--color-error)' : undefined }}
+              style={{
+                color:
+                  testStatus === 'ok'
+                    ? 'var(--color-success)'
+                    : testStatus === 'fail'
+                      ? 'var(--color-error)'
+                      : undefined,
+              }}
             >
               {testStatus === 'idle' ? '⚡' : testStatus === 'ok' ? '✓' : '✗'}
             </button>
           </div>
           {modelsError && (
-            <div className={css`font-size:11px;color:var(--color-error);margin-top:4px;`}>
+            <div
+              className={css`
+                font-size: 11px;
+                color: var(--color-error);
+                margin-top: 4px;
+              `}
+            >
               ⚠ {modelsError}
             </div>
           )}
@@ -268,18 +394,34 @@ const ProviderConfigEditor: React.FC<ProviderConfigEditorProps> = ({ label, valu
 };
 
 const providerInputStyle = css`
-  width:100%;background-color:var(--bg-input);border:1px solid var(--border-color);
-  border-radius:var(--border-radius-sm);padding:8px;font-size:var(--font-size-xs);
-  color:var(--text-primary);outline:none;transition:all 0.15s ease-in-out;
-  &:focus{border-color:var(--color-brand);box-shadow:0 0 0 1px var(--color-brand);}
+  width: 100%;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: 8px;
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  outline: none;
+  transition: all 0.15s ease-in-out;
+  &:focus {
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 1px var(--color-brand);
+  }
 `;
 
 const fieldLabelStyle = css`
-  font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: block;
+  margin-bottom: 4px;
 `;
 
 const fieldLabelRowStyle = css`
-  display:flex;align-items:center;gap:6px;margin-bottom:4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
 `;
 
 export const SettingsView: React.FC = () => {
@@ -294,15 +436,25 @@ export const SettingsView: React.FC = () => {
     showToast,
     settings,
     updateSettings,
-    savedPrompts
+    savedPrompts,
   } = useDashboard();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [llmProviders, setLlmProviders] = useState<UseCaseProviders>(settings.llmProviders);
-  const [llmProviderMode, setLlmProviderMode] = useState<'simple' | 'advanced'>(settings.llmProviderMode ?? 'advanced');
-  const [simpleLlmProvider, setSimpleLlmProvider] = useState<ProviderConfig>(settings.simpleLlmProvider ?? { provider: 'ollama', model: 'llama3.2', baseUrl: 'http://localhost:11434' });
-  const [providerApiKeys, setProviderApiKeys] = useState<Record<string, string>>(settings.providerApiKeys ?? {});
+  const [llmProviderMode, setLlmProviderMode] = useState<'simple' | 'advanced'>(
+    settings.llmProviderMode ?? 'advanced'
+  );
+  const [simpleLlmProvider, setSimpleLlmProvider] = useState<ProviderConfig>(
+    settings.simpleLlmProvider ?? {
+      provider: 'ollama',
+      model: 'llama3.2',
+      baseUrl: 'http://localhost:11434',
+    }
+  );
+  const [providerApiKeys, setProviderApiKeys] = useState<Record<string, string>>(
+    settings.providerApiKeys ?? {}
+  );
   const [conductorTaskTimeoutMinutes, setConductorTaskTimeoutMinutes] = useState(
     settings.conductorTaskTimeoutMinutes
   );
@@ -315,10 +467,10 @@ export const SettingsView: React.FC = () => {
 
   // Terminal settings state
   const [detectedShells, setDetectedShells] = useState<ShellInfo[]>([]);
-  const [defaultShell, setDefaultShell]     = useState<string>(settings.shellPath || '');
-  const [shellsLoading, setShellsLoading]   = useState(false);
-  const [shellsError, setShellsError]       = useState('');
-  const [useCustomPath, setUseCustomPath]   = useState(false);
+  const [defaultShell, setDefaultShell] = useState<string>(settings.shellPath || '');
+  const [shellsLoading, setShellsLoading] = useState(false);
+  const [shellsError, setShellsError] = useState('');
+  const [useCustomPath, setUseCustomPath] = useState(false);
   const [customShellPath, setCustomShellPath] = useState('');
   const shellsFetchedRef = React.useRef(false);
 
@@ -326,14 +478,19 @@ export const SettingsView: React.FC = () => {
     settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG
   );
   const [newBinding, setNewBinding] = useState<TerminalKeybinding>({
-    key: '', action: 'clear', text: '',
+    key: '',
+    action: 'clear',
+    text: '',
   });
-  
+
   const [quickActions, setQuickActions] = useState<QuickAction[]>(
     settings.quickActions ?? DEFAULT_QUICK_ACTIONS
   );
   const [newQuickAction, setNewQuickAction] = useState<QuickAction>({
-    id: '', label: '', command: '', autoExecute: false
+    id: '',
+    label: '',
+    command: '',
+    autoExecute: false,
   });
   const [editingQuickActionId, setEditingQuickActionId] = useState<string | null>(null);
   const [quickActionPreviewMode, setQuickActionPreviewMode] = useState<'edit' | 'preview'>('edit');
@@ -356,7 +513,14 @@ export const SettingsView: React.FC = () => {
   }, [settings, useCustomPath]);
 
   const handleSaveIntegrations = () => {
-    updateSettings({ llmProviders, llmProviderMode, simpleLlmProvider, providerApiKeys, conductorTaskTimeoutMinutes, conductorInteractionMode });
+    updateSettings({
+      llmProviders,
+      llmProviderMode,
+      simpleLlmProvider,
+      providerApiKeys,
+      conductorTaskTimeoutMinutes,
+      conductorInteractionMode,
+    });
   };
 
   // Confirm delete dialog
@@ -365,7 +529,7 @@ export const SettingsView: React.FC = () => {
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
 
   const location = useLocation();
-  
+
   // Tabs for settings sections
   const [activeTab, setActiveTab] = useState<'general' | 'projects' | 'terminal'>(
     location.hash === '#terminal' ? 'terminal' : 'general'
@@ -397,9 +561,16 @@ export const SettingsView: React.FC = () => {
         const saved = settings.shellPath || '';
         const match = saved
           ? shells.find(
-              s => s.path === saved ||
+              (s) =>
+                s.path === saved ||
                 s.name.toLowerCase().includes(
-                  (saved.replace(/\\/g, '/').split('/').pop()?.replace(/\.(exe|cmd|bat|sh)$/i, '') ?? saved).toLowerCase()
+                  (
+                    saved
+                      .replace(/\\/g, '/')
+                      .split('/')
+                      .pop()
+                      ?.replace(/\.(exe|cmd|bat|sh)$/i, '') ?? saved
+                  ).toLowerCase()
                 )
             )
           : null;
@@ -409,7 +580,7 @@ export const SettingsView: React.FC = () => {
         setShellsError('Could not detect shells — using common defaults');
         setDetectedShells(FALLBACK_SHELLS);
         const saved = settings.shellPath || '';
-        const match = saved ? FALLBACK_SHELLS.find(s => s.path === saved) : null;
+        const match = saved ? FALLBACK_SHELLS.find((s) => s.path === saved) : null;
         setDefaultShell(match?.path ?? saved ?? FALLBACK_SHELLS[0]?.path ?? '');
       })
       .finally(() => setShellsLoading(false));
@@ -431,7 +602,7 @@ export const SettingsView: React.FC = () => {
       const dataStr = exportSettings();
       const blob = new Blob([dataStr], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      
+
       const link = document.createElement('a');
       link.href = url;
       link.download = `orchaterm_backup_${new Date().toISOString().split('T')[0]}.json`;
@@ -439,7 +610,7 @@ export const SettingsView: React.FC = () => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      
+
       showToast('Settings exported successfully', 'success');
     } catch (err) {
       console.error(err);
@@ -504,11 +675,12 @@ export const SettingsView: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      
       {/* Header */}
       <div>
         <h2 className={styles.title}>System Settings</h2>
-        <p className={styles.description}>Control data persistence, manage configuration resources, and UI modes.</p>
+        <p className={styles.description}>
+          Control data persistence, manage configuration resources, and UI modes.
+        </p>
       </div>
 
       {/* Tabs */}
@@ -558,10 +730,7 @@ export const SettingsView: React.FC = () => {
               Toggle between a developer dark theme and standard daylight theme.
             </p>
             <div className={styles.flexCenterGap3}>
-              <button
-                onClick={toggleTheme}
-                className={styles.themeToggleButton}
-              >
+              <button onClick={toggleTheme} className={styles.themeToggleButton}>
                 {theme === 'dark' ? (
                   <>
                     <Sun className={cx(styles.themeToggleIcon, styles.sunIconYellow)} />
@@ -574,9 +743,7 @@ export const SettingsView: React.FC = () => {
                   </>
                 )}
               </button>
-              <span className={styles.currentThemeBadge}>
-                Current: {theme}
-              </span>
+              <span className={styles.currentThemeBadge}>Current: {theme}</span>
             </div>
           </div>
 
@@ -587,25 +754,21 @@ export const SettingsView: React.FC = () => {
               <span>Import & Export Data</span>
             </h3>
             <p className={styles.cardDescription}>
-              Back up your entire state including project workspaces, custom developer agents, prompt catalogs, and process logs. You can import this JSON file into any local instance.
+              Back up your entire state including project workspaces, custom developer agents,
+              prompt catalogs, and process logs. You can import this JSON file into any local
+              instance.
             </p>
             <div className={styles.flexWrapGap3}>
-              <button
-                onClick={handleExport}
-                className={styles.primaryButton}
-              >
+              <button onClick={handleExport} className={styles.primaryButton}>
                 <Download className={styles.btnIcon} />
                 <span>Export Configuration JSON</span>
               </button>
 
-              <button
-                onClick={handleImportClick}
-                className={styles.secondaryButton}
-              >
+              <button onClick={handleImportClick} className={styles.secondaryButton}>
                 <Upload className={styles.btnIcon} />
                 <span>Import Configuration JSON</span>
               </button>
-              
+
               <input
                 ref={fileInputRef}
                 type="file"
@@ -618,15 +781,36 @@ export const SettingsView: React.FC = () => {
 
           {/* AI master switch — primary control governing every AI feature below */}
           <div className={styles.integrationsCard}>
-            <div className={css`display: flex; align-items: center; justify-content: space-between; gap: 16px;`}>
+            <div
+              className={css`
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+              `}
+            >
               <div>
-                <h3 className={cx(styles.cardTitle, css`margin-bottom: 6px;`)}>
+                <h3
+                  className={cx(
+                    styles.cardTitle,
+                    css`
+                      margin-bottom: 6px;
+                    `
+                  )}
+                >
                   <span style={{ fontSize: 18, lineHeight: 1 }}>✨</span>
                   <span>AI Features</span>
                 </h3>
-                <p className={cx(styles.cardDescription, css`margin: 0;`)}>
-                  Master switch for live feed, auto-relay, session continuation, and chat.
-                  Turn it off to use Orchaterm as a plain terminal — no LLM calls are made.
+                <p
+                  className={cx(
+                    styles.cardDescription,
+                    css`
+                      margin: 0;
+                    `
+                  )}
+                >
+                  Master switch for live feed, auto-relay, session continuation, and chat. Turn it
+                  off to use Orchaterm as a plain terminal — no LLM calls are made.
                 </p>
               </div>
               <button
@@ -635,22 +819,25 @@ export const SettingsView: React.FC = () => {
                 onClick={() => updateSettings({ aiEnabled: !(settings.aiEnabled !== false) })}
                 className={css`
                   position: relative;
-                  width: 44px; height: 24px;
+                  width: 44px;
+                  height: 24px;
                   border-radius: 12px;
-                  border: none; cursor: pointer;
+                  border: none;
+                  cursor: pointer;
                   flex-shrink: 0;
-                  background: ${(settings.aiEnabled !== false) ? 'var(--color-brand)' : 'var(--bg-tertiary)'};
+                  background: ${settings.aiEnabled !== false ? 'var(--color-brand)' : 'var(--bg-tertiary)'};
                   transition: background 0.2s;
                   &::after {
                     content: '';
                     position: absolute;
                     top: 3px;
-                    left: ${(settings.aiEnabled !== false) ? '23px' : '3px'};
-                    width: 18px; height: 18px;
+                    left: ${settings.aiEnabled !== false ? '23px' : '3px'};
+                    width: 18px;
+                    height: 18px;
                     border-radius: 50%;
                     background: white;
                     transition: left 0.2s;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
                   }
                 `}
               />
@@ -668,19 +855,21 @@ export const SettingsView: React.FC = () => {
               OpenAI, DeepSeek, Together.ai, Anthropic, and Gemini.
             </p>
 
-            <div className={css`
-              display: inline-flex;
-              width: fit-content;
-              align-self: flex-start;
-              background-color: var(--bg-tertiary);
-              padding: 4px;
-              border-radius: 8px;
-              gap: 4px;
-              margin-bottom: 16px;
-              border: 1px solid var(--border-color);
-              box-shadow: 0 1px 2px rgba(0,0,0,0.05) inset;
-            `}>
-              {(['simple', 'advanced'] as const).map(mode => {
+            <div
+              className={css`
+                display: inline-flex;
+                width: fit-content;
+                align-self: flex-start;
+                background-color: var(--bg-tertiary);
+                padding: 4px;
+                border-radius: 8px;
+                gap: 4px;
+                margin-bottom: 16px;
+                border: 1px solid var(--border-color);
+                box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) inset;
+              `}
+            >
+              {(['simple', 'advanced'] as const).map((mode) => {
                 const isActive = llmProviderMode === mode;
                 return (
                   <button
@@ -699,7 +888,9 @@ export const SettingsView: React.FC = () => {
                       color: ${isActive ? '#fff' : 'var(--text-secondary)'};
                       transition: color 0.2s ease;
                       z-index: 1;
-                      &:hover { color: ${isActive ? '#fff' : 'var(--text-primary)'}; }
+                      &:hover {
+                        color: ${isActive ? '#fff' : 'var(--text-primary)'};
+                      }
                     `}
                   >
                     {isActive && (
@@ -711,13 +902,15 @@ export const SettingsView: React.FC = () => {
                           background-color: #7b68ee;
                           border-radius: 6px;
                           z-index: -1;
-                          box-shadow: 0 1px 3px rgba(123,104,238,0.4);
+                          box-shadow: 0 1px 3px rgba(123, 104, 238, 0.4);
                         `}
                         transition={{ type: 'spring', bounce: 0.15, duration: 0.5 }}
                       />
                     )}
                     <span style={{ position: 'relative', zIndex: 2 }}>
-                      {mode === 'simple' ? '✨ Simple Mode (Global)' : '⚙️ Advanced Mode (Per Use-Case)'}
+                      {mode === 'simple'
+                        ? '✨ Simple Mode (Global)'
+                        : '⚙️ Advanced Mode (Per Use-Case)'}
                     </span>
                   </button>
                 );
@@ -738,7 +931,7 @@ export const SettingsView: React.FC = () => {
                     value={simpleLlmProvider}
                     onChange={setSimpleLlmProvider}
                     providerApiKeys={providerApiKeys}
-                    onKeyChange={(k, v) => setProviderApiKeys(prev => ({ ...prev, [k]: v }))}
+                    onKeyChange={(k, v) => setProviderApiKeys((prev) => ({ ...prev, [k]: v }))}
                   />
                 </motion.div>
               ) : (
@@ -749,14 +942,14 @@ export const SettingsView: React.FC = () => {
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.2 }}
                 >
-                  {(Object.keys(USE_CASE_LABELS) as Array<keyof UseCaseProviders>).map(key => (
+                  {(Object.keys(USE_CASE_LABELS) as Array<keyof UseCaseProviders>).map((key) => (
                     <ProviderConfigEditor
                       key={key}
                       label={USE_CASE_LABELS[key]}
                       value={llmProviders[key]}
-                      onChange={cfg => setLlmProviders(prev => ({ ...prev, [key]: cfg }))}
+                      onChange={(cfg) => setLlmProviders((prev) => ({ ...prev, [key]: cfg }))}
                       providerApiKeys={providerApiKeys}
-                      onKeyChange={(k, v) => setProviderApiKeys(prev => ({ ...prev, [k]: v }))}
+                      onKeyChange={(k, v) => setProviderApiKeys((prev) => ({ ...prev, [k]: v }))}
                     />
                   ))}
                 </motion.div>
@@ -764,23 +957,49 @@ export const SettingsView: React.FC = () => {
             </AnimatePresence>
 
             {/* ── Session Continuation ───────────────────────────────────────────────── */}
-            <div className={css`margin-top: 32px;`}>
-              <h3 className={css`
-                font-size: 13px;
-                font-weight: 600;
-                color: var(--text-secondary);
-                text-transform: uppercase;
-                letter-spacing: 0.08em;
-                margin-bottom: 16px;
-              `}>
+            <div
+              className={css`
+                margin-top: 32px;
+              `}
+            >
+              <h3
+                className={css`
+                  font-size: 13px;
+                  font-weight: 600;
+                  color: var(--text-secondary);
+                  text-transform: uppercase;
+                  letter-spacing: 0.08em;
+                  margin-bottom: 16px;
+                `}
+              >
                 Session Continuation
               </h3>
 
               {/* Enable toggle */}
-              <div className={css`display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;`}>
+              <div
+                className={css`
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                  margin-bottom: 16px;
+                `}
+              >
                 <div>
-                  <div className={css`font-size: 13px; color: var(--text-primary);`}>Enable session continuation</div>
-                  <div className={css`font-size: 12px; color: var(--text-tertiary); margin-top: 2px;`}>
+                  <div
+                    className={css`
+                      font-size: 13px;
+                      color: var(--text-primary);
+                    `}
+                  >
+                    Enable session continuation
+                  </div>
+                  <div
+                    className={css`
+                      font-size: 12px;
+                      color: var(--text-tertiary);
+                      margin-top: 2px;
+                    `}
+                  >
                     Detect when agents hit token limits and generate resume checkpoints
                   </div>
                 </div>
@@ -789,16 +1008,22 @@ export const SettingsView: React.FC = () => {
                   onClick={() =>
                     updateSettings({
                       continuation: {
-                        ...(settings.continuation ?? { targetSessionId: null, mode: 'semi', snapshotIntervalChars: 4000 }),
+                        ...(settings.continuation ?? {
+                          targetSessionId: null,
+                          mode: 'semi',
+                          snapshotIntervalChars: 4000,
+                        }),
                         enabled: !(settings.continuation?.enabled ?? false),
                       },
                     })
                   }
                   className={css`
                     position: relative;
-                    width: 44px; height: 24px;
+                    width: 44px;
+                    height: 24px;
                     border-radius: 12px;
-                    border: none; cursor: pointer;
+                    border: none;
+                    cursor: pointer;
                     background: ${(settings.continuation?.enabled ?? false) ? 'var(--color-brand)' : 'var(--bg-tertiary)'};
                     transition: background 0.2s;
                     flex-shrink: 0;
@@ -807,41 +1032,63 @@ export const SettingsView: React.FC = () => {
                       position: absolute;
                       top: 3px;
                       left: ${(settings.continuation?.enabled ?? false) ? '23px' : '3px'};
-                      width: 18px; height: 18px;
+                      width: 18px;
+                      height: 18px;
                       border-radius: 50%;
                       background: white;
                       transition: left 0.2s;
-                      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+                      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
                     }
                   `}
                 />
               </div>
 
               {/* Mode selector */}
-              <div className={css`margin-bottom: 16px;`}>
+              <div
+                className={css`
+                  margin-bottom: 16px;
+                `}
+              >
                 <label className={fieldLabelStyle}>Resume mode</label>
                 <Select
                   value={settings.continuation?.mode ?? 'semi'}
-                  onChange={v =>
+                  onChange={(v) =>
                     updateSettings({
                       continuation: {
-                        ...(settings.continuation ?? { enabled: false, targetSessionId: null, snapshotIntervalChars: 4000 }),
+                        ...(settings.continuation ?? {
+                          enabled: false,
+                          targetSessionId: null,
+                          snapshotIntervalChars: 4000,
+                        }),
                         mode: v as 'auto' | 'semi' | 'file-only',
                       },
                     })
                   }
                   options={[
-                    { value: 'auto',      name: 'Auto — inject immediately (falls back to modal if no target set)' },
-                    { value: 'semi',      name: 'Semi-automatic — show modal to confirm injection' },
+                    {
+                      value: 'auto',
+                      name: 'Auto — inject immediately (falls back to modal if no target set)',
+                    },
+                    { value: 'semi', name: 'Semi-automatic — show modal to confirm injection' },
                     { value: 'file-only', name: 'File only — save checkpoint, no injection' },
                   ]}
                 />
               </div>
 
               {/* Snapshot interval */}
-              <div className={css`margin-bottom: 16px;`}>
+              <div
+                className={css`
+                  margin-bottom: 16px;
+                `}
+              >
                 <div className={fieldLabelRowStyle}>
-                  <label className={css`font-size:11px;font-weight:600;color:var(--text-secondary);`}>
+                  <label
+                    className={css`
+                      font-size: 11px;
+                      font-weight: 600;
+                      color: var(--text-secondary);
+                    `}
+                  >
                     Periodic snapshot interval (chars)
                   </label>
                   <InfoTooltip content="Not a timer — this counts terminal output. Every time the terminal produces this many new characters, the app writes a progress snapshot to the checkpoint file. Lower values snapshot more often (more disk writes); higher values snapshot less often but risk losing more recent output if the session ends unexpectedly." />
@@ -850,24 +1097,44 @@ export const SettingsView: React.FC = () => {
                   className={providerInputStyle}
                   value={settings.continuation?.snapshotIntervalChars ?? 4000}
                   min={500}
-                  onValueChange={v => {
+                  onValueChange={(v) => {
                     updateSettings({
                       continuation: {
-                        ...(settings.continuation ?? { enabled: false, targetSessionId: null, mode: 'semi' }),
+                        ...(settings.continuation ?? {
+                          enabled: false,
+                          targetSessionId: null,
+                          mode: 'semi',
+                        }),
                         snapshotIntervalChars: v,
                       },
                     });
                   }}
                 />
-                <div className={css`font-size: 11px; color: var(--text-tertiary); margin-top: 4px;`}>
+                <div
+                  className={css`
+                    font-size: 11px;
+                    color: var(--text-tertiary);
+                    margin-top: 4px;
+                  `}
+                >
                   A progress snapshot is written every N new buffer characters. Minimum: 500.
                 </div>
               </div>
 
               {/* Max context window */}
-              <div className={css`margin-bottom: 16px;`}>
+              <div
+                className={css`
+                  margin-bottom: 16px;
+                `}
+              >
                 <div className={fieldLabelRowStyle}>
-                  <label className={css`font-size:11px;font-weight:600;color:var(--text-secondary);`}>
+                  <label
+                    className={css`
+                      font-size: 11px;
+                      font-weight: 600;
+                      color: var(--text-secondary);
+                    `}
+                  >
                     Checkpoint history sent to LLM (chars)
                   </label>
                   <InfoTooltip content="Caps how much of the buffered terminal output history is included in the prompt when the LLM generates a handoff checkpoint. This is separate from the snapshot interval above — it only matters when a checkpoint is actually being written. A smaller cap means faster, cheaper checkpoint generation but less context for the LLM to work from; a larger cap gives more context at the cost of slower processing." />
@@ -876,36 +1143,62 @@ export const SettingsView: React.FC = () => {
                   className={providerInputStyle}
                   value={settings.continuation?.maxContextChars ?? 20000}
                   min={1000}
-                  onValueChange={v => {
+                  onValueChange={(v) => {
                     updateSettings({
                       continuation: {
-                        ...(settings.continuation ?? { enabled: false, targetSessionId: null, mode: 'semi', snapshotIntervalChars: 4000 }),
+                        ...(settings.continuation ?? {
+                          enabled: false,
+                          targetSessionId: null,
+                          mode: 'semi',
+                          snapshotIntervalChars: 4000,
+                        }),
                         maxContextChars: v,
                       },
                     });
                   }}
                 />
-                <div className={css`font-size: 11px; color: var(--text-tertiary); margin-top: 4px;`}>
-                  Limits the terminal output history buffer sent to the LLM when generating a handoff checkpoint file to prevent slow processing times. Minimum: 1000.
+                <div
+                  className={css`
+                    font-size: 11px;
+                    color: var(--text-tertiary);
+                    margin-top: 4px;
+                  `}
+                >
+                  Limits the terminal output history buffer sent to the LLM when generating a
+                  handoff checkpoint file to prevent slow processing times. Minimum: 1000.
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, paddingTop: 8, flexWrap: 'wrap' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-end',
+                gap: 20,
+                paddingTop: 8,
+                flexWrap: 'wrap',
+              }}
+            >
               <div>
                 <label className={styles.formLabel}>Agent Interaction</label>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  {(['auto', 'manual'] as const).map(mode => (
+                  {(['auto', 'manual'] as const).map((mode) => (
                     <button
                       key={mode}
                       type="button"
                       onClick={() => setConductorInteractionMode(mode)}
                       className={css`
-                        padding: 4px 14px; border-radius: 4px; font-size: 12px; cursor: pointer;
-                        border: 1px solid ${conductorInteractionMode === mode ? '#7b68ee' : 'var(--border-color)'};
+                        padding: 4px 14px;
+                        border-radius: 4px;
+                        font-size: 12px;
+                        cursor: pointer;
+                        border: 1px solid
+                          ${conductorInteractionMode === mode ? '#7b68ee' : 'var(--border-color)'};
                         background: ${conductorInteractionMode === mode ? '#7b68ee22' : 'transparent'};
                         color: ${conductorInteractionMode === mode ? '#7b68ee' : 'var(--text-secondary)'};
-                        &:hover { border-color: #7b68ee; }
+                        &:hover {
+                          border-color: #7b68ee;
+                        }
                       `}
                     >
                       {mode === 'auto' ? '🤖 Auto' : '👤 Manual'}
@@ -921,7 +1214,8 @@ export const SettingsView: React.FC = () => {
               <div>
                 <label className={styles.formLabel}>Task Timeout (minutes, 0 = off)</label>
                 <NumberField
-                  min={0} max={480}
+                  min={0}
+                  max={480}
                   className={styles.integrationInput}
                   value={conductorTaskTimeoutMinutes}
                   onValueChange={setConductorTaskTimeoutMinutes}
@@ -960,46 +1254,47 @@ export const SettingsView: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  workspaces.map(p => (
-                      <tr key={p.id} className={styles.tr}>
-                        <td className={styles.td}>
-                          <span
-                            className={styles.colorTag}
-                            style={{ backgroundColor: p.color }}
-                          />
-                        </td>
-                        <td className={styles.tdName}>{p.name}</td>
-                        <td className={styles.tdPath}>{p.path}</td>
-                        <td className={styles.tdDesc}>{p.description}</td>
-                        <td className={styles.td}>
-                          <span className={cx(
+                  workspaces.map((p) => (
+                    <tr key={p.id} className={styles.tr}>
+                      <td className={styles.td}>
+                        <span className={styles.colorTag} style={{ backgroundColor: p.color }} />
+                      </td>
+                      <td className={styles.tdName}>{p.name}</td>
+                      <td className={styles.tdPath}>{p.path}</td>
+                      <td className={styles.tdDesc}>{p.description}</td>
+                      <td className={styles.td}>
+                        <span
+                          className={cx(
                             styles.statusBadge,
                             p.status === 'active' ? styles.statusActive : styles.statusInactive
-                          )}>
-                            {p.status}
-                          </span>
-                        </td>
-                        <td className={styles.td}>
-                          <div className={styles.actionGroup}>
-                            <button
-                              onClick={() => handleEditWorkspaceClick(p)}
-                              className={styles.editButton}
-                            >
-                              <Edit2 className={styles.actionIcon} />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setConfirmMessage(`Delete workspace "${p.name}"? All associated logs and references will be removed.`);
-                                setConfirmAction(() => () => deleteWorkspace(p.id));
-                                setConfirmOpen(true);
-                              }}
-                              className={styles.deleteButton}
-                            >
-                              <Trash2 className={styles.actionIcon} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                          )}
+                        >
+                          {p.status}
+                        </span>
+                      </td>
+                      <td className={styles.td}>
+                        <div className={styles.actionGroup}>
+                          <button
+                            onClick={() => handleEditWorkspaceClick(p)}
+                            className={styles.editButton}
+                          >
+                            <Edit2 className={styles.actionIcon} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setConfirmMessage(
+                                `Delete workspace "${p.name}"? All associated logs and references will be removed.`
+                              );
+                              setConfirmAction(() => () => deleteWorkspace(p.id));
+                              setConfirmOpen(true);
+                            }}
+                            className={styles.deleteButton}
+                          >
+                            <Trash2 className={styles.actionIcon} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
                   ))
                 )}
               </tbody>
@@ -1017,8 +1312,8 @@ export const SettingsView: React.FC = () => {
               <span>Default Terminal Shell</span>
             </h3>
             <p className={styles.cardDescription}>
-              Shell launched when opening a new terminal tab in any workspace.
-              Detected from your system — changes take effect the next time you open a terminal.
+              Shell launched when opening a new terminal tab in any workspace. Detected from your
+              system — changes take effect the next time you open a terminal.
             </p>
 
             {shellsLoading ? (
@@ -1033,11 +1328,13 @@ export const SettingsView: React.FC = () => {
                     label="Shell"
                     value={defaultShell}
                     onChange={setDefaultShell}
-                    options={(detectedShells.length > 0 ? detectedShells : FALLBACK_SHELLS).map((s) => ({
-                      value: s.path,
-                      name: s.name,
-                      description: s.path,
-                    }))}
+                    options={(detectedShells.length > 0 ? detectedShells : FALLBACK_SHELLS).map(
+                      (s) => ({
+                        value: s.path,
+                        name: s.name,
+                        description: s.path,
+                      })
+                    )}
                     error={shellsError}
                   />
                 ) : (
@@ -1047,7 +1344,7 @@ export const SettingsView: React.FC = () => {
                       type="text"
                       className={styles.integrationInput}
                       value={customShellPath}
-                      onChange={e => setCustomShellPath(e.target.value)}
+                      onChange={(e) => setCustomShellPath(e.target.value)}
                       placeholder={`e.g. C:\\Program Files\\Git\\bin\\bash.exe`}
                     />
                   </div>
@@ -1058,7 +1355,7 @@ export const SettingsView: React.FC = () => {
                   className={styles.linkBtn}
                   onClick={() => {
                     if (!useCustomPath) setCustomShellPath(defaultShell);
-                    setUseCustomPath(p => !p);
+                    setUseCustomPath((p) => !p);
                   }}
                 >
                   {useCustomPath ? '← Use detected shell' : 'Use custom path'}
@@ -1068,11 +1365,13 @@ export const SettingsView: React.FC = () => {
                   {'✓ New terminals will open with: '}
                   <strong>
                     {useCustomPath
-                      ? (customShellPath.trim() || '—')
-                      : shellDisplayName(defaultShell, detectedShells.length > 0 ? detectedShells : FALLBACK_SHELLS)}
+                      ? customShellPath.trim() || '—'
+                      : shellDisplayName(
+                          defaultShell,
+                          detectedShells.length > 0 ? detectedShells : FALLBACK_SHELLS
+                        )}
                   </strong>
                 </p>
-
               </>
             )}
           </div>
@@ -1088,20 +1387,36 @@ export const SettingsView: React.FC = () => {
             </p>
 
             {/* Preset cards */}
-            <div className={css`display:flex;flex-wrap:wrap;gap:8px;`}>
-              {TERMINAL_THEME_PRESETS.map(preset => (
+            <div
+              className={css`
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+              `}
+            >
+              {TERMINAL_THEME_PRESETS.map((preset) => (
                 <button
                   key={preset.name}
                   type="button"
-                  onClick={() => setTerminalConfig(c => ({ ...c, theme: preset.theme }))}
+                  onClick={() => setTerminalConfig((c) => ({ ...c, theme: preset.theme }))}
                   className={css`
-                    padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;
-                    border:1px solid ${terminalConfig.theme.background === preset.theme.background
-                      ? 'var(--color-brand)' : 'var(--border-color)'};
-                    background:${preset.theme.background};
-                    color:${preset.theme.foreground};
-                    transition:border-color 0.15s;
-                    &:hover{border-color:var(--color-brand);}
+                    padding: 5px 12px;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    border: 1px solid
+                      ${
+                        terminalConfig.theme.background === preset.theme.background
+                          ? 'var(--color-brand)'
+                          : 'var(--border-color)'
+                      };
+                    background: ${preset.theme.background};
+                    color: ${preset.theme.foreground};
+                    transition: border-color 0.15s;
+                    &:hover {
+                      border-color: var(--color-brand);
+                    }
                   `}
                 >
                   {preset.name}
@@ -1112,77 +1427,120 @@ export const SettingsView: React.FC = () => {
             {/* Expand/collapse custom color editor */}
             <button
               type="button"
-              onClick={() => setShowCustomColors(v => !v)}
+              onClick={() => setShowCustomColors((v) => !v)}
               className={css`
-                background:none;border:none;padding:0;cursor:pointer;
-                font-size:var(--font-size-xs);color:var(--color-brand);
-                text-decoration:underline;text-underline-offset:2px;align-self:flex-start;
-                &:hover{filter:brightness(1.15);}
+                background: none;
+                border: none;
+                padding: 0;
+                cursor: pointer;
+                font-size: var(--font-size-xs);
+                color: var(--color-brand);
+                text-decoration: underline;
+                text-underline-offset: 2px;
+                align-self: flex-start;
+                &:hover {
+                  filter: brightness(1.15);
+                }
               `}
             >
               {showCustomColors ? '▲ Hide custom colors' : '▼ Customize colors'}
             </button>
 
             {/* Color grid — color picker + hex/rgba text input per slot */}
-            {showCustomColors && <div className={css`
-              display:grid;grid-template-columns:repeat(2,1fr);gap:10px;
-              @media(min-width:560px){grid-template-columns:repeat(3,1fr);}
-            `}>
-              {(
-                [
-                  ['Background',     'background'],
-                  ['Foreground',     'foreground'],
-                  ['Cursor',         'cursor'],
-                  ['Cursor Accent',  'cursorAccent'],
-                  ['Selection BG',   'selectionBackground'],
-                  ['Selection FG',   'selectionForeground'],
-                  ['Black',          'black'],
-                  ['Bright Black',   'brightBlack'],
-                  ['Red',            'red'],
-                  ['Bright Red',     'brightRed'],
-                  ['Green',          'green'],
-                  ['Bright Green',   'brightGreen'],
-                  ['Yellow',         'yellow'],
-                  ['Bright Yellow',  'brightYellow'],
-                  ['Blue',           'blue'],
-                  ['Bright Blue',    'brightBlue'],
-                  ['Magenta',        'magenta'],
-                  ['Bright Magenta', 'brightMagenta'],
-                  ['Cyan',           'cyan'],
-                  ['Bright Cyan',    'brightCyan'],
-                  ['White',          'white'],
-                  ['Bright White',   'brightWhite'],
-                ] as [string, keyof TerminalConfig['theme']][]
-              ).map(([label, key]) => {
-                const val = terminalConfig.theme[key];
-                const isRgba = val.startsWith('rgba');
-                return (
-                  <div key={key} className={css`display:flex;flex-direction:column;gap:3px;`}>
-                    <label className={styles.formLabel}>{label}</label>
-                    <div className={css`display:flex;align-items:center;gap:5px;`}>
-                      <input
-                        type="color"
-                        title={isRgba ? 'rgba — edit text field for alpha' : undefined}
-                        value={isRgba ? '#000000' : val}
-                        onChange={e => setTerminalConfig(c => ({
-                          ...c, theme: { ...c.theme, [key]: e.target.value },
-                        }))}
-                        className={css`width:28px;height:26px;border:none;background:transparent;cursor:pointer;padding:0;flex-shrink:0;`}
-                      />
-                      <Input
-                        type="text"
-                        value={val}
-                        spellCheck={false}
-                        onChange={e => setTerminalConfig(c => ({
-                          ...c, theme: { ...c.theme, [key]: e.target.value },
-                        }))}
-                        className={styles.integrationInput}
-                      />
+            {showCustomColors && (
+              <div
+                className={css`
+                  display: grid;
+                  grid-template-columns: repeat(2, 1fr);
+                  gap: 10px;
+                  @media (min-width: 560px) {
+                    grid-template-columns: repeat(3, 1fr);
+                  }
+                `}
+              >
+                {(
+                  [
+                    ['Background', 'background'],
+                    ['Foreground', 'foreground'],
+                    ['Cursor', 'cursor'],
+                    ['Cursor Accent', 'cursorAccent'],
+                    ['Selection BG', 'selectionBackground'],
+                    ['Selection FG', 'selectionForeground'],
+                    ['Black', 'black'],
+                    ['Bright Black', 'brightBlack'],
+                    ['Red', 'red'],
+                    ['Bright Red', 'brightRed'],
+                    ['Green', 'green'],
+                    ['Bright Green', 'brightGreen'],
+                    ['Yellow', 'yellow'],
+                    ['Bright Yellow', 'brightYellow'],
+                    ['Blue', 'blue'],
+                    ['Bright Blue', 'brightBlue'],
+                    ['Magenta', 'magenta'],
+                    ['Bright Magenta', 'brightMagenta'],
+                    ['Cyan', 'cyan'],
+                    ['Bright Cyan', 'brightCyan'],
+                    ['White', 'white'],
+                    ['Bright White', 'brightWhite'],
+                  ] as [string, keyof TerminalConfig['theme']][]
+                ).map(([label, key]) => {
+                  const val = terminalConfig.theme[key];
+                  const isRgba = val.startsWith('rgba');
+                  return (
+                    <div
+                      key={key}
+                      className={css`
+                        display: flex;
+                        flex-direction: column;
+                        gap: 3px;
+                      `}
+                    >
+                      <label className={styles.formLabel}>{label}</label>
+                      <div
+                        className={css`
+                          display: flex;
+                          align-items: center;
+                          gap: 5px;
+                        `}
+                      >
+                        <input
+                          type="color"
+                          title={isRgba ? 'rgba — edit text field for alpha' : undefined}
+                          value={isRgba ? '#000000' : val}
+                          onChange={(e) =>
+                            setTerminalConfig((c) => ({
+                              ...c,
+                              theme: { ...c.theme, [key]: e.target.value },
+                            }))
+                          }
+                          className={css`
+                            width: 28px;
+                            height: 26px;
+                            border: none;
+                            background: transparent;
+                            cursor: pointer;
+                            padding: 0;
+                            flex-shrink: 0;
+                          `}
+                        />
+                        <Input
+                          type="text"
+                          value={val}
+                          spellCheck={false}
+                          onChange={(e) =>
+                            setTerminalConfig((c) => ({
+                              ...c,
+                              theme: { ...c.theme, [key]: e.target.value },
+                            }))
+                          }
+                          className={styles.integrationInput}
+                        />
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>}
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* ── Font ──────────────────────────────────────────────────────── */}
@@ -1199,40 +1557,57 @@ export const SettingsView: React.FC = () => {
                 spellCheck={false}
                 className={styles.integrationInput}
                 value={terminalConfig.fontFamily}
-                onChange={e => setTerminalConfig(c => ({ ...c, fontFamily: e.target.value }))}
+                onChange={(e) => setTerminalConfig((c) => ({ ...c, fontFamily: e.target.value }))}
                 placeholder="'Fira Code', 'Cascadia Code', monospace"
               />
-              <p className={css`font-size:10px;color:var(--text-tertiary);margin-top:4px;`}>
+              <p
+                className={css`
+                  font-size: 10px;
+                  color: var(--text-tertiary);
+                  margin-top: 4px;
+                `}
+              >
                 Comma-separated list. First font found on the system is used.
               </p>
             </div>
 
-            <div className={css`display:grid;grid-template-columns:repeat(3,1fr);gap:12px;`}>
+            <div
+              className={css`
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+              `}
+            >
               <div>
                 <label className={styles.formLabel}>Size (px)</label>
                 <NumberField
-                  min={8} max={32}
+                  min={8}
+                  max={32}
                   className={styles.integrationInput}
                   value={terminalConfig.fontSize}
-                  onValueChange={v => setTerminalConfig(c => ({ ...c, fontSize: v }))}
+                  onValueChange={(v) => setTerminalConfig((c) => ({ ...c, fontSize: v }))}
                 />
               </div>
               <div>
                 <label className={styles.formLabel}>Line Height</label>
                 <NumberField
-                  min={0.8} max={2.0} step={0.1}
+                  min={0.8}
+                  max={2.0}
+                  step={0.1}
                   className={styles.integrationInput}
                   value={terminalConfig.lineHeight}
-                  onValueChange={v => setTerminalConfig(c => ({ ...c, lineHeight: v }))}
+                  onValueChange={(v) => setTerminalConfig((c) => ({ ...c, lineHeight: v }))}
                 />
               </div>
               <div>
                 <label className={styles.formLabel}>Letter Spacing (px)</label>
                 <NumberField
-                  min={-2} max={10} step={0.5}
+                  min={-2}
+                  max={10}
+                  step={0.5}
                   className={styles.integrationInput}
                   value={terminalConfig.letterSpacing}
-                  onValueChange={v => setTerminalConfig(c => ({ ...c, letterSpacing: v }))}
+                  onValueChange={(v) => setTerminalConfig((c) => ({ ...c, letterSpacing: v }))}
                 />
               </div>
             </div>
@@ -1247,18 +1622,29 @@ export const SettingsView: React.FC = () => {
 
             <div>
               <label className={styles.formLabel}>Style</label>
-              <div className={css`display:flex;gap:8px;`}>
-                {(['block', 'underline', 'bar'] as const).map(s => (
+              <div
+                className={css`
+                  display: flex;
+                  gap: 8px;
+                `}
+              >
+                {(['block', 'underline', 'bar'] as const).map((s) => (
                   <button
                     key={s}
                     type="button"
-                    onClick={() => setTerminalConfig(c => ({ ...c, cursorStyle: s }))}
+                    onClick={() => setTerminalConfig((c) => ({ ...c, cursorStyle: s }))}
                     className={css`
-                      padding:6px 16px;border-radius:4px;font-size:12px;cursor:pointer;
-                      border:1px solid ${terminalConfig.cursorStyle === s ? 'var(--color-brand)' : 'var(--border-color)'};
-                      background:${terminalConfig.cursorStyle === s ? 'rgba(123,104,238,0.15)' : 'transparent'};
-                      color:${terminalConfig.cursorStyle === s ? 'var(--color-brand)' : 'var(--text-secondary)'};
-                      &:hover{border-color:var(--color-brand);}
+                      padding: 6px 16px;
+                      border-radius: 4px;
+                      font-size: 12px;
+                      cursor: pointer;
+                      border: 1px solid
+                        ${terminalConfig.cursorStyle === s ? 'var(--color-brand)' : 'var(--border-color)'};
+                      background: ${terminalConfig.cursorStyle === s ? 'rgba(123,104,238,0.15)' : 'transparent'};
+                      color: ${terminalConfig.cursorStyle === s ? 'var(--color-brand)' : 'var(--text-secondary)'};
+                      &:hover {
+                        border-color: var(--color-brand);
+                      }
                     `}
                   >
                     {s === 'block' ? '█ Block' : s === 'underline' ? '▁ Underline' : '| Bar'}
@@ -1267,13 +1653,24 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
-            <label className={css`display:flex;align-items:center;gap:8px;cursor:pointer;`}>
+            <label
+              className={css`
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                cursor: pointer;
+              `}
+            >
               <input
                 type="checkbox"
                 checked={terminalConfig.cursorBlink}
-                onChange={e => setTerminalConfig(c => ({ ...c, cursorBlink: e.target.checked }))}
+                onChange={(e) =>
+                  setTerminalConfig((c) => ({ ...c, cursorBlink: e.target.checked }))
+                }
               />
-              <span className={styles.formLabel} style={{ margin: 0 }}>Cursor blink</span>
+              <span className={styles.formLabel} style={{ margin: 0 }}>
+                Cursor blink
+              </span>
             </label>
           </div>
 
@@ -1287,18 +1684,28 @@ export const SettingsView: React.FC = () => {
             <div style={{ maxWidth: 200 }}>
               <label className={styles.formLabel}>Scrollback Lines</label>
               <NumberField
-                min={100} max={100000}
+                min={100}
+                max={100000}
                 className={styles.integrationInput}
                 value={terminalConfig.scrollback}
-                onValueChange={v => setTerminalConfig(c => ({ ...c, scrollback: v }))}
+                onValueChange={(v) => setTerminalConfig((c) => ({ ...c, scrollback: v }))}
               />
             </div>
 
-            <label className={css`display:flex;align-items:center;gap:8px;cursor:pointer;`}>
+            <label
+              className={css`
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                cursor: pointer;
+              `}
+            >
               <input
                 type="checkbox"
                 checked={terminalConfig.macOptionIsMeta}
-                onChange={e => setTerminalConfig(c => ({ ...c, macOptionIsMeta: e.target.checked }))}
+                onChange={(e) =>
+                  setTerminalConfig((c) => ({ ...c, macOptionIsMeta: e.target.checked }))
+                }
               />
               <span className={styles.formLabel} style={{ margin: 0 }}>
                 Option key acts as Meta (macOS) — enables Option+B/F word-jump shortcuts
@@ -1313,37 +1720,128 @@ export const SettingsView: React.FC = () => {
               <span>Keybindings</span>
             </h3>
             <p className={styles.cardDescription}>
-              Every key combo is sent to the shell by default. Add a binding only to reserve a combo for a terminal action — use <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>passthrough</code> to force an otherwise-reserved combo back to the shell. Format: <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>ctrl+k</code>, <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>ctrl+shift+t</code>, <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>alt+b</code>. Modifiers: ctrl, alt, shift, meta.
+              Every key combo is sent to the shell by default. Add a binding only to reserve a combo
+              for a terminal action — use{' '}
+              <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>
+                passthrough
+              </code>{' '}
+              to force an otherwise-reserved combo back to the shell. Format:{' '}
+              <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>ctrl+k</code>,{' '}
+              <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>
+                ctrl+shift+t
+              </code>
+              , <code style={{ fontFamily: 'monospace', color: 'var(--color-brand)' }}>alt+b</code>.
+              Modifiers: ctrl, alt, shift, meta.
             </p>
 
             {terminalConfig.keybindings.length > 0 && (
-              <table className={css`width:100%;font-size:12px;border-collapse:collapse;`}>
+              <table
+                className={css`
+                  width: 100%;
+                  font-size: 12px;
+                  border-collapse: collapse;
+                `}
+              >
                 <thead>
-                  <tr className={css`color:var(--text-secondary);font-weight:700;text-transform:uppercase;font-size:10px;border-bottom:1px solid var(--border-color);`}>
-                    <th className={css`text-align:left;padding:6px 8px;`}>Key</th>
-                    <th className={css`text-align:left;padding:6px 8px;`}>Action</th>
-                    <th className={css`text-align:left;padding:6px 8px;`}>Text</th>
-                    <th className={css`padding:6px 8px;width:32px;`} />
+                  <tr
+                    className={css`
+                      color: var(--text-secondary);
+                      font-weight: 700;
+                      text-transform: uppercase;
+                      font-size: 10px;
+                      border-bottom: 1px solid var(--border-color);
+                    `}
+                  >
+                    <th
+                      className={css`
+                        text-align: left;
+                        padding: 6px 8px;
+                      `}
+                    >
+                      Key
+                    </th>
+                    <th
+                      className={css`
+                        text-align: left;
+                        padding: 6px 8px;
+                      `}
+                    >
+                      Action
+                    </th>
+                    <th
+                      className={css`
+                        text-align: left;
+                        padding: 6px 8px;
+                      `}
+                    >
+                      Text
+                    </th>
+                    <th
+                      className={css`
+                        padding: 6px 8px;
+                        width: 32px;
+                      `}
+                    />
                   </tr>
                 </thead>
                 <tbody>
                   {terminalConfig.keybindings.map((binding, idx) => (
-                    <tr key={idx} className={css`border-bottom:1px solid var(--border-color);`}>
-                      <td className={css`padding:6px 8px;font-family:var(--font-family-mono);color:var(--color-brand);`}>
+                    <tr
+                      key={idx}
+                      className={css`
+                        border-bottom: 1px solid var(--border-color);
+                      `}
+                    >
+                      <td
+                        className={css`
+                          padding: 6px 8px;
+                          font-family: var(--font-family-mono);
+                          color: var(--color-brand);
+                        `}
+                      >
                         {binding.key}
                       </td>
-                      <td className={css`padding:6px 8px;color:var(--text-primary);`}>{binding.action}</td>
-                      <td className={css`padding:6px 8px;font-family:var(--font-family-mono);color:var(--text-secondary);font-size:11px;`}>
+                      <td
+                        className={css`
+                          padding: 6px 8px;
+                          color: var(--text-primary);
+                        `}
+                      >
+                        {binding.action}
+                      </td>
+                      <td
+                        className={css`
+                          padding: 6px 8px;
+                          font-family: var(--font-family-mono);
+                          color: var(--text-secondary);
+                          font-size: 11px;
+                        `}
+                      >
                         {binding.text || '—'}
                       </td>
-                      <td className={css`padding:6px 8px;`}>
+                      <td
+                        className={css`
+                          padding: 6px 8px;
+                        `}
+                      >
                         <button
                           type="button"
-                          onClick={() => setTerminalConfig(c => ({
-                            ...c,
-                            keybindings: c.keybindings.filter((_, i) => i !== idx),
-                          }))}
-                          className={css`background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:14px;&:hover{color:var(--color-error);}`}
+                          onClick={() =>
+                            setTerminalConfig((c) => ({
+                              ...c,
+                              keybindings: c.keybindings.filter((_, i) => i !== idx),
+                            }))
+                          }
+                          className={css`
+                            background: none;
+                            border: none;
+                            cursor: pointer;
+                            color: var(--text-secondary);
+                            font-size: 14px;
+                            &:hover {
+                              color: var(--color-error);
+                            }
+                          `}
                         >
                           ✕
                         </button>
@@ -1355,28 +1853,52 @@ export const SettingsView: React.FC = () => {
             )}
 
             {/* Add new binding */}
-            <div className={css`display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;`}>
-              <div className={css`display:flex;flex-direction:column;gap:4px;min-width:110px;`}>
+            <div
+              className={css`
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+                align-items: flex-end;
+              `}
+            >
+              <div
+                className={css`
+                  display: flex;
+                  flex-direction: column;
+                  gap: 4px;
+                  min-width: 110px;
+                `}
+              >
                 <label className={styles.formLabel}>Key Combo</label>
                 <Input
                   type="text"
                   className={styles.integrationInput}
                   value={newBinding.key}
-                  onChange={e => setNewBinding(b => ({ ...b, key: e.target.value.toLowerCase() }))}
+                  onChange={(e) =>
+                    setNewBinding((b) => ({ ...b, key: e.target.value.toLowerCase() }))
+                  }
                   placeholder="ctrl+k"
                   spellCheck={false}
                 />
               </div>
 
-              <div className={css`display:flex;flex-direction:column;gap:4px;`}>
+              <div
+                className={css`
+                  display: flex;
+                  flex-direction: column;
+                  gap: 4px;
+                `}
+              >
                 <label className={styles.formLabel}>Action</label>
                 <select
                   className={styles.integrationInput}
                   value={newBinding.action}
-                  onChange={e => setNewBinding(b => ({
-                    ...b,
-                    action: e.target.value as TerminalKeybinding['action'],
-                  }))}
+                  onChange={(e) =>
+                    setNewBinding((b) => ({
+                      ...b,
+                      action: e.target.value as TerminalKeybinding['action'],
+                    }))
+                  }
                 >
                   <option value="clear">clear</option>
                   <option value="scroll-top">scroll-top</option>
@@ -1389,13 +1911,21 @@ export const SettingsView: React.FC = () => {
               </div>
 
               {newBinding.action === 'send-text' && (
-                <div className={css`display:flex;flex-direction:column;gap:4px;flex:1;min-width:120px;`}>
+                <div
+                  className={css`
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    flex: 1;
+                    min-width: 120px;
+                  `}
+                >
                   <label className={styles.formLabel}>Text / Sequence</label>
                   <Input
                     type="text"
                     className={styles.integrationInput}
                     value={newBinding.text ?? ''}
-                    onChange={e => setNewBinding(b => ({ ...b, text: e.target.value }))}
+                    onChange={(e) => setNewBinding((b) => ({ ...b, text: e.target.value }))}
                     placeholder="e.g. clear\n"
                     spellCheck={false}
                   />
@@ -1406,17 +1936,28 @@ export const SettingsView: React.FC = () => {
                 type="button"
                 disabled={!newBinding.key.trim()}
                 onClick={() => {
-                  setTerminalConfig(c => ({
+                  setTerminalConfig((c) => ({
                     ...c,
                     keybindings: [...c.keybindings, { ...newBinding, key: newBinding.key.trim() }],
                   }));
                   setNewBinding({ key: '', action: 'clear', text: '' });
                 }}
                 className={css`
-                  padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
-                  cursor:pointer;border:1px solid var(--color-brand);color:var(--color-brand);background:transparent;
-                  &:hover:not(:disabled){background:rgba(123,104,238,0.1);}
-                  &:disabled{opacity:0.4;cursor:not-allowed;}
+                  padding: 8px 16px;
+                  border-radius: var(--border-radius-sm);
+                  font-size: 12px;
+                  font-weight: 700;
+                  cursor: pointer;
+                  border: 1px solid var(--color-brand);
+                  color: var(--color-brand);
+                  background: transparent;
+                  &:hover:not(:disabled) {
+                    background: rgba(123, 104, 238, 0.1);
+                  }
+                  &:disabled {
+                    opacity: 0.4;
+                    cursor: not-allowed;
+                  }
                 `}
               >
                 + Add
@@ -1432,42 +1973,157 @@ export const SettingsView: React.FC = () => {
             </h3>
             <p className={styles.cardDescription}>
               Configure the floating action bar in each terminal. Actions inject their text into the
-              active terminal — commands or full prompts for CLI agents. Variables like
-              {' '}<code>{'{{terminal_output}}'}</code> are expanded at paste time.
+              active terminal — commands or full prompts for CLI agents. Variables like{' '}
+              <code>{'{{terminal_output}}'}</code> are expanded at paste time.
             </p>
 
             {quickActions.length > 0 && (
-              <table className={css`width:100%;font-size:12px;border-collapse:collapse;margin-bottom:16px;`}>
+              <table
+                className={css`
+                  width: 100%;
+                  font-size: 12px;
+                  border-collapse: collapse;
+                  margin-bottom: 16px;
+                `}
+              >
                 <thead>
-                  <tr className={css`color:var(--text-secondary);font-weight:700;text-transform:uppercase;font-size:10px;border-bottom:1px solid var(--border-color);`}>
-                    <th className={css`text-align:left;padding:6px 8px;`}>Label</th>
-                    <th className={css`text-align:left;padding:6px 8px;`}>Icon</th>
-                    <th className={css`text-align:left;padding:6px 8px;`}>Command / Prompt</th>
-                    <th className={css`text-align:left;padding:6px 8px;`}>Auto Run</th>
-                    <th className={css`text-align:left;padding:6px 8px;`}>Color</th>
-                    <th className={css`padding:6px 8px;width:64px;`} />
+                  <tr
+                    className={css`
+                      color: var(--text-secondary);
+                      font-weight: 700;
+                      text-transform: uppercase;
+                      font-size: 10px;
+                      border-bottom: 1px solid var(--border-color);
+                    `}
+                  >
+                    <th
+                      className={css`
+                        text-align: left;
+                        padding: 6px 8px;
+                      `}
+                    >
+                      Label
+                    </th>
+                    <th
+                      className={css`
+                        text-align: left;
+                        padding: 6px 8px;
+                      `}
+                    >
+                      Icon
+                    </th>
+                    <th
+                      className={css`
+                        text-align: left;
+                        padding: 6px 8px;
+                      `}
+                    >
+                      Command / Prompt
+                    </th>
+                    <th
+                      className={css`
+                        text-align: left;
+                        padding: 6px 8px;
+                      `}
+                    >
+                      Auto Run
+                    </th>
+                    <th
+                      className={css`
+                        text-align: left;
+                        padding: 6px 8px;
+                      `}
+                    >
+                      Color
+                    </th>
+                    <th
+                      className={css`
+                        padding: 6px 8px;
+                        width: 64px;
+                      `}
+                    />
                   </tr>
                 </thead>
                 <tbody>
                   {quickActions.map((action, idx) => {
                     const isEditing = editingQuickActionId === action.id;
                     return (
-                      <tr key={action.id || idx} className={css`border-bottom:1px solid var(--border-color); ${isEditing ? 'background: rgba(123, 104, 238, 0.05);' : ''}`}>
-                        <td className={css`padding:6px 8px;font-weight:600;color:var(--text-primary);`}>{action.label}</td>
-                        <td className={css`padding:6px 8px;color:var(--text-secondary);`}>{action.iconName || 'Terminal'}</td>
-                        <td className={css`padding:6px 8px;font-family:var(--font-family-mono);color:var(--color-brand);font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`}>
+                      <tr
+                        key={action.id || idx}
+                        className={css`
+                          border-bottom: 1px solid var(--border-color);
+                          ${isEditing ? 'background: rgba(123, 104, 238, 0.05);' : ''}
+                        `}
+                      >
+                        <td
+                          className={css`
+                            padding: 6px 8px;
+                            font-weight: 600;
+                            color: var(--text-primary);
+                          `}
+                        >
+                          {action.label}
+                        </td>
+                        <td
+                          className={css`
+                            padding: 6px 8px;
+                            color: var(--text-secondary);
+                          `}
+                        >
+                          {action.iconName || 'Terminal'}
+                        </td>
+                        <td
+                          className={css`
+                            padding: 6px 8px;
+                            font-family: var(--font-family-mono);
+                            color: var(--color-brand);
+                            font-size: 11px;
+                            max-width: 220px;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                            white-space: nowrap;
+                          `}
+                        >
                           {action.command}
                         </td>
-                        <td className={css`padding:6px 8px;color:var(--text-secondary);font-size:11px;`}>
+                        <td
+                          className={css`
+                            padding: 6px 8px;
+                            color: var(--text-secondary);
+                            font-size: 11px;
+                          `}
+                        >
                           {action.autoExecute ? 'Yes' : 'No'}
                         </td>
-                        <td className={css`padding:6px 8px;`}>
+                        <td
+                          className={css`
+                            padding: 6px 8px;
+                          `}
+                        >
                           {action.color && (
-                            <div className={css`width:16px;height:16px;border-radius:50%;background:${action.color};border:1px solid rgba(255,255,255,0.1);`} />
+                            <div
+                              className={css`
+                                width: 16px;
+                                height: 16px;
+                                border-radius: 50%;
+                                background: ${action.color};
+                                border: 1px solid rgba(255, 255, 255, 0.1);
+                              `}
+                            />
                           )}
                         </td>
-                        <td className={css`padding:6px 8px;`}>
-                          <div className={css`display:flex;gap:10px;align-items:center;`}>
+                        <td
+                          className={css`
+                            padding: 6px 8px;
+                          `}
+                        >
+                          <div
+                            className={css`
+                              display: flex;
+                              gap: 10px;
+                              align-items: center;
+                            `}
+                          >
                             <button
                               type="button"
                               onClick={() => {
@@ -1478,11 +2134,19 @@ export const SettingsView: React.FC = () => {
                                   command: action.command,
                                   autoExecute: action.autoExecute,
                                   iconName: action.iconName,
-                                  color: action.color
+                                  color: action.color,
                                 });
                                 setQuickActionPreviewMode('edit');
                               }}
-                              className={css`background:none;border:none;cursor:pointer;color:${isEditing ? 'var(--color-brand)' : 'var(--text-secondary)'};&:hover{color:var(--color-brand);}`}
+                              className={css`
+                                background: none;
+                                border: none;
+                                cursor: pointer;
+                                color: ${isEditing ? 'var(--color-brand)' : 'var(--text-secondary)'};
+                                &:hover {
+                                  color: var(--color-brand);
+                                }
+                              `}
                               title="Edit action"
                             >
                               <Edit2 size={13} />
@@ -1492,15 +2156,29 @@ export const SettingsView: React.FC = () => {
                               onClick={() => {
                                 if (isEditing) {
                                   setEditingQuickActionId(null);
-                                  setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
+                                  setNewQuickAction({
+                                    id: '',
+                                    label: '',
+                                    command: '',
+                                    autoExecute: false,
+                                  });
                                 }
-                                setQuickActions(prev => {
+                                setQuickActions((prev) => {
                                   const next = prev.filter((_, i) => i !== idx);
                                   updateSettings({ quickActions: next });
                                   return next;
                                 });
                               }}
-                              className={css`background:none;border:none;cursor:pointer;color:var(--text-secondary);font-size:14px;&:hover{color:var(--color-error);}`}
+                              className={css`
+                                background: none;
+                                border: none;
+                                cursor: pointer;
+                                color: var(--text-secondary);
+                                font-size: 14px;
+                                &:hover {
+                                  color: var(--color-error);
+                                }
+                              `}
                               title="Delete action"
                             >
                               ✕
@@ -1516,16 +2194,25 @@ export const SettingsView: React.FC = () => {
 
             {/* Quick-fill from vault */}
             {savedPrompts && savedPrompts.length > 0 && (
-              <div className={css`margin-bottom:16px;max-width:320px;display:flex;flex-direction:column;gap:4px;`}>
+              <div
+                className={css`
+                  margin-bottom: 16px;
+                  max-width: 320px;
+                  display: flex;
+                  flex-direction: column;
+                  gap: 4px;
+                `}
+              >
                 <label className={styles.formLabel}>Quick-Fill from Prompt Vault</label>
                 <Select
                   value=""
-                  onChange={val => {
-                    const prompt = savedPrompts.find(p => p.id === val);
+                  onChange={(val) => {
+                    const prompt = savedPrompts.find((p) => p.id === val);
                     if (prompt) {
-                      setNewQuickAction(a => ({
+                      setNewQuickAction((a) => ({
                         ...a,
-                        label: prompt.title.length > 15 ? prompt.title.substring(0, 15) : prompt.title,
+                        label:
+                          prompt.title.length > 15 ? prompt.title.substring(0, 15) : prompt.title,
                         command: prompt.content,
                         autoExecute: false,
                         iconName: 'Sparkles',
@@ -1535,77 +2222,148 @@ export const SettingsView: React.FC = () => {
                   }}
                   options={[
                     { value: '', name: 'Choose a prompt to copy...' },
-                    ...savedPrompts.map(p => ({
+                    ...savedPrompts.map((p) => ({
                       value: p.id,
                       name: p.title,
-                      description: p.content.length > 60 ? p.content.substring(0, 58) + '...' : p.content
-                    }))
+                      description:
+                        p.content.length > 60 ? p.content.substring(0, 58) + '...' : p.content,
+                    })),
                   ]}
                 />
               </div>
             )}
 
             {/* Add / Edit quick action form */}
-            <div className={css`
-              display: flex; flex-direction: column; gap: 12px; padding: 14px;
-              background-color: var(--bg-tertiary); border: 1px solid var(--border-color);
-              border-radius: var(--border-radius-md);
-            `}>
-              <div className={css`display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;`}>
-                <div className={css`display:flex;flex-direction:column;gap:4px;min-width:140px;`}>
+            <div
+              className={css`
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                padding: 14px;
+                background-color: var(--bg-tertiary);
+                border: 1px solid var(--border-color);
+                border-radius: var(--border-radius-md);
+              `}
+            >
+              <div
+                className={css`
+                  display: flex;
+                  gap: 12px;
+                  flex-wrap: wrap;
+                  align-items: flex-end;
+                `}
+              >
+                <div
+                  className={css`
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    min-width: 140px;
+                  `}
+                >
                   <label className={styles.formLabel}>Label</label>
                   <Input
                     type="text"
                     className={styles.integrationInput}
                     value={newQuickAction.label}
-                    onChange={e => setNewQuickAction(a => ({ ...a, label: e.target.value }))}
+                    onChange={(e) => setNewQuickAction((a) => ({ ...a, label: e.target.value }))}
                     placeholder="e.g. Status or Explain Error"
                   />
                 </div>
 
-                <div className={css`display:flex;flex-direction:column;gap:4px;min-width:130px;`}>
+                <div
+                  className={css`
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    min-width: 130px;
+                  `}
+                >
                   <label className={styles.formLabel}>Icon</label>
                   <Select
                     value={newQuickAction.iconName || 'Terminal'}
-                    onChange={v => setNewQuickAction(a => ({ ...a, iconName: v }))}
+                    onChange={(v) => setNewQuickAction((a) => ({ ...a, iconName: v }))}
                     options={COMMON_ICONS}
                   />
                 </div>
 
-                <div className={css`display:flex;flex-direction:column;gap:4px;min-width:90px;`}>
+                <div
+                  className={css`
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    min-width: 90px;
+                  `}
+                >
                   <label className={styles.formLabel}>Color (opt)</label>
                   <Input
                     type="text"
                     className={styles.integrationInput}
                     value={newQuickAction.color || ''}
-                    onChange={e => setNewQuickAction(a => ({ ...a, color: e.target.value }))}
+                    onChange={(e) => setNewQuickAction((a) => ({ ...a, color: e.target.value }))}
                     placeholder="#a855f7"
                   />
                 </div>
 
-                <label className={css`display:flex;align-items:center;gap:6px;cursor:pointer;padding-bottom:10px;`}>
+                <label
+                  className={css`
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    cursor: pointer;
+                    padding-bottom: 10px;
+                  `}
+                >
                   <input
                     type="checkbox"
                     checked={newQuickAction.autoExecute}
-                    onChange={e => setNewQuickAction(a => ({ ...a, autoExecute: e.target.checked }))}
+                    onChange={(e) =>
+                      setNewQuickAction((a) => ({ ...a, autoExecute: e.target.checked }))
+                    }
                   />
-                  <span className={styles.formLabel} style={{ margin: 0 }}>Auto-run</span>
+                  <span className={styles.formLabel} style={{ margin: 0 }}>
+                    Auto-run
+                  </span>
                 </label>
               </div>
 
               {/* Command / Prompt Input */}
-              <div className={css`display:flex;flex-direction:column;gap:6px;`}>
-                <div className={css`display:flex;align-items:center;justify-content:space-between;`}>
+              <div
+                className={css`
+                  display: flex;
+                  flex-direction: column;
+                  gap: 6px;
+                `}
+              >
+                <div
+                  className={css`
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                  `}
+                >
                   <label className={styles.formLabel}>Command / Prompt (Markdown)</label>
-                  <div className={css`display:flex;gap:4px;`}>
+                  <div
+                    className={css`
+                      display: flex;
+                      gap: 4px;
+                    `}
+                  >
                     <button
                       type="button"
                       onClick={() => setQuickActionPreviewMode('edit')}
                       className={css`
-                        display:inline-flex;align-items:center;gap:4px;background:${quickActionPreviewMode === 'edit' ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
-                        border:1px solid ${quickActionPreviewMode === 'edit' ? 'var(--color-brand)' : 'var(--border-color)'};
-                        color:${quickActionPreviewMode === 'edit' ? 'var(--color-brand)' : 'var(--text-secondary)'};
-                        font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 4px;
+                        background: ${quickActionPreviewMode === 'edit' ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
+                        border: 1px solid
+                          ${quickActionPreviewMode === 'edit' ? 'var(--color-brand)' : 'var(--border-color)'};
+                        color: ${quickActionPreviewMode === 'edit' ? 'var(--color-brand)' : 'var(--text-secondary)'};
+                        font-size: 11px;
+                        padding: 2px 8px;
+                        border-radius: 4px;
+                        cursor: pointer;
                       `}
                     >
                       <Edit3 size={11} />
@@ -1615,10 +2373,17 @@ export const SettingsView: React.FC = () => {
                       type="button"
                       onClick={() => setQuickActionPreviewMode('preview')}
                       className={css`
-                        display:inline-flex;align-items:center;gap:4px;background:${quickActionPreviewMode === 'preview' ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
-                        border:1px solid ${quickActionPreviewMode === 'preview' ? 'var(--color-brand)' : 'var(--border-color)'};
-                        color:${quickActionPreviewMode === 'preview' ? 'var(--color-brand)' : 'var(--text-secondary)'};
-                        font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 4px;
+                        background: ${quickActionPreviewMode === 'preview' ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
+                        border: 1px solid
+                          ${quickActionPreviewMode === 'preview' ? 'var(--color-brand)' : 'var(--border-color)'};
+                        color: ${quickActionPreviewMode === 'preview' ? 'var(--color-brand)' : 'var(--text-secondary)'};
+                        font-size: 11px;
+                        padding: 2px 8px;
+                        border-radius: 4px;
+                        cursor: pointer;
                       `}
                     >
                       <Eye size={11} />
@@ -1628,18 +2393,32 @@ export const SettingsView: React.FC = () => {
                 </div>
 
                 {quickActionPreviewMode === 'preview' ? (
-                  <div className={css`
-                    background-color: var(--bg-primary); border: 1px solid var(--border-color);
-                    border-radius: 6px; padding: 10px 12px; min-height: 90px; max-height: 180px; overflow-y: auto;
-                  `}>
+                  <div
+                    className={css`
+                      background-color: var(--bg-primary);
+                      border: 1px solid var(--border-color);
+                      border-radius: 6px;
+                      padding: 10px 12px;
+                      min-height: 90px;
+                      max-height: 180px;
+                      overflow-y: auto;
+                    `}
+                  >
                     <MarkdownViewer content={newQuickAction.command || '*Nothing entered yet.*'} />
                   </div>
                 ) : (
                   <textarea
                     rows={3}
-                    className={cx(styles.integrationInput, css`font-family: var(--font-family-mono); resize: vertical; min-height: 70px;`)}
+                    className={cx(
+                      styles.integrationInput,
+                      css`
+                        font-family: var(--font-family-mono);
+                        resize: vertical;
+                        min-height: 70px;
+                      `
+                    )}
                     value={newQuickAction.command}
-                    onChange={e => setNewQuickAction(a => ({ ...a, command: e.target.value }))}
+                    onChange={(e) => setNewQuickAction((a) => ({ ...a, command: e.target.value }))}
                     placeholder="e.g. git status — or a prompt like:
 
 Explain this error:
@@ -1651,18 +2430,46 @@ Explain this error:
                 )}
 
                 {/* Variables are expanded from live terminal context when the action injects */}
-                <div className={css`display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text-tertiary);`}>
+                <div
+                  className={css`
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    flex-wrap: wrap;
+                    font-size: 11px;
+                    color: var(--text-tertiary);
+                  `}
+                >
                   <span>Click to insert (expanded at paste time):</span>
-                  {['{{selection}}', '{{terminal_output}}', '{{workspace_name}}', '{{workspace_path}}'].map(v => (
+                  {[
+                    '{{selection}}',
+                    '{{terminal_output}}',
+                    '{{workspace_name}}',
+                    '{{workspace_path}}',
+                  ].map((v) => (
                     <button
                       key={v}
                       type="button"
-                      onClick={() => setNewQuickAction(a => ({ ...a, command: (a.command ? a.command + ' ' : '') + v }))}
+                      onClick={() =>
+                        setNewQuickAction((a) => ({
+                          ...a,
+                          command: (a.command ? a.command + ' ' : '') + v,
+                        }))
+                      }
                       className={css`
-                        background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color);
-                        color: var(--text-secondary); border-radius: 4px; padding: 2px 6px;
-                        font-family: var(--font-family-mono); font-size: 10px; cursor: pointer;
-                        &:hover { background: rgba(59, 130, 246, 0.15); border-color: var(--color-brand); color: var(--color-brand); }
+                        background: rgba(255, 255, 255, 0.05);
+                        border: 1px solid var(--border-color);
+                        color: var(--text-secondary);
+                        border-radius: 4px;
+                        padding: 2px 6px;
+                        font-family: var(--font-family-mono);
+                        font-size: 10px;
+                        cursor: pointer;
+                        &:hover {
+                          background: rgba(59, 130, 246, 0.15);
+                          border-color: var(--color-brand);
+                          color: var(--color-brand);
+                        }
                       `}
                     >
                       {v}
@@ -1671,21 +2478,32 @@ Explain this error:
                 </div>
               </div>
 
-              <div className={css`display:flex;justify-content:flex-end;gap:8px;padding-top:4px;`}>
+              <div
+                className={css`
+                  display: flex;
+                  justify-content: flex-end;
+                  gap: 8px;
+                  padding-top: 4px;
+                `}
+              >
                 {editingQuickActionId ? (
                   <>
                     <button
                       type="button"
                       disabled={!newQuickAction.label.trim() || !newQuickAction.command.trim()}
                       onClick={() => {
-                        setQuickActions(prev => {
-                          const next = prev.map(a => a.id === editingQuickActionId ? {
-                            ...newQuickAction,
-                            label: newQuickAction.label.trim(),
-                            command: newQuickAction.command.trim(),
-                            iconName: newQuickAction.iconName?.trim() || undefined,
-                            color: newQuickAction.color?.trim() || undefined,
-                          } : a);
+                        setQuickActions((prev) => {
+                          const next = prev.map((a) =>
+                            a.id === editingQuickActionId
+                              ? {
+                                  ...newQuickAction,
+                                  label: newQuickAction.label.trim(),
+                                  command: newQuickAction.command.trim(),
+                                  iconName: newQuickAction.iconName?.trim() || undefined,
+                                  color: newQuickAction.color?.trim() || undefined,
+                                }
+                              : a
+                          );
                           updateSettings({ quickActions: next });
                           return next;
                         });
@@ -1693,10 +2511,21 @@ Explain this error:
                         setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
                       }}
                       className={css`
-                        padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
-                        cursor:pointer;background:var(--color-brand);color:#fff;border:1px solid var(--color-brand);
-                        &:hover:not(:disabled){filter:brightness(1.15);}
-                        &:disabled{opacity:0.4;cursor:not-allowed;}
+                        padding: 8px 16px;
+                        border-radius: var(--border-radius-sm);
+                        font-size: 12px;
+                        font-weight: 700;
+                        cursor: pointer;
+                        background: var(--color-brand);
+                        color: #fff;
+                        border: 1px solid var(--color-brand);
+                        &:hover:not(:disabled) {
+                          filter: brightness(1.15);
+                        }
+                        &:disabled {
+                          opacity: 0.4;
+                          cursor: not-allowed;
+                        }
                       `}
                     >
                       Save Action
@@ -1708,9 +2537,17 @@ Explain this error:
                         setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
                       }}
                       className={css`
-                        padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
-                        cursor:pointer;border:1px solid var(--border-color);color:var(--text-secondary);background:transparent;
-                        &:hover{background:var(--bg-hover);}
+                        padding: 8px 16px;
+                        border-radius: var(--border-radius-sm);
+                        font-size: 12px;
+                        font-weight: 700;
+                        cursor: pointer;
+                        border: 1px solid var(--border-color);
+                        color: var(--text-secondary);
+                        background: transparent;
+                        &:hover {
+                          background: var(--bg-hover);
+                        }
                       `}
                     >
                       Cancel
@@ -1721,25 +2558,39 @@ Explain this error:
                     type="button"
                     disabled={!newQuickAction.label.trim() || !newQuickAction.command.trim()}
                     onClick={() => {
-                      setQuickActions(prev => {
-                        const next = [...prev, {
-                          ...newQuickAction,
-                          id: 'qa-' + Date.now().toString(36),
-                          label: newQuickAction.label.trim(),
-                          command: newQuickAction.command.trim(),
-                          iconName: newQuickAction.iconName?.trim() || undefined,
-                          color: newQuickAction.color?.trim() || undefined,
-                        }];
+                      setQuickActions((prev) => {
+                        const next = [
+                          ...prev,
+                          {
+                            ...newQuickAction,
+                            id: 'qa-' + Date.now().toString(36),
+                            label: newQuickAction.label.trim(),
+                            command: newQuickAction.command.trim(),
+                            iconName: newQuickAction.iconName?.trim() || undefined,
+                            color: newQuickAction.color?.trim() || undefined,
+                          },
+                        ];
                         updateSettings({ quickActions: next });
                         return next;
                       });
                       setNewQuickAction({ id: '', label: '', command: '', autoExecute: false });
                     }}
                     className={css`
-                      padding:8px 16px;border-radius:var(--border-radius-sm);font-size:12px;font-weight:700;
-                      cursor:pointer;border:1px solid var(--color-brand);color:var(--color-brand);background:transparent;
-                      &:hover:not(:disabled){background:rgba(123,104,238,0.1);}
-                      &:disabled{opacity:0.4;cursor:not-allowed;}
+                      padding: 8px 16px;
+                      border-radius: var(--border-radius-sm);
+                      font-size: 12px;
+                      font-weight: 700;
+                      cursor: pointer;
+                      border: 1px solid var(--color-brand);
+                      color: var(--color-brand);
+                      background: transparent;
+                      &:hover:not(:disabled) {
+                        background: rgba(123, 104, 238, 0.1);
+                      }
+                      &:disabled {
+                        opacity: 0.4;
+                        cursor: not-allowed;
+                      }
                     `}
                   >
                     + Add Quick Action
@@ -1749,13 +2600,23 @@ Explain this error:
             </div>
           </div>
 
-          <div className={css`display:flex;justify-content:flex-end;padding-bottom:8px;`}>
+          <div
+            className={css`
+              display: flex;
+              justify-content: flex-end;
+              padding-bottom: 8px;
+            `}
+          >
             <button
               type="button"
               className={styles.amberButton}
               onClick={() => {
                 const path = (useCustomPath ? customShellPath : defaultShell).trim();
-                updateSettings(path ? { shellPath: path, terminalConfig, quickActions } : { terminalConfig, quickActions });
+                updateSettings(
+                  path
+                    ? { shellPath: path, terminalConfig, quickActions }
+                    : { terminalConfig, quickActions }
+                );
                 showToast('Terminal settings saved', 'success');
               }}
             >
@@ -1831,13 +2692,13 @@ Explain this error:
 
                 <div>
                   <Select
-                    label='Status'
+                    label="Status"
                     value={projStatus}
-                    onChange={v => setProjStatus(v as Workspace['status'])}
+                    onChange={(v) => setProjStatus(v as Workspace['status'])}
                     options={[
                       { value: 'active', name: 'Active' },
                       { value: 'paused', name: 'Paused' },
-                      { value: 'idle',   name: 'Idle'   },
+                      { value: 'idle', name: 'Idle' },
                     ]}
                   />
                 </div>
@@ -1851,10 +2712,7 @@ Explain this error:
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className={styles.modalSubmitButton}
-                >
+                <button type="submit" className={styles.modalSubmitButton}>
                   Update Workspace
                 </button>
               </div>
@@ -1862,7 +2720,6 @@ Explain this error:
           </div>
         </div>
       )}
-
     </div>
   );
 };
@@ -1944,7 +2801,9 @@ const styles = {
     pointer-events: none;
     filter: grayscale(0.5);
     user-select: none;
-    transition: opacity 0.2s, filter 0.2s;
+    transition:
+      opacity 0.2s,
+      filter 0.2s;
   `,
   integrationsCard: css`
     padding: var(--spacing-lg);
@@ -2005,7 +2864,7 @@ const styles = {
     color: var(--text-primary);
     transition: all 0.2s ease-in-out;
     cursor: pointer;
-    
+
     &:hover {
       background-color: var(--bg-hover);
     }
@@ -2041,7 +2900,7 @@ const styles = {
     transition: all 0.2s ease-in-out;
     box-shadow: var(--shadow-brand);
     cursor: pointer;
-    
+
     &:hover {
       filter: brightness(1.06);
     }
@@ -2059,7 +2918,7 @@ const styles = {
     font-weight: var(--font-weight-bold);
     transition: all 0.2s ease-in-out;
     cursor: pointer;
-    
+
     &:hover {
       background-color: var(--bg-hover);
     }
@@ -2081,7 +2940,7 @@ const styles = {
     display: grid;
     grid-template-columns: 1fr;
     gap: 16px;
-    
+
     @media (min-width: 768px) {
       grid-template-columns: repeat(2, 1fr);
     }
@@ -2103,7 +2962,7 @@ const styles = {
     color: var(--text-primary);
     outline: none;
     transition: all 0.15s ease-in-out;
-    
+
     &:focus {
       border-color: var(--color-brand);
       box-shadow: 0 0 0 1px var(--color-brand);
@@ -2125,7 +2984,7 @@ const styles = {
     transition: all 0.2s ease-in-out;
     box-shadow: var(--shadow-brand);
     cursor: pointer;
-    
+
     &:hover {
       filter: brightness(1.06);
     }
@@ -2177,7 +3036,7 @@ const styles = {
   tr: css`
     border-bottom: 1px solid var(--border-color);
     transition: background-color 0.2s ease;
-    
+
     &:hover {
       background-color: var(--bg-hover);
     }
@@ -2273,7 +3132,7 @@ const styles = {
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease-in-out;
-    
+
     &:hover {
       background-color: var(--bg-hover);
       color: var(--text-primary);
@@ -2290,7 +3149,7 @@ const styles = {
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease-in-out;
-    
+
     &:hover {
       background-color: rgba(239, 68, 68, 0.1);
       color: var(--color-error);
@@ -2329,10 +3188,14 @@ const styles = {
     background-color: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(4px);
     animation: fadeIn 0.2s ease-out;
-    
+
     @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
     }
   `,
   modalContent: css`
@@ -2341,13 +3204,21 @@ const styles = {
     border-radius: var(--border-radius-lg);
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-lg), 0 0 20px rgba(123, 104, 238, 0.15);
+    box-shadow:
+      var(--shadow-lg),
+      0 0 20px rgba(123, 104, 238, 0.15);
     padding: var(--spacing-lg);
     animation: slideUp 0.25s ease-out;
-    
+
     @keyframes slideUp {
-      from { transform: translateY(16px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
+      from {
+        transform: translateY(16px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
     }
   `,
   modalTitle: css`
@@ -2371,7 +3242,7 @@ const styles = {
     color: var(--text-primary);
     outline: none;
     transition: all 0.15s ease-in-out;
-    
+
     &:focus {
       border-color: var(--color-brand);
       box-shadow: 0 0 0 1px var(--color-brand);
@@ -2389,7 +3260,7 @@ const styles = {
     font-family: inherit;
     resize: vertical;
     transition: all 0.15s ease-in-out;
-    
+
     &:focus {
       border-color: var(--color-brand);
       box-shadow: 0 0 0 1px var(--color-brand);
@@ -2418,7 +3289,7 @@ const styles = {
     border-radius: var(--border-radius-sm);
     cursor: pointer;
     transition: all 0.2s ease-in-out;
-    
+
     &:hover {
       color: var(--text-primary);
       border-color: var(--border-color-hover);
@@ -2462,10 +3333,18 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color 0.15s, background-color 0.15s;
+    transition:
+      color 0.15s,
+      background-color 0.15s;
 
-    &:hover:not(:disabled) { color: var(--text-primary); background-color: var(--bg-hover); }
-    &:disabled { opacity: 0.4; cursor: not-allowed; }
+    &:hover:not(:disabled) {
+      color: var(--text-primary);
+      background-color: var(--bg-hover);
+    }
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
   `,
   refreshIcon: css`
     width: 14px;
@@ -2474,8 +3353,12 @@ const styles = {
   spin: css`
     animation: settingsSpin 1s linear infinite;
     @keyframes settingsSpin {
-      from { transform: rotate(0deg); }
-      to   { transform: rotate(360deg); }
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
     }
   `,
   modelsError: css`
@@ -2499,13 +3382,17 @@ const styles = {
     text-underline-offset: 2px;
     align-self: flex-start;
 
-    &:hover { filter: brightness(1.15); }
+    &:hover {
+      filter: brightness(1.15);
+    }
   `,
   shellHelperText: css`
     font-size: var(--font-size-xs);
     color: var(--text-secondary);
     margin-top: 2px;
 
-    strong { color: var(--text-primary); }
+    strong {
+      color: var(--text-primary);
+    }
   `,
 };

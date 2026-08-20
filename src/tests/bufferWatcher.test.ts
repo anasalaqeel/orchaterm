@@ -9,7 +9,9 @@ const listeners: Record<string, (e: any) => void> = {};
 beforeEach(() => {
   vi.mocked(listen).mockImplementation(((name: string, cb: any) => {
     listeners[name] = cb;
-    return Promise.resolve(() => { delete listeners[name]; });
+    return Promise.resolve(() => {
+      delete listeners[name];
+    });
   }) as any);
 });
 
@@ -28,10 +30,10 @@ describe('bufferWatcher buffer cap', () => {
     await bufferWatcher.watchForNeeds(sid, () => {});
 
     feed(sid, 'X'.repeat(300 * 1024)); // single chunk already over the cap
-    feed(sid, 'END');                  // newest bytes — must survive
+    feed(sid, 'END'); // newest bytes — must survive
 
     const buf = bufferWatcher.getBuffer(sid);
-    expect(buf.length).toBe(CAP);      // bounded, not unbounded
+    expect(buf.length).toBe(CAP); // bounded, not unbounded
     expect(buf.endsWith('END')).toBe(true); // tail (recent output) retained
 
     bufferWatcher.unwatch(sid);
@@ -71,7 +73,7 @@ describe('bufferWatcher sentinel scan throttle', () => {
     feed(
       sid,
       '###ORCHATERM_DONE###\ntask_id: t1\nsummary: Did the thing.\n' +
-      'files_modified: none\nneeds: none\n###ORCHATERM_END###\n',
+        'files_modified: none\nneeds: none\n###ORCHATERM_END###\n'
     );
 
     expect(onSentinel).toHaveBeenCalledTimes(1);
@@ -97,7 +99,7 @@ describe('bufferWatcher sentinel scan throttle', () => {
     feed(
       sid,
       '###ORCHATERM_DONE###\ntask_id: t2\nsummary: Did the thing.\n' +
-      'files_modified: none\nneeds: none\n###ORCHATERM_END###\n',
+        'files_modified: none\nneeds: none\n###ORCHATERM_END###\n'
     );
     expect(onSentinel).not.toHaveBeenCalled();
 

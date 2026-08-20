@@ -21,7 +21,9 @@ describe('GeminiProvider.complete', () => {
       }),
     });
     const provider = new GeminiProvider({
-      provider: 'gemini', model: 'gemini-1.5-flash', apiKey: 'test-key',
+      provider: 'gemini',
+      model: 'gemini-1.5-flash',
+      apiKey: 'test-key',
     });
     const result = await provider.complete([{ role: 'user', content: 'Hi' }], 'Be brief');
     expect(result).toBe('Gemini reply');
@@ -35,11 +37,19 @@ describe('GeminiProvider.complete', () => {
 
   it('throws on non-ok response', async () => {
     mockFetch.mockResolvedValue({
-      ok: false, status: 400, statusText: 'Bad Request',
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
       json: async () => ({ error: { message: 'Invalid API key' } }),
     });
-    const provider = new GeminiProvider({ provider: 'gemini', model: 'gemini-1.5-flash', apiKey: 'bad' });
-    await expect(provider.complete([{ role: 'user', content: 'Hi' }])).rejects.toThrow('Invalid API key');
+    const provider = new GeminiProvider({
+      provider: 'gemini',
+      model: 'gemini-1.5-flash',
+      apiKey: 'bad',
+    });
+    await expect(provider.complete([{ role: 'user', content: 'Hi' }])).rejects.toThrow(
+      'Invalid API key'
+    );
   });
 });
 
@@ -54,14 +64,22 @@ describe('GeminiProvider.listModels', () => {
         ],
       }),
     });
-    const provider = new GeminiProvider({ provider: 'gemini', model: 'gemini-1.5-flash', apiKey: 'k' });
+    const provider = new GeminiProvider({
+      provider: 'gemini',
+      model: 'gemini-1.5-flash',
+      apiKey: 'k',
+    });
     const models = await provider.listModels();
-    expect(models).toEqual(['gemini-1.5-flash']);   // embedding filtered out
+    expect(models).toEqual(['gemini-1.5-flash']); // embedding filtered out
   });
 
   it('rejects on error so the UI can surface the reason', async () => {
     mockFetch.mockRejectedValue(new Error('timeout'));
-    const provider = new GeminiProvider({ provider: 'gemini', model: 'gemini-1.5-flash', apiKey: 'k' });
+    const provider = new GeminiProvider({
+      provider: 'gemini',
+      model: 'gemini-1.5-flash',
+      apiKey: 'k',
+    });
     await expect(provider.listModels()).rejects.toThrow('timeout');
   });
 });

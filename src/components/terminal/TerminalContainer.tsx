@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { createPortal } from "react-dom";
-import { TerminalTab, TerminalTabHandle } from "./TerminalTab";
-import { useDashboard } from "../../context/DashboardContext";
-import { invoke } from "@tauri-apps/api/core";
-import { Plus, X, Terminal, Edit2, Check, ChevronDown, Minimize2, Loader2 } from "lucide-react";
-import { css, cx } from "@emotion/css";
-import type { TerminalSession, InterruptPolicy } from "../../types";
-import { loadTerminalTabs, saveTerminalTabs } from "../../services/storage";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { TerminalTab, TerminalTabHandle } from './TerminalTab';
+import { useDashboard } from '../../context/DashboardContext';
+import { invoke } from '@tauri-apps/api/core';
+import { Plus, X, Terminal, Edit2, Check, ChevronDown, Minimize2, Loader2 } from 'lucide-react';
+import { css, cx } from '@emotion/css';
+import type { TerminalSession, InterruptPolicy } from '../../types';
+import { loadTerminalTabs, saveTerminalTabs } from '../../services/storage';
 import { Input, ErrorBoundary } from '../ui';
-import { useSplitTree, findNodeById, collectLeafSessionIds } from "../../hooks/useSplitTree";
-import { computeSplitLayout, type DividerRect } from "../../utils/splitLayout";
+import { useSplitTree, findNodeById, collectLeafSessionIds } from '../../hooks/useSplitTree';
+import { computeSplitLayout, type DividerRect } from '../../utils/splitLayout';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -26,7 +26,7 @@ interface TerminalContainerProps {
   active?: boolean;
 }
 
-type DropEdge = "left" | "right" | "top" | "bottom";
+type DropEdge = 'left' | 'right' | 'top' | 'bottom';
 
 interface HoveredDrop {
   leafId: string;
@@ -36,14 +36,14 @@ interface HoveredDrop {
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const TAB_COLOR_PRESETS = [
-  "#7B68EE",
-  "#10b981",
-  "#3b82f6",
-  "#8b5cf6",
-  "#ec4899",
-  "#ef4444",
-  "#06b6d4",
-  "#84cc16",
+  '#7B68EE',
+  '#10b981',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+  '#ef4444',
+  '#06b6d4',
+  '#84cc16',
 ];
 
 // Derives the closest drop edge from cursor position inside an element.
@@ -59,12 +59,12 @@ function detectDropEdge(e: React.DragEvent): DropEdge {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function shellBasename(path: string): string {
-  const part = path.replace(/\\/g, "/").split("/").pop() ?? path;
-  return part.replace(/\.(exe|cmd|bat|sh)$/i, "");
+  const part = path.replace(/\\/g, '/').split('/').pop() ?? path;
+  return part.replace(/\.(exe|cmd|bat|sh)$/i, '');
 }
 
 function findPreferredShell(shells: ShellInfo[], shellPath: string): ShellInfo | null {
-  const saved = (shellPath ?? "").trim();
+  const saved = (shellPath ?? '').trim();
   if (!saved || shells.length === 0) return null;
   const savedBase = shellBasename(saved).toLowerCase();
   let best: ShellInfo | null = null;
@@ -107,14 +107,14 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const [selectedShell, setSelectedShell] = useState<ShellInfo | null>(null);
   const [shellPickerOpen, setShellPickerOpen] = useState(false);
   const [shellDropdownPos, setShellDropdownPos] = useState<{ top: number; left: number } | null>(
-    null,
+    null
   );
   const shellPickerRef = useRef<HTMLDivElement>(null);
   const selectedShellRef = useRef<ShellInfo | null>(null);
   selectedShellRef.current = selectedShell;
 
   useEffect(() => {
-    invoke<ShellInfo[]>("get_available_shells")
+    invoke<ShellInfo[]>('get_available_shells')
       .then((shells) => {
         if (shells.length === 0) return;
         setAvailableShells(shells);
@@ -122,8 +122,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       })
       .catch(() => {
         const fallback: ShellInfo = {
-          name: shellBasename(settings.shellPath) || "Shell",
-          path: settings.shellPath || "",
+          name: shellBasename(settings.shellPath) || 'Shell',
+          path: settings.shellPath || '',
           args: [],
         };
         setAvailableShells([fallback]);
@@ -145,15 +145,15 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         setShellPickerOpen(false);
       }
     };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
   }, [shellPickerOpen]);
 
   // ── Session state ────────────────────────────────────────────────────────
   const [isInitializing, setIsInitializing] = useState(true);
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
+  const [editingTitle, setEditingTitle] = useState('');
   const tabCounter = useRef(0);
   const registeredIds = useRef<Set<string>>(new Set());
 
@@ -203,7 +203,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const treeLayout = useMemo(
     () => computeSplitLayout(tree, 0, 0, containerSize.width, containerSize.height, 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tree, containerSize.width, containerSize.height],
+    [tree, containerSize.width, containerSize.height]
   );
   const treeLayoutRef = useRef(treeLayout);
   treeLayoutRef.current = treeLayout;
@@ -242,7 +242,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     const el = tabsListRef.current;
     if (!el) return;
     checkScroll();
-    
+
     el.addEventListener('scroll', checkScroll, { passive: true });
     window.addEventListener('resize', checkScroll, { passive: true });
     return () => {
@@ -298,7 +298,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       cancelAnimationFrame(id1);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleSessionIds.join(","), active, activeSessionId]);
+  }, [visibleSessionIds.join(','), active, activeSessionId]);
 
   // ── Color picker ─────────────────────────────────────────────────────────
   const [colorPickerOpenId, setColorPickerOpenId] = useState<string | null>(null);
@@ -307,7 +307,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
   // ── Interrupt policy menu ────────────────────────────────────────────────
   const [policyMenu, setPolicyMenu] = useState<{ sessionId: string; x: number; y: number } | null>(
-    null,
+    null
   );
 
   useEffect(() => {
@@ -317,8 +317,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         setColorPickerOpenId(null);
       }
     };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
   }, [colorPickerOpenId]);
 
   // ── Tab bar drag-to-reorder state ────────────────────────────────────────
@@ -336,8 +336,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       setIsDraggingTab(false);
       setHoveredDrop(null);
     };
-    window.addEventListener("dragend", cleanup);
-    return () => window.removeEventListener("dragend", cleanup);
+    window.addEventListener('dragend', cleanup);
+    return () => window.removeEventListener('dragend', cleanup);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -359,7 +359,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions.map((s) => s.id).join(","), workspaceId]);
+  }, [sessions.map((s) => s.id).join(','), workspaceId]);
 
   // Synchronize changes from global terminalSessions (like isCheckpointing status) back to local sessions
   useEffect(() => {
@@ -390,7 +390,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
   useEffect(() => {
     if (prevWorkspaceId.current !== workspaceId) {
-      sessions.forEach((s) => invoke("kill_pty", { sessionId: s.id }).catch(() => {}));
+      sessions.forEach((s) => invoke('kill_pty', { sessionId: s.id }).catch(() => {}));
       tabRefs.current.clear();
     }
     prevWorkspaceId.current = workspaceId;
@@ -398,7 +398,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
     const restoreOrCreate = async () => {
       const shell = selectedShellRef.current;
-      const shellPath = shell?.path ?? settings.shellPath ?? "";
+      const shellPath = shell?.path ?? settings.shellPath ?? '';
       const shellArgs = shell?.args ?? [];
       const shellName = shell?.name ?? shellBasename(shellPath);
       const allTabs = await loadTerminalTabs();
@@ -425,11 +425,11 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 workspaceId,
                 color: tab.color,
                 order: i,
-                interruptPolicy: "always" as const,
+                interruptPolicy: 'always' as const,
               };
             });
           setSessions(restored);
-          
+
           if (!isLegacy && saved.groups && saved.activeGroupId) {
             initializeGroups(saved.groups, saved.activeGroupId);
           } else {
@@ -448,7 +448,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
               workspaceId,
               color: null,
               order: 0,
-              interruptPolicy: "always",
+              interruptPolicy: 'always',
             },
           ]);
           resetTree(defaultId);
@@ -466,7 +466,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
             workspaceId,
             color: null,
             order: 0,
-            interruptPolicy: "always",
+            interruptPolicy: 'always',
           },
         ]);
         resetTree(defaultId);
@@ -480,7 +480,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
     return () => {
       cancelled = true;
-      sessions.forEach((s) => invoke("kill_pty", { sessionId: s.id }).catch(() => {}));
+      sessions.forEach((s) => invoke('kill_pty', { sessionId: s.id }).catch(() => {}));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, scopeKey]);
@@ -529,13 +529,13 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         tabRefs.current.get(sessionId)?.current?.focus();
       });
     },
-    [switchSession],
+    [switchSession]
   );
 
   const createNewTab = useCallback(
     (shell?: ShellInfo) => {
       const s = shell ?? selectedShellRef.current;
-      const shellPath = s?.path ?? settings.shellPath ?? "";
+      const shellPath = s?.path ?? settings.shellPath ?? '';
       const shellArgs = s?.args ?? [];
       const shellName = s?.name ?? shellBasename(shellPath);
       tabCounter.current += 1;
@@ -549,25 +549,25 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         workspaceId,
         color: null,
         order: tabCounter.current - 1,
-        interruptPolicy: "always",
+        interruptPolicy: 'always',
       };
       setSessions((prev) => [...prev, newSession]);
       requestAnimationFrame(() => {
         switchTab(newId);
       });
     },
-    [settings.shellPath, workspaceId, switchTab],
+    [settings.shellPath, workspaceId, switchTab]
   );
 
   const closeTab = useCallback(
     (sessionId: string, e?: React.MouseEvent) => {
       e?.stopPropagation();
-      invoke("kill_pty", { sessionId }).catch(() => {});
+      invoke('kill_pty', { sessionId }).catch(() => {});
       tabRefs.current.delete(sessionId);
       removePanesBySession(sessionId);
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     },
-    [removePanesBySession],
+    [removePanesBySession]
   );
 
   const collapsePaneAnimated = useCallback(
@@ -575,12 +575,16 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       setLeavingPaneIds((prev) => new Set([...prev, sessionId]));
       setTimeout(() => {
         closePane(leafId);
-        setLeavingPaneIds((prev) => { const n = new Set(prev); n.delete(sessionId); return n; });
+        setLeavingPaneIds((prev) => {
+          const n = new Set(prev);
+          n.delete(sessionId);
+          return n;
+        });
         // Automatically switch to the newly detached tab
         switchTab(sessionId);
       }, 180);
     },
-    [closePane, switchTab],
+    [closePane, switchTab]
   );
 
   // ── Rename ───────────────────────────────────────────────────────────────
@@ -594,7 +598,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const saveRename = (id: string) => {
     if (editingTitle.trim()) {
       setSessions((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, title: editingTitle.trim() } : s)),
+        prev.map((s) => (s.id === id ? { ...s, title: editingTitle.trim() } : s))
       );
       updateTerminalSession(id, { title: editingTitle.trim() });
     }
@@ -602,8 +606,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   };
 
   const handleRenameKeyDown = (id: string, e: React.KeyboardEvent) => {
-    if (e.key === "Enter") saveRename(id);
-    else if (e.key === "Escape") setEditingSessionId(null);
+    if (e.key === 'Enter') saveRename(id);
+    else if (e.key === 'Escape') setEditingSessionId(null);
   };
 
   // ── Color picker ─────────────────────────────────────────────────────────
@@ -624,7 +628,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const handlePolicySelect = (policy: InterruptPolicy) => {
     if (!policyMenu) return;
     setSessions((prev) =>
-      prev.map((s) => (s.id === policyMenu.sessionId ? { ...s, interruptPolicy: policy } : s)),
+      prev.map((s) => (s.id === policyMenu.sessionId ? { ...s, interruptPolicy: policy } : s))
     );
     updateTerminalSession(policyMenu.sessionId, { interruptPolicy: policy });
     setPolicyMenu(null);
@@ -637,25 +641,25 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     draggingSessionIdRef.current = id;
     setDragId(id);
     setIsDraggingTab(true);
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
 
     // Styled ghost — tilted clone that follows the cursor
     const el = e.currentTarget as HTMLElement;
     const rect = el.getBoundingClientRect();
     const ghost = el.cloneNode(true) as HTMLElement;
     Object.assign(ghost.style, {
-      position: "fixed",
-      top: "-9999px",
-      left: "-9999px",
+      position: 'fixed',
+      top: '-9999px',
+      left: '-9999px',
       width: `${rect.width}px`,
       height: `${rect.height}px`,
-      margin: "0",
-      transform: "rotate(-2deg) scale(1.08)",
-      boxShadow: "0 10px 30px rgba(0,0,0,0.55), 0 0 0 1.5px rgba(123,104,238,0.6)",
-      borderRadius: "8px",
-      opacity: "1",
-      pointerEvents: "none",
+      margin: '0',
+      transform: 'rotate(-2deg) scale(1.08)',
+      boxShadow: '0 10px 30px rgba(0,0,0,0.55), 0 0 0 1.5px rgba(123,104,238,0.6)',
+      borderRadius: '8px',
+      opacity: '1',
+      pointerEvents: 'none',
     });
     document.body.appendChild(ghost);
     e.dataTransfer.setDragImage(ghost, e.nativeEvent.offsetX, e.nativeEvent.offsetY);
@@ -664,7 +668,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
   const handleDragOver = (e: React.DragEvent, id: string) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
+    e.dataTransfer.dropEffect = 'move';
     if (id !== dragIdRef.current) setDragOverId(id);
   };
 
@@ -759,8 +763,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     (leafId: string, edge: DropEdge) => {
       const sessionId = draggingSessionIdRef.current;
       if (!sessionId) return;
-      const before = edge === "left" || edge === "top";
-      const direction = edge === "left" || edge === "right" ? "h" : "v";
+      const before = edge === 'left' || edge === 'top';
+      const direction = edge === 'left' || edge === 'right' ? 'h' : 'v';
       moveSession(sessionId, leafId, direction, before);
       dragIdRef.current = null;
       draggingSessionIdRef.current = null;
@@ -774,7 +778,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         }
       });
     },
-    [moveSession],
+    [moveSession]
   );
 
   // ── Divider drag resize ───────────────────────────────────────────────────
@@ -789,18 +793,18 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     (e: React.MouseEvent, divider: DividerRect) => {
       e.preventDefault();
       const containerNode = findNodeById(treeRef.current, divider.containerId);
-      if (!containerNode || containerNode.type !== "split") return;
+      if (!containerNode || containerNode.type !== 'split') return;
 
       dividerDragRef.current = {
         divider,
-        startPos: divider.direction === "h" ? e.clientX : e.clientY,
+        startPos: divider.direction === 'h' ? e.clientX : e.clientY,
         startRatios: [...containerNode.ratios],
       };
 
       const onMove = (ev: MouseEvent) => {
         const drag = dividerDragRef.current;
         if (!drag) return;
-        const currentPos = drag.divider.direction === "h" ? ev.clientX : ev.clientY;
+        const currentPos = drag.divider.direction === 'h' ? ev.clientX : ev.clientY;
         const delta = currentPos - drag.startPos;
         const deltaRatio = delta / drag.divider.containerAvailableSize;
         const { childIndex } = drag.divider;
@@ -811,14 +815,14 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         const sum = newRatios.reduce((a, b) => a + b, 0);
         setRatios(
           drag.divider.containerId,
-          newRatios.map((r) => r / sum),
+          newRatios.map((r) => r / sum)
         );
       };
 
       const onUp = () => {
         dividerDragRef.current = null;
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
         requestAnimationFrame(() => {
           for (const sid of visibleSessionIdsRef.current) {
             tabRefs.current.get(sid)?.current?.fit();
@@ -826,10 +830,10 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         });
       };
 
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
     },
-    [setRatios],
+    [setRatios]
   );
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -857,12 +861,16 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
               const renderedGroupIds = new Set<string>();
               const elements: React.ReactNode[] = [];
 
-              const renderTab = (session: TerminalSession, groupIdx: number, inSplitGroup: boolean) => {
+              const renderTab = (
+                session: TerminalSession,
+                groupIdx: number,
+                inSplitGroup: boolean
+              ) => {
                 const isActive = session.id === activeSessionId;
                 const isEditing = session.id === editingSessionId;
                 const isDragging = session.id === dragId;
                 const isDragOver = session.id === dragOverId;
-                const tabColor = session.color ?? "#7B68EE";
+                const tabColor = session.color ?? '#7B68EE';
                 const isColorPickerOpen = session.id === colorPickerOpenId;
 
                 return (
@@ -879,15 +887,24 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       styles.tab,
                       inSplitGroup ? styles.groupedTab : undefined,
                       inSplitGroup
-                        ? (isActive ? styles.groupedActiveTab : styles.groupedInactiveTab)
-                        : (isActive ? styles.activeTab : styles.inactiveTab),
+                        ? isActive
+                          ? styles.groupedActiveTab
+                          : styles.groupedInactiveTab
+                        : isActive
+                          ? styles.activeTab
+                          : styles.inactiveTab,
                       isDragging && styles.tabDragging,
-                      isDragOver && styles.tabDragOver,
+                      isDragOver && styles.tabDragOver
                     )}
                     style={isActive ? { borderTopColor: tabColor } : undefined}
                   >
                     {inSplitGroup && (
-                      <span className={cx(styles.paneBadge, isActive ? styles.paneBadgeActive : styles.paneBadgeInactive)}>
+                      <span
+                        className={cx(
+                          styles.paneBadge,
+                          isActive ? styles.paneBadgeActive : styles.paneBadgeInactive
+                        )}
+                      >
                         {groupIdx + 1}
                       </span>
                     )}
@@ -907,8 +924,12 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                     >
                       <span
                         className={cx(styles.colorDot, isActive && styles.colorDotActive)}
-                        style={{ backgroundColor: session.color ?? (isActive ? "var(--color-brand)" : "var(--bg-tertiary)") }}
-                        title={isActive ? "Change tab color" : undefined}
+                        style={{
+                          backgroundColor:
+                            session.color ??
+                            (isActive ? 'var(--color-brand)' : 'var(--bg-tertiary)'),
+                        }}
+                        title={isActive ? 'Change tab color' : undefined}
                       />
                     </div>
                     {isEditing ? (
@@ -933,43 +954,67 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                     )}
 
                     {session.isCheckpointing && (
-                      <span className={css`
-                        font-size: 10px;
-                        background: var(--bg-secondary);
-                        color: var(--text-primary);
-                        border: 1px solid var(--border-color);
-                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-                        padding: 2px 8px;
-                        border-radius: 12px;
-                        font-weight: 500;
-                        margin-left: 8px;
-                        display: inline-flex;
-                        align-items: center;
-                        gap: 5px;
-                        white-space: nowrap;
-                        animation: pulse-toast 2s infinite ease-in-out;
-                        @keyframes pulse-toast {
-                          0% { opacity: 0.8; transform: scale(0.98); }
-                          50% { opacity: 1; transform: scale(1); }
-                          100% { opacity: 0.8; transform: scale(0.98); }
-                        }
-                      `}>
-                        <Loader2 className={css`
-                          width: 8px;
-                          height: 8px;
-                          animation: spin 1s linear infinite;
-                          color: var(--color-brand);
-                        `} />
+                      <span
+                        className={css`
+                          font-size: 10px;
+                          background: var(--bg-secondary);
+                          color: var(--text-primary);
+                          border: 1px solid var(--border-color);
+                          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+                          padding: 2px 8px;
+                          border-radius: 12px;
+                          font-weight: 500;
+                          margin-left: 8px;
+                          display: inline-flex;
+                          align-items: center;
+                          gap: 5px;
+                          white-space: nowrap;
+                          animation: pulse-toast 2s infinite ease-in-out;
+                          @keyframes pulse-toast {
+                            0% {
+                              opacity: 0.8;
+                              transform: scale(0.98);
+                            }
+                            50% {
+                              opacity: 1;
+                              transform: scale(1);
+                            }
+                            100% {
+                              opacity: 0.8;
+                              transform: scale(0.98);
+                            }
+                          }
+                        `}
+                      >
+                        <Loader2
+                          className={css`
+                            width: 8px;
+                            height: 8px;
+                            animation: spin 1s linear infinite;
+                            color: var(--color-brand);
+                          `}
+                        />
                         Generating Checkpoint...
                       </span>
                     )}
-                    <div className={cx(styles.tabActions, "tab-actions-btn-group")}>
+                    <div className={cx(styles.tabActions, 'tab-actions-btn-group')}>
                       {!isEditing && (
-                        <button onClick={(e) => { e.stopPropagation(); startRename(session.id, session.title, e); }} className={styles.tabActionBtn} title="Rename tab">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startRename(session.id, session.title, e);
+                          }}
+                          className={styles.tabActionBtn}
+                          title="Rename tab"
+                        >
                           <Edit2 className={styles.tinyIcon} />
                         </button>
                       )}
-                      <button onClick={(e) => closeTab(session.id, e)} className={styles.closeTabBtn} title="Close tab">
+                      <button
+                        onClick={(e) => closeTab(session.id, e)}
+                        className={styles.closeTabBtn}
+                        title="Close tab"
+                      >
                         <X className={styles.tinyIcon} />
                       </button>
                     </div>
@@ -978,17 +1023,19 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
               };
 
               for (const session of sessions) {
-                const group = groups.find((g) => collectLeafSessionIds(g.tree).includes(session.id));
+                const group = groups.find((g) =>
+                  collectLeafSessionIds(g.tree).includes(session.id)
+                );
                 if (!group) continue;
                 if (renderedGroupIds.has(group.id)) continue;
-                
+
                 renderedGroupIds.add(group.id);
-                
+
                 const groupLeafSessionIds = collectLeafSessionIds(group.tree);
                 const groupSessions = groupLeafSessionIds
                   .map((id) => sessions.find((s) => s.id === id))
                   .filter((s): s is TerminalSession => !!s);
-                  
+
                 const isGroupSplit = groupSessions.length > 1;
 
                 if (isGroupSplit) {
@@ -1001,7 +1048,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   elements.push(renderTab(groupSessions[0], -1, false));
                 }
               }
-              
+
               return elements;
             })()}
           </div>
@@ -1012,7 +1059,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         <div className={styles.newTabWrapper}>
           <button
             className={styles.newTabBtn}
-            title={`New tab${selectedShell ? ` (${selectedShell.name})` : ""}`}
+            title={`New tab${selectedShell ? ` (${selectedShell.name})` : ''}`}
             onClick={() => createNewTab()}
           >
             <Plus className={styles.smallIcon} />
@@ -1059,7 +1106,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                     key={c}
                     className={cx(
                       styles.colorSwatch,
-                      pickerSession.color === c && styles.colorSwatchActive,
+                      pickerSession.color === c && styles.colorSwatchActive
                     )}
                     style={{ backgroundColor: c }}
                     onClick={() => setTabColor(pickerSession.id, c)}
@@ -1077,7 +1124,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 )}
               </div>
             </div>,
-            document.body,
+            document.body
           );
         })()}
 
@@ -1099,7 +1146,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   key={shell.path + shell.name}
                   className={cx(
                     styles.shellDropdownItem,
-                    isLastUsed && styles.shellDropdownItemActive,
+                    isLastUsed && styles.shellDropdownItemActive
                   )}
                   onClick={() => {
                     setSelectedShell(shell);
@@ -1115,64 +1162,64 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
               );
             })}
           </div>,
-          document.body,
+          document.body
         )}
 
       {policyMenu &&
         createPortal(
           <>
             <div
-              style={{ position: "fixed", inset: 0, zIndex: 99 }}
+              style={{ position: 'fixed', inset: 0, zIndex: 99 }}
               onClick={() => setPolicyMenu(null)}
             />
             <div
               style={{
-                position: "fixed",
+                position: 'fixed',
                 top: policyMenu.y,
                 left: policyMenu.x,
                 zIndex: 100,
-                background: "var(--bg-secondary)",
-                border: "1px solid var(--border-color)",
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border-color)',
                 borderRadius: 6,
-                padding: "4px 0",
+                padding: '4px 0',
                 minWidth: 210,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
                 fontSize: 12,
               }}
             >
               <div
                 style={{
-                  padding: "4px 12px 6px",
+                  padding: '4px 12px 6px',
                   fontSize: 10,
-                  color: "var(--text-tertiary)",
+                  color: 'var(--text-tertiary)',
                   fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
                 }}
               >
                 Auto-inject policy
               </div>
-              {(["never", "prompt-only", "always"] as const).map((policy) => {
+              {(['never', 'prompt-only', 'always'] as const).map((policy) => {
                 const sess = sessions.find((s) => s.id === policyMenu.sessionId);
                 const active = sess?.interruptPolicy === policy;
                 const labels: Record<InterruptPolicy, string> = {
-                  never: "🔒 Never — block all injections",
-                  "prompt-only": "⏸ Prompt only — wait for idle",
-                  always: "⚡ Always — inject immediately",
+                  never: '🔒 Never — block all injections',
+                  'prompt-only': '⏸ Prompt only — wait for idle',
+                  always: '⚡ Always — inject immediately',
                 };
                 return (
                   <button
                     key={policy}
                     onClick={() => handlePolicySelect(policy)}
                     style={{
-                      display: "block",
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "6px 12px",
-                      background: active ? "rgba(123,104,238,0.12)" : "transparent",
-                      border: "none",
-                      color: active ? "var(--color-brand)" : "var(--text-secondary)",
-                      cursor: "pointer",
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '6px 12px',
+                      background: active ? 'rgba(123,104,238,0.12)' : 'transparent',
+                      border: 'none',
+                      color: active ? 'var(--color-brand)' : 'var(--text-secondary)',
+                      cursor: 'pointer',
                       fontSize: 12,
                       fontWeight: active ? 700 : 400,
                     }}
@@ -1184,8 +1231,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
               <div
                 style={{
                   height: 1,
-                  background: "var(--border-color)",
-                  margin: "4px 0",
+                  background: 'var(--border-color)',
+                  margin: '4px 0',
                 }}
               />
               <button
@@ -1195,22 +1242,22 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   await captureSessionNow(id);
                 }}
                 style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "8px 12px",
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--text-primary)",
-                  cursor: "pointer",
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
                   fontSize: 12,
                   fontWeight: 500,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.background = 'transparent';
                 }}
               >
                 📷 Create Checkpoint Now
@@ -1220,8 +1267,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   <div
                     style={{
                       height: 1,
-                      background: "var(--border-color)",
-                      margin: "4px 0",
+                      background: 'var(--border-color)',
+                      margin: '4px 0',
                     }}
                   />
                   <button
@@ -1230,22 +1277,22 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       setPolicyMenu(null);
                     }}
                     style={{
-                      display: "block",
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "8px 12px",
-                      background: "transparent",
-                      border: "none",
-                      color: "var(--text-primary)",
-                      cursor: "pointer",
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 12px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
                       fontSize: 12,
                       fontWeight: 500,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "transparent";
+                      e.currentTarget.style.background = 'transparent';
                     }}
                   >
                     💉 Inject Last Checkpoint...
@@ -1254,7 +1301,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
               )}
             </div>
           </>,
-          document.body,
+          document.body
         )}
 
       {/* Terminal viewports */}
@@ -1284,12 +1331,12 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   className={cx(
                     pane ? styles.paneWrapper : undefined,
                     pane && animatingPaneIds.has(session.id) && styles.paneEntering,
-                    pane && leavingPaneIds.has(session.id) && styles.paneLeaving,
+                    pane && leavingPaneIds.has(session.id) && styles.paneLeaving
                   )}
                   style={
                     pane
                       ? {
-                          position: "absolute",
+                          position: 'absolute',
                           top: pane.top,
                           left: pane.left,
                           width: pane.width,
@@ -1297,9 +1344,9 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                           zIndex: 1,
                         }
                       : {
-                          position: "absolute",
-                          visibility: "hidden",
-                          pointerEvents: "none",
+                          position: 'absolute',
+                          visibility: 'hidden',
+                          pointerEvents: 'none',
                           inset: 0,
                         }
                   }
@@ -1317,8 +1364,12 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       <div className={styles.paneError}>
                         <span>This terminal crashed.</span>
                         <div className={styles.paneErrorActions}>
-                          <button onClick={reset} className={styles.launchBtn}>Reload</button>
-                          <button onClick={() => closeTab(session.id)} className={styles.launchBtn}>Close tab</button>
+                          <button onClick={reset} className={styles.launchBtn}>
+                            Reload
+                          </button>
+                          <button onClick={() => closeTab(session.id)} className={styles.launchBtn}>
+                            Close tab
+                          </button>
                         </div>
                       </div>
                     )}
@@ -1338,21 +1389,24 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       {isActivePane && (
                         <div
                           style={{
-                            position: "absolute",
+                            position: 'absolute',
                             inset: 0,
-                            border: "1.5px solid var(--color-brand)",
-                            pointerEvents: "none",
+                            border: '1.5px solid var(--color-brand)',
+                            pointerEvents: 'none',
                             zIndex: 25,
-                            boxSizing: "border-box",
+                            boxSizing: 'border-box',
                           }}
                         />
                       )}
                       <button
                         data-pane-close=""
                         className={styles.paneCloseBtn}
-                        style={{ position: "absolute", top: 4, right: 4, zIndex: 26 }}
+                        style={{ position: 'absolute', top: 4, right: 4, zIndex: 26 }}
                         title="Collapse to tab"
-                        onClick={(e) => { e.stopPropagation(); collapsePaneAnimated(pane.leafId, session.id); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          collapsePaneAnimated(pane.leafId, session.id);
+                        }}
                       >
                         <Minimize2 style={{ width: 11, height: 11 }} />
                       </button>
@@ -1368,10 +1422,10 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 key={`${div.containerId}-${div.childIndex}`}
                 className={cx(
                   styles.divider,
-                  div.direction === "h" ? styles.dividerH : styles.dividerV,
+                  div.direction === 'h' ? styles.dividerH : styles.dividerV
                 )}
                 style={{
-                  position: "absolute",
+                  position: 'absolute',
                   top: div.top,
                   left: div.left,
                   width: div.width,
@@ -1384,15 +1438,30 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
             {/* Drop zones — single overlay per pane; edge resolved from cursor distance */}
             {isDraggingTab &&
-              treeLayout.panes.filter((pane) => pane.sessionId !== draggingSessionIdRef.current).map((pane) => (
-                <div
-                  key={`zone-${pane.leafId}`}
-                  style={{ position: "absolute", top: pane.top, left: pane.left, width: pane.width, height: pane.height, zIndex: 50 }}
-                  onDragOver={(e) => { e.preventDefault(); setHoveredDrop({ leafId: pane.leafId, edge: detectDropEdge(e) }); }}
-                  onDragLeave={() => setHoveredDrop(null)}
-                  onDrop={(e) => { e.preventDefault(); handlePaneDrop(pane.leafId, detectDropEdge(e)); }}
-                />
-              ))}
+              treeLayout.panes
+                .filter((pane) => pane.sessionId !== draggingSessionIdRef.current)
+                .map((pane) => (
+                  <div
+                    key={`zone-${pane.leafId}`}
+                    style={{
+                      position: 'absolute',
+                      top: pane.top,
+                      left: pane.left,
+                      width: pane.width,
+                      height: pane.height,
+                      zIndex: 50,
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setHoveredDrop({ leafId: pane.leafId, edge: detectDropEdge(e) });
+                    }}
+                    onDragLeave={() => setHoveredDrop(null)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      handlePaneDrop(pane.leafId, detectDropEdge(e));
+                    }}
+                  />
+                ))}
 
             {/* Drop indicator — animated preview of where new pane will appear */}
             {hoveredDrop &&
@@ -1403,16 +1472,21 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 const hw = pane.width / 2;
                 const hh = pane.height / 2;
                 const ind: Record<DropEdge, React.CSSProperties> = {
-                  left:   { top: pane.top,        left: pane.left,      width: hw,         height: pane.height },
-                  right:  { top: pane.top,        left: pane.left + hw, width: hw,         height: pane.height },
-                  top:    { top: pane.top,        left: pane.left,      width: pane.width, height: hh          },
-                  bottom: { top: pane.top + hh,   left: pane.left,      width: pane.width, height: hh          },
+                  left: { top: pane.top, left: pane.left, width: hw, height: pane.height },
+                  right: { top: pane.top, left: pane.left + hw, width: hw, height: pane.height },
+                  top: { top: pane.top, left: pane.left, width: pane.width, height: hh },
+                  bottom: { top: pane.top + hh, left: pane.left, width: pane.width, height: hh },
                 };
                 return (
                   <div
                     key={`${hoveredDrop.leafId}-${edge}`}
                     className={styles.dropIndicator}
-                    style={{ position: "absolute", ...ind[edge], pointerEvents: "none", zIndex: 40 }}
+                    style={{
+                      position: 'absolute',
+                      ...ind[edge],
+                      pointerEvents: 'none',
+                      zIndex: 40,
+                    }}
                   />
                 );
               })()}
@@ -1473,8 +1547,12 @@ const styles = {
     z-index: 2;
     animation: fadeIn 0.15s ease-out;
     @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
     }
   `,
   scrollFadeRight: css`
@@ -1539,7 +1617,9 @@ const styles = {
   `,
   groupedTab: css`
     margin: 0 1px 0 0;
-    &:last-child { margin-right: 0; }
+    &:last-child {
+      margin-right: 0;
+    }
   `,
   groupedActiveTab: css`
     background-color: rgba(123, 104, 238, 0.2);
@@ -1595,9 +1675,15 @@ const styles = {
     box-shadow: -3px 0 0 0 var(--color-brand);
     animation: tabNudge 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
     @keyframes tabNudge {
-      0%   { transform: translateX(0); }
-      40%  { transform: translateX(-5px); }
-      100% { transform: translateX(0); }
+      0% {
+        transform: translateX(0);
+      }
+      40% {
+        transform: translateX(-5px);
+      }
+      100% {
+        transform: translateX(0);
+      }
     }
   `,
   dropIndicator: css`
@@ -1606,10 +1692,18 @@ const styles = {
     box-sizing: border-box;
     border-radius: 4px;
     animation: dropSnap 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
-    box-shadow: inset 0 0 20px rgba(123, 104, 238, 0.1), 0 0 12px rgba(123, 104, 238, 0.3);
+    box-shadow:
+      inset 0 0 20px rgba(123, 104, 238, 0.1),
+      0 0 12px rgba(123, 104, 238, 0.3);
     @keyframes dropSnap {
-      from { opacity: 0; transform: scale(0.94); }
-      to   { opacity: 1; transform: scale(1); }
+      from {
+        opacity: 0;
+        transform: scale(0.94);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
     }
   `,
   colorDotWrapper: css`
@@ -1899,8 +1993,12 @@ const styles = {
     transition: background 150ms ease;
     animation: dividerAppear 220ms ease-out;
     @keyframes dividerAppear {
-      from { opacity: 0; }
-      to   { opacity: 1; }
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
     }
     &:hover {
       background: var(--color-brand);
@@ -1920,16 +2018,28 @@ const styles = {
   paneEntering: css`
     animation: paneAppear 240ms cubic-bezier(0.16, 1, 0.3, 1);
     @keyframes paneAppear {
-      from { opacity: 0; transform: scale(0.97); }
-      to   { opacity: 1; transform: scale(1); }
+      from {
+        opacity: 0;
+        transform: scale(0.97);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
     }
   `,
   paneLeaving: css`
     animation: paneLeave 175ms ease-in forwards;
     pointer-events: none;
     @keyframes paneLeave {
-      from { opacity: 1; transform: scale(1); }
-      to   { opacity: 0; transform: scale(0.97); }
+      from {
+        opacity: 1;
+        transform: scale(1);
+      }
+      to {
+        opacity: 0;
+        transform: scale(0.97);
+      }
     }
   `,
   paneCloseBtn: css`

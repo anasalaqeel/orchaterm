@@ -61,7 +61,7 @@ export class AutonomousOrchestrator {
   onEvent(cb: (event: RoutingEvent) => void): () => void {
     this.eventListeners.push(cb);
     return () => {
-      this.eventListeners = this.eventListeners.filter(l => l !== cb);
+      this.eventListeners = this.eventListeners.filter((l) => l !== cb);
     };
   }
 
@@ -73,7 +73,7 @@ export class AutonomousOrchestrator {
   onActiveChange(cb: () => void): () => void {
     this.activeChangeListeners.push(cb);
     return () => {
-      this.activeChangeListeners = this.activeChangeListeners.filter(l => l !== cb);
+      this.activeChangeListeners = this.activeChangeListeners.filter((l) => l !== cb);
     };
   }
 
@@ -97,7 +97,7 @@ export class AutonomousOrchestrator {
       const onChunk = async (chunk: string) => {
         await this.onSummaryChunk(spaceConfig.spaceId, session, chunk);
       };
-      bufferWatcher.watchForSummary(session.id, onChunk).then(unsub => {
+      bufferWatcher.watchForSummary(session.id, onChunk).then((unsub) => {
         unsubscribers.push(unsub);
       });
     }
@@ -129,12 +129,12 @@ export class AutonomousOrchestrator {
   private async onSummaryChunk(
     spaceId: string,
     fromSession: SessionDescriptor,
-    chunk: string,
+    chunk: string
   ): Promise<void> {
     const active = this.activeSpaces.get(spaceId);
     if (!active) return;
 
-    const siblings = active.config.sessions.filter(s => s.id !== fromSession.id);
+    const siblings = active.config.sessions.filter((s) => s.id !== fromSession.id);
     if (siblings.length === 0) return;
 
     let decision: { type: 'no_relay' | 'inject'; targetTitle?: string; message?: string };
@@ -142,9 +142,15 @@ export class AutonomousOrchestrator {
       const { system, userContent } = buildRoutingPrompt(
         fromSession.title,
         chunk,
-        siblings.map(s => ({ title: s.title, recentOutput: bufferWatcher.getBuffer(s.id).slice(-600) })),
+        siblings.map((s) => ({
+          title: s.title,
+          recentOutput: bufferWatcher.getBuffer(s.id).slice(-600),
+        }))
       );
-      const response = await this.routingProvider.complete([{ role: 'user', content: userContent }], system);
+      const response = await this.routingProvider.complete(
+        [{ role: 'user', content: userContent }],
+        system
+      );
       const trimmed = response.trim();
 
       if (trimmed === 'NO_RELAY' || !trimmed.includes('INJECT')) {
@@ -162,8 +168,8 @@ export class AutonomousOrchestrator {
     if (decision.type === 'no_relay' || !decision.targetTitle || !decision.message) return;
 
     // Find the target session
-    const target = siblings.find(
-      s => s.title.toLowerCase().includes(decision.targetTitle!.toLowerCase())
+    const target = siblings.find((s) =>
+      s.title.toLowerCase().includes(decision.targetTitle!.toLowerCase())
     );
     if (!target) return;
 
@@ -177,7 +183,12 @@ export class AutonomousOrchestrator {
     const injection = `\n[Orchaterm from ${fromSession.title}]: ${decision.message}\r`;
     await writePtyChunked(target.id, injection).catch(() => {});
 
-    this.emit({ type: 'relayed', from: fromSession.title, to: target.title, message: decision.message });
+    this.emit({
+      type: 'relayed',
+      from: fromSession.title,
+      to: target.title,
+      message: decision.message,
+    });
   }
 
   private emit(event: RoutingEvent): void {

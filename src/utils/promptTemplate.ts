@@ -15,7 +15,10 @@ export interface PromptContext {
 
 export const TEMPLATE_VARIABLES = [
   { variable: '{{selection}}', description: 'Currently selected text in the active terminal' },
-  { variable: '{{terminal_output}}', description: 'Recent output buffer from the active terminal (~2000 chars)' },
+  {
+    variable: '{{terminal_output}}',
+    description: 'Recent output buffer from the active terminal (~2000 chars)',
+  },
   { variable: '{{workspace_name}}', description: 'Name of the currently active workspace' },
   { variable: '{{workspace_path}}', description: 'Filesystem path of the active workspace' },
   { variable: '{{space_name}}', description: 'Name of the current space (if selected)' },
@@ -26,10 +29,7 @@ export const TEMPLATE_VARIABLES = [
 /**
  * Interpolates variables within a prompt template string.
  */
-export function interpolatePromptTemplate(
-  template: string,
-  context: PromptContext = {}
-): string {
+export function interpolatePromptTemplate(template: string, context: PromptContext = {}): string {
   if (!template) return '';
 
   const now = new Date();

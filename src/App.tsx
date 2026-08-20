@@ -7,17 +7,17 @@ import { registerShortcut } from './services/keyboardManager';
 import { isTauri } from './services/storage';
 
 const ZOOM_STEP = 0.1;
-const ZOOM_MIN  = 0.5;
-const ZOOM_MAX  = 2.0;
-const ZOOM_KEY  = 'app-zoom';
-const TOAST_MS  = 1500;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2.0;
+const ZOOM_KEY = 'app-zoom';
+const TOAST_MS = 1500;
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 // Thin: providers + router only. Routes live in routes/AppRoutes.tsx.
 
 export default function App() {
-  const [zoomPct, setZoomPct]   = useState<number | null>(null);
-  const [visible, setVisible]   = useState(false);
+  const [zoomPct, setZoomPct] = useState<number | null>(null);
+  const [visible, setVisible] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -48,8 +48,8 @@ export default function App() {
       hideTimer.current = setTimeout(() => setVisible(false), TOAST_MS);
     };
 
-    const zoomIn    = () => applyZoom(current + ZOOM_STEP);
-    const zoomOut   = () => applyZoom(current - ZOOM_STEP);
+    const zoomIn = () => applyZoom(current + ZOOM_STEP);
+    const zoomOut = () => applyZoom(current - ZOOM_STEP);
     const zoomReset = () => applyZoom(1);
 
     // context: 'non-terminal' — zoom keys are reserved everywhere EXCEPT when a
@@ -59,7 +59,13 @@ export default function App() {
       // Ctrl+= (same physical key as + on most keyboards, no shift needed)
       registerShortcut({ key: '=', ctrl: true, context: 'non-terminal', handler: zoomIn }),
       // Ctrl++ (Shift+=) — some keyboards / locales send this
-      registerShortcut({ key: '+', ctrl: true, shift: true, context: 'non-terminal', handler: zoomIn }),
+      registerShortcut({
+        key: '+',
+        ctrl: true,
+        shift: true,
+        context: 'non-terminal',
+        handler: zoomIn,
+      }),
       // Ctrl+- (zoom out)
       registerShortcut({ key: '-', ctrl: true, context: 'non-terminal', handler: zoomOut }),
       // Ctrl+0 (reset)
@@ -67,7 +73,7 @@ export default function App() {
     ];
 
     return () => {
-      removals.forEach(r => r());
+      removals.forEach((r) => r());
       if (hideTimer.current) clearTimeout(hideTimer.current);
     };
   }, []);
@@ -80,33 +86,39 @@ export default function App() {
         <AppRoutes />
         <div
           style={{
-            position:        'fixed',
-            bottom:          '28px',
-            left:            '50%',
-            transform:       `translateX(-50%) scale(${visible ? 1 : 0.88})`,
-            opacity:         visible ? 1 : 0,
-            pointerEvents:   'none',
-            transition:      'opacity 0.15s ease, transform 0.15s ease',
-            zIndex:          9999,
-            display:         'flex',
-            alignItems:      'center',
-            gap:             '6px',
-            padding:         '5px 14px',
-            borderRadius:    'var(--radius-full)',
-            background:      'var(--bg-tertiary)',
-            border:          '1px solid var(--border-color)',
-            backdropFilter:  'blur(8px)',
-            fontFamily:      'var(--font-family-mono)',
-            fontSize:        'var(--font-size-sm)',
-            fontWeight:      'var(--font-weight-medium)',
-            color:           isDefault ? 'var(--color-success)' : 'var(--text-primary)',
-            boxShadow:       '0 4px 16px rgba(0,0,0,0.3)',
-            whiteSpace:      'nowrap',
+            position: 'fixed',
+            bottom: '28px',
+            left: '50%',
+            transform: `translateX(-50%) scale(${visible ? 1 : 0.88})`,
+            opacity: visible ? 1 : 0,
+            pointerEvents: 'none',
+            transition: 'opacity 0.15s ease, transform 0.15s ease',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '5px 14px',
+            borderRadius: 'var(--radius-full)',
+            background: 'var(--bg-tertiary)',
+            border: '1px solid var(--border-color)',
+            backdropFilter: 'blur(8px)',
+            fontFamily: 'var(--font-family-mono)',
+            fontSize: 'var(--font-size-sm)',
+            fontWeight: 'var(--font-weight-medium)',
+            color: isDefault ? 'var(--color-success)' : 'var(--text-primary)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            whiteSpace: 'nowrap',
           }}
         >
           {zoomPct !== null && `${zoomPct}%`}
           {isDefault && (
-            <span style={{ color: 'var(--color-success)', fontSize: 'var(--font-size-xs)', opacity: 0.8 }}>
+            <span
+              style={{
+                color: 'var(--color-success)',
+                fontSize: 'var(--font-size-xs)',
+                opacity: 0.8,
+              }}
+            >
               default
             </span>
           )}

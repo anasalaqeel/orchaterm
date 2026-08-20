@@ -15,7 +15,9 @@ describe('AnthropicProvider.complete', () => {
       json: async () => ({ content: [{ text: 'Claude says hello' }] }),
     });
     const provider = new AnthropicProvider({
-      provider: 'anthropic', model: 'claude-sonnet-4-6', apiKey: 'sk-ant-test',
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      apiKey: 'sk-ant-test',
     });
     const result = await provider.complete([{ role: 'user', content: 'Hi' }], 'Be concise');
     expect(result).toBe('Claude says hello');
@@ -30,11 +32,15 @@ describe('AnthropicProvider.complete', () => {
 
   it('throws on non-ok response', async () => {
     mockFetch.mockResolvedValue({
-      ok: false, status: 401, statusText: 'Unauthorized',
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
       json: async () => ({ error: { message: 'Invalid key' } }),
     });
     const provider = new AnthropicProvider({ provider: 'anthropic', model: 'claude-sonnet-4-6' });
-    await expect(provider.complete([{ role: 'user', content: 'Hi' }])).rejects.toThrow('Invalid key');
+    await expect(provider.complete([{ role: 'user', content: 'Hi' }])).rejects.toThrow(
+      'Invalid key'
+    );
   });
 });
 

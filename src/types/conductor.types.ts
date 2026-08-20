@@ -14,7 +14,7 @@ export interface OrchestratorTask {
   /** IDs of tasks that must be 'done' before this task is dispatched. Empty = no deps. */
   dependsOn: string[];
   status: OrchestratorTaskStatus;
-  startedAt?: number;   // Unix ms — set when write_pty is called
+  startedAt?: number; // Unix ms — set when write_pty is called
   completedAt?: number; // Unix ms — set when sentinel is detected
   output?: OrchestratorTaskOutput;
 }
@@ -31,12 +31,12 @@ export interface OrchestratorTaskOutput {
 }
 
 export type OrchestratorPlanStatus =
-  | 'draft'    // in Plan Builder, not yet run
+  | 'draft' // in Plan Builder, not yet run
   | 'approved' // user approved, ready to run
-  | 'running'  // at least one task is running
-  | 'paused'   // user paused mid-run
-  | 'done'     // all tasks done
-  | 'failed'   // a task failed and blocked all remaining tasks
+  | 'running' // at least one task is running
+  | 'paused' // user paused mid-run
+  | 'done' // all tasks done
+  | 'failed' // a task failed and blocked all remaining tasks
   | 'stopped'; // user manually stopped the run (not an error)
 
 export interface OrchestratorPlan {
@@ -71,7 +71,15 @@ export interface SessionBuffer {
 export interface ConductorLogEntry {
   id: string;
   timestamp: number;
-  type: 'dispatch' | 'sentinel' | 'relay' | 'timeout' | 'error' | 'info' | 'user-override' | 'checkpoint';
+  type:
+    | 'dispatch'
+    | 'sentinel'
+    | 'relay'
+    | 'timeout'
+    | 'error'
+    | 'info'
+    | 'user-override'
+    | 'checkpoint';
   message: string;
   taskId?: string;
   sessionId?: string;

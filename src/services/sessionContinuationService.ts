@@ -2,7 +2,12 @@ import { bufferWatcher } from './bufferWatcher';
 import { buildDetectionPrompt } from './continuationPrompts';
 import { generateCheckpoint } from './checkpointGenerator';
 import type { LLMProvider } from './llm';
-import type { CheckpointSnapshot, ContinuationConfig, DetectionEvent, DetectionLabel } from '../types';
+import type {
+  CheckpointSnapshot,
+  ContinuationConfig,
+  DetectionEvent,
+  DetectionLabel,
+} from '../types';
 
 interface SessionMeta {
   id: string;
@@ -30,7 +35,7 @@ export class SessionContinuationService {
   onEvent(cb: (event: DetectionEvent) => void): () => void {
     this.eventListeners.push(cb);
     return () => {
-      this.eventListeners = this.eventListeners.filter(l => l !== cb);
+      this.eventListeners = this.eventListeners.filter((l) => l !== cb);
     };
   }
 
@@ -38,7 +43,7 @@ export class SessionContinuationService {
     meta: SessionMeta,
     config: ContinuationConfig,
     detectionProvider: LLMProvider,
-    checkpointProvider: LLMProvider,
+    checkpointProvider: LLMProvider
   ): Promise<void> {
     this.stopMonitoring(meta.id);
     if (!config.enabled) return;
@@ -53,14 +58,12 @@ export class SessionContinuationService {
       checkpointInProgress: false,
     };
 
-    const unsubscribeSummary = await bufferWatcher.watchForSummary(
-      meta.id,
-      (delta) => this.onDelta(meta.id, delta),
+    const unsubscribeSummary = await bufferWatcher.watchForSummary(meta.id, (delta) =>
+      this.onDelta(meta.id, delta)
     );
 
-    const unsubscribeIdle = await bufferWatcher.watchForIdle(
-      meta.id,
-      () => this.onIdleShell(meta.id),
+    const unsubscribeIdle = await bufferWatcher.watchForIdle(meta.id, () =>
+      this.onIdleShell(meta.id)
     );
 
     entry.unsubscribeSummary = unsubscribeSummary;
@@ -93,14 +96,19 @@ export class SessionContinuationService {
     sessionId: string,
     fallbackMeta?: SessionMeta,
     fallbackProvider?: LLMProvider,
-    fallbackConfig?: ContinuationConfig,
+    fallbackConfig?: ContinuationConfig
   ): Promise<CheckpointSnapshot | null> {
     let entry = this.sessions.get(sessionId);
     if (!entry) {
       if (!fallbackMeta || !fallbackProvider) return null;
       entry = {
         meta: fallbackMeta,
-        config: fallbackConfig ?? { enabled: false, targetSessionId: null, snapshotIntervalChars: 0, mode: 'file-only' },
+        config: fallbackConfig ?? {
+          enabled: false,
+          targetSessionId: null,
+          snapshotIntervalChars: 0,
+          mode: 'file-only',
+        },
         detectionProvider: fallbackProvider,
         checkpointProvider: fallbackProvider,
         consecutiveStopCount: 0,
@@ -129,7 +137,7 @@ export class SessionContinuationService {
       const { system, userContent } = buildDetectionPrompt(delta, entry.meta.title);
       const response = await entry.detectionProvider.complete(
         [{ role: 'user', content: userContent }],
-        system,
+        system
       );
       const trimmed = response.trim() as DetectionLabel;
       if (['PROGRESS', 'STALLED', 'LIMIT_HIT', 'STOPPED', 'TASK_COMPLETE'].includes(trimmed)) {
@@ -165,7 +173,7 @@ export class SessionContinuationService {
     entry: MonitoredSession,
     triggeredBy: CheckpointSnapshot['triggeredBy'],
     label: DetectionLabel,
-    throwOnError?: boolean,
+    throwOnError?: boolean
   ): Promise<CheckpointSnapshot | null> {
     entry.checkpointInProgress = true;
     try {
@@ -181,7 +189,7 @@ export class SessionContinuationService {
           goalHint: entry.meta.goalHint,
           maxContextChars: entry.config.maxContextChars,
         },
-        entry.checkpointProvider,
+        entry.checkpointProvider
       );
       this.emit({
         type: 'checkpoint-written',

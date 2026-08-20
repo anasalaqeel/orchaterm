@@ -30,7 +30,9 @@ describe('canInjectNow', () => {
     });
 
     it('returns false when buffer shows mid-work output (no prompt)', () => {
-      expect(canInjectNow('Installing dependencies...\nFetching packages', 'prompt-only')).toBe(false);
+      expect(canInjectNow('Installing dependencies...\nFetching packages', 'prompt-only')).toBe(
+        false
+      );
     });
 
     it('returns false for empty buffer', () => {

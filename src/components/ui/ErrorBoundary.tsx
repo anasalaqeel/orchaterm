@@ -45,14 +45,16 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   render() {
     const { error } = this.state;
     if (error) {
-      return this.props.fallback
-        ? this.props.fallback(error, this.reset)
-        : (
-          <div className={styles.fallback}>
-            <span>Something went wrong rendering this view.</span>
-            <button className={styles.retry} onClick={this.reset}>Retry</button>
-          </div>
-        );
+      return this.props.fallback ? (
+        this.props.fallback(error, this.reset)
+      ) : (
+        <div className={styles.fallback}>
+          <span>Something went wrong rendering this view.</span>
+          <button className={styles.retry} onClick={this.reset}>
+            Retry
+          </button>
+        </div>
+      );
     }
     return this.props.children;
   }
@@ -83,6 +85,8 @@ const styles = {
     background: var(--bg-tertiary);
     color: var(--text-primary);
     cursor: pointer;
-    &:hover { background: var(--bg-secondary); }
+    &:hover {
+      background: var(--bg-secondary);
+    }
   `,
 };

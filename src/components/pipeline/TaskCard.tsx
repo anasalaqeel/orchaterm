@@ -27,8 +27,6 @@ interface TaskCardProps {
   defaultExpanded?: boolean;
 }
 
-
-
 export const TaskCard: React.FC<TaskCardProps> = ({
   task,
   index,
@@ -41,7 +39,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   const [filesHover, setFilesHover] = useState(false);
 
   const color = TASK_STATUS_COLORS[task.status];
-  const icon  = TASK_STATUS_ICONS[task.status];
+  const icon = TASK_STATUS_ICONS[task.status];
 
   const elapsed = task.startedAt
     ? task.completedAt
@@ -54,32 +52,37 @@ export const TaskCard: React.FC<TaskCardProps> = ({
     .filter((r): r is { title: string; index: number } => Boolean(r));
 
   const hasDetails = Boolean(
-    task.output?.summary || task.output?.raw || task.output?.relayedBrief ||
-    task.output?.needs || task.status === 'failed',
+    task.output?.summary ||
+    task.output?.raw ||
+    task.output?.relayedBrief ||
+    task.output?.needs ||
+    task.status === 'failed'
   );
 
   const files = task.output?.filesModified ?? [];
 
   return (
-    <div className={cx(s.card, task.status === 'running' && s.cardRunning)} style={{ borderLeftColor: color }}>
+    <div
+      className={cx(s.card, task.status === 'running' && s.cardRunning)}
+      style={{ borderLeftColor: color }}
+    >
       <div className={s.header}>
         <span className={s.statusIcon} style={{ color }}>
-          {task.status === 'running'
-            ? <span className={s.spinner} />
-            : icon}
+          {task.status === 'running' ? <span className={s.spinner} /> : icon}
         </span>
         <span className={s.indexBadge}>{index}</span>
         <button
           type="button"
           className={cx(s.titleBtn, hasDetails && s.titleBtnClickable)}
-          onClick={() => hasDetails && setExpanded(p => !p)}
+          onClick={() => hasDetails && setExpanded((p) => !p)}
           title={hasDetails ? 'Toggle details' : undefined}
         >
-          {hasDetails && (
-            expanded
-              ? <ChevronDown size={11} className={s.chevron} />
-              : <ChevronRight size={11} className={s.chevron} />
-          )}
+          {hasDetails &&
+            (expanded ? (
+              <ChevronDown size={11} className={s.chevron} />
+            ) : (
+              <ChevronRight size={11} className={s.chevron} />
+            ))}
           <span className={s.title}>{task.title}</span>
         </button>
         <span
@@ -105,7 +108,11 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             {files.length}
             {filesHover && (
               <span className={s.filesPopover}>
-                {files.map(f => <span key={f} className={s.filesPath}>{f}</span>)}
+                {files.map((f) => (
+                  <span key={f} className={s.filesPath}>
+                    {f}
+                  </span>
+                ))}
               </span>
             )}
           </span>
@@ -113,16 +120,20 @@ export const TaskCard: React.FC<TaskCardProps> = ({
       </div>
 
       {depRefs.length > 0 && (
-        <div className={s.deps}>after: {depRefs.map((r, i) => (
-          <span key={i} className={s.dep}>#{r.index} {r.title}{i < depRefs.length - 1 ? ',' : ''}</span>
-        ))}</div>
+        <div className={s.deps}>
+          after:{' '}
+          {depRefs.map((r, i) => (
+            <span key={i} className={s.dep}>
+              #{r.index} {r.title}
+              {i < depRefs.length - 1 ? ',' : ''}
+            </span>
+          ))}
+        </div>
       )}
 
       {expanded && hasDetails && task.output && (
         <div className={s.body}>
-          {task.output.summary && (
-            <Section label="Summary">{task.output.summary}</Section>
-          )}
+          {task.output.summary && <Section label="Summary">{task.output.summary}</Section>}
           {task.output.relayedBrief && (
             <Section label="Relayed brief">{task.output.relayedBrief}</Section>
           )}
@@ -136,7 +147,9 @@ export const TaskCard: React.FC<TaskCardProps> = ({
           )}
           {task.status === 'failed' && !task.output.raw && (
             <Section label="Status">
-              <span style={{ color: 'var(--color-error)' }}>Task failed — check terminal for details.</span>
+              <span style={{ color: 'var(--color-error)' }}>
+                Task failed — check terminal for details.
+              </span>
             </Section>
           )}
         </div>
@@ -155,7 +168,8 @@ const Section: React.FC<{ label: string; children: React.ReactNode }> = ({ label
 const s = {
   card: css`
     position: relative;
-    display: flex; flex-direction: column;
+    display: flex;
+    flex-direction: column;
     padding: 8px 10px;
     border-radius: 6px;
     border: 1px solid var(--border-color);
@@ -165,110 +179,178 @@ const s = {
   `,
   cardRunning: css`
     border-color: rgba(var(--color-brand-rgb), 0.4);
-    box-shadow: 0 0 0 1px rgba(var(--color-brand-rgb), 0.15), 0 0 14px rgba(var(--color-brand-rgb), 0.15);
+    box-shadow:
+      0 0 0 1px rgba(var(--color-brand-rgb), 0.15),
+      0 0 14px rgba(var(--color-brand-rgb), 0.15);
   `,
   header: css`
-    display: flex; align-items: center; gap: 8px; min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
   `,
   statusIcon: css`
-    width: 14px; flex-shrink: 0;
-    font-weight: 700; font-size: 12px;
-    display: inline-flex; align-items: center; justify-content: center;
+    width: 14px;
+    flex-shrink: 0;
+    font-weight: 700;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   `,
   spinner: css`
     display: inline-block;
-    width: 11px; height: 11px;
+    width: 11px;
+    height: 11px;
     border: 2px solid rgba(var(--color-brand-rgb), 0.25);
     border-top-color: var(--color-brand);
     border-radius: 50%;
     animation: taskspin 0.8s linear infinite;
-    @keyframes taskspin { to { transform: rotate(360deg); } }
+    @keyframes taskspin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
   `,
   indexBadge: css`
-    width: 18px; flex-shrink: 0;
-    font-size: 10px; font-weight: 700;
-    color: var(--text-tertiary); text-align: right;
+    width: 18px;
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    text-align: right;
   `,
   titleBtn: css`
-    display: flex; align-items: center; gap: 3px;
-    flex: 1; min-width: 0;
-    background: transparent; border: none; cursor: default;
-    padding: 0; text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    cursor: default;
+    padding: 0;
+    text-align: left;
   `,
   titleBtnClickable: css`
     cursor: pointer;
-    &:hover span { color: var(--color-brand); }
+    &:hover span {
+      color: var(--color-brand);
+    }
   `,
   chevron: css`
-    color: var(--text-tertiary); flex-shrink: 0;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
   `,
   title: css`
-    font-size: 12px; color: var(--text-primary); font-weight: 500;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 12px;
+    color: var(--text-primary);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   `,
   agentPill: css`
-    font-size: 10px; font-weight: 600;
-    padding: 1px 7px; border-radius: 99px;
-    border: 1px solid; flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 99px;
+    border: 1px solid;
+    flex-shrink: 0;
     max-width: 100px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   `,
   elapsed: css`
-    font-size: 10px; color: var(--text-secondary);
-    flex-shrink: 0; min-width: 38px; text-align: right;
+    font-size: 10px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    min-width: 38px;
+    text-align: right;
     font-variant-numeric: tabular-nums;
   `,
   filesPill: css`
     position: relative;
-    display: inline-flex; align-items: center; gap: 3px;
-    font-size: 10px; color: var(--color-success);
-    padding: 1px 5px; border-radius: 99px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    color: var(--color-success);
+    padding: 1px 5px;
+    border-radius: 99px;
     background: rgba(var(--color-success-rgb), 0.1);
-    flex-shrink: 0; cursor: default;
+    flex-shrink: 0;
+    cursor: default;
   `,
   filesPopover: css`
-    position: absolute; top: calc(100% + 4px); right: 0;
-    background: var(--bg-secondary); border: 1px solid var(--border-color);
-    border-radius: 6px; padding: 6px 8px;
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 6px 8px;
     box-shadow: var(--shadow-lg);
-    display: flex; flex-direction: column; gap: 2px;
-    max-width: 280px; max-height: 200px; overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-width: 280px;
+    max-height: 200px;
+    overflow-y: auto;
     z-index: 10;
   `,
   filesPath: css`
     font-family: var(--font-family-mono);
-    font-size: 10px; color: var(--text-secondary);
+    font-size: 10px;
+    color: var(--text-secondary);
     word-break: break-all;
   `,
   deps: css`
-    font-size: 10px; color: var(--text-tertiary);
+    font-size: 10px;
+    color: var(--text-tertiary);
     padding-left: 36px;
   `,
   dep: css`
     color: var(--text-secondary);
   `,
   body: css`
-    display: flex; flex-direction: column; gap: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
     padding: 6px 10px 4px 36px;
     border-top: 1px dashed var(--border-color);
     margin-top: 2px;
   `,
   section: css`
-    display: flex; flex-direction: column; gap: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   `,
   sectionLabel: css`
-    font-size: 9px; font-weight: 700; color: var(--text-tertiary);
-    text-transform: uppercase; letter-spacing: 0.06em;
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
   `,
   sectionValue: css`
-    font-size: 11px; color: var(--text-primary); line-height: 1.5;
+    font-size: 11px;
+    color: var(--text-primary);
+    line-height: 1.5;
   `,
   raw: css`
-    background: var(--bg-tertiary); border-radius: 4px;
-    padding: 6px 8px; margin: 2px 0 0;
-    font-family: var(--font-family-mono); font-size: 10px;
-    color: var(--text-secondary); line-height: 1.5;
-    overflow-x: auto; white-space: pre-wrap; max-height: 160px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin: 2px 0 0;
+    font-family: var(--font-family-mono);
+    font-size: 10px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    max-height: 160px;
     overflow-y: auto;
   `,
 };
