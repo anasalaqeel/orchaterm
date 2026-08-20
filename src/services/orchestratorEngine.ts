@@ -40,8 +40,8 @@ import { SENTINEL_START, SENTINEL_END, NEEDS_START, NEEDS_END } from './sentinel
 // ── Engine configuration ────────────────────────────────────────────────────────
 
 export interface EngineConfig {
-  relayProvider:      LLMProvider;
-  planGenProvider:    LLMProvider;
+  relayProvider: LLMProvider;
+  planGenProvider: LLMProvider;
   autoAnswerProvider: LLMProvider;
   /** Minutes a task can run before being auto-failed. 0 = no timeout. */
   taskTimeoutMinutes: number;
@@ -92,7 +92,7 @@ export class OrchestratorEngine {
 
   // subscribers
   private stateListeners: Array<(plan: OrchestratorPlan) => void> = [];
-  private logListeners:   Array<(entry: ConductorLogEntry) => void> = [];
+  private logListeners: Array<(entry: ConductorLogEntry) => void> = [];
 
   constructor(config: EngineConfig) {
     this.config = config;
@@ -116,7 +116,7 @@ export class OrchestratorEngine {
     this.plan = {
       ...plan,
       status: 'running',
-      tasks: plan.tasks.map(t => ({ ...t })),
+      tasks: plan.tasks.map((t) => ({ ...t })),
     };
     this.isPaused = false;
     this.log('info', `Orchestration started — goal: "${plan.goal}"`);
@@ -152,7 +152,7 @@ export class OrchestratorEngine {
     for (const task of this.plan.tasks) {
       if (task.status === 'running') {
         writePtyChunked(task.assignedSessionId, '\x03')
-          .then(() => new Promise(r => setTimeout(r, 100)))
+          .then(() => new Promise((r) => setTimeout(r, 100)))
           .then(() => writePtyChunked(task.assignedSessionId, '\x03\r'))
           .catch(() => {});
         bufferWatcher.unwatch(task.assignedSessionId);
@@ -175,7 +175,7 @@ export class OrchestratorEngine {
 
   /** Returns a read-only snapshot of the current plan, or null. */
   getCurrentPlan(): OrchestratorPlan | null {
-    return this.plan ? { ...this.plan, tasks: this.plan.tasks.map(t => ({ ...t })) } : null;
+    return this.plan ? { ...this.plan, tasks: this.plan.tasks.map((t) => ({ ...t })) } : null;
   }
 
   // ── Public: task overrides ──────────────────────────────────────────────────
@@ -228,7 +228,12 @@ export class OrchestratorEngine {
     this.clearTaskTimer(taskId);
     bufferWatcher.clearBuffer(task.assignedSessionId);
     this.updateTask(taskId, { status: 'done', completedAt: Date.now(), output });
-    this.log('user-override', `Task "${task.title}" force-completed by user`, taskId, task.assignedSessionId);
+    this.log(
+      'user-override',
+      `Task "${task.title}" force-completed by user`,
+      taskId,
+      task.assignedSessionId
+    );
     this.emitState();
     this.dispatchReady();
     this.checkPlanCompletion();
@@ -236,9 +241,15 @@ export class OrchestratorEngine {
 
   /** Injects a raw message into a terminal session, bypassing the orchestrator flow. */
   injectMessage(sessionId: string, message: string): void {
-    writePtyChunked(sessionId, message + '\r')
-      .catch((err: unknown) => this.log('error', `Manual inject failed: ${err}`, undefined, sessionId));
-    this.log('user-override', `Manual message injected into session ${sessionId}`, undefined, sessionId);
+    writePtyChunked(sessionId, message + '\r').catch((err: unknown) =>
+      this.log('error', `Manual inject failed: ${err}`, undefined, sessionId)
+    );
+    this.log(
+      'user-override',
+      `Manual message injected into session ${sessionId}`,
+      undefined,
+      sessionId
+    );
   }
 
   // ── Public: subscriptions ───────────────────────────────────────────────────
@@ -247,7 +258,7 @@ export class OrchestratorEngine {
   onStateChange(cb: (plan: OrchestratorPlan) => void): () => void {
     this.stateListeners.push(cb);
     return () => {
-      this.stateListeners = this.stateListeners.filter(l => l !== cb);
+      this.stateListeners = this.stateListeners.filter((l) => l !== cb);
     };
   }
 
@@ -255,26 +266,27 @@ export class OrchestratorEngine {
   onLog(cb: (entry: ConductorLogEntry) => void): () => void {
     this.logListeners.push(cb);
     return () => {
-      this.logListeners = this.logListeners.filter(l => l !== cb);
+      this.logListeners = this.logListeners.filter((l) => l !== cb);
     };
   }
 
   // ── Private: dispatcher ─────────────────────────────────────────────────────
 
   private dispatchReady(): void {
-    if (!this.plan || this.isPaused || this.plan.status === 'failed' || this.plan.status === 'done') return;
+    if (!this.plan || this.isPaused || this.plan.status === 'failed' || this.plan.status === 'done')
+      return;
 
     for (const task of this.plan.tasks) {
       if (task.status !== 'pending') continue;
 
-      const allDepsDone = task.dependsOn.every(depId =>
-        this.plan!.tasks.find(t => t.id === depId)?.status === 'done'
+      const allDepsDone = task.dependsOn.every(
+        (depId) => this.plan!.tasks.find((t) => t.id === depId)?.status === 'done'
       );
       if (!allDepsDone) continue;
 
       // One task per session at a time
       const sessionBusy = this.plan.tasks.some(
-        t => t.assignedSessionId === task.assignedSessionId && t.status === 'running'
+        (t) => t.assignedSessionId === task.assignedSessionId && t.status === 'running'
       );
       if (sessionBusy) continue;
 
@@ -294,24 +306,25 @@ export class OrchestratorEngine {
 
     // Collect parent tasks that have output
     const parentTasks: OrchestratorTask[] = task.dependsOn
-      .map(depId => this.plan!.tasks.find(t => t.id === depId))
+      .map((depId) => this.plan!.tasks.find((t) => t.id === depId))
       .filter((t): t is OrchestratorTask => !!t && !!t.output);
 
     let contextBrief = '';
 
     if (parentTasks.length > 0) {
-      const completedContexts: CompletedTaskContext[] = parentTasks.map(t => ({
-        taskTitle:          t.title,
-        taskDescription:    t.description,
-        agentName:          this.config.sessionTitles.get(t.assignedSessionId) ?? t.assignedSessionTitle,
-        agentBestUsedFor:   '',
-        output:             t.output!,
+      const completedContexts: CompletedTaskContext[] = parentTasks.map((t) => ({
+        taskTitle: t.title,
+        taskDescription: t.description,
+        agentName: this.config.sessionTitles.get(t.assignedSessionId) ?? t.assignedSessionTitle,
+        agentBestUsedFor: '',
+        output: t.output!,
       }));
 
-      const nextSessionTitle = this.config.sessionTitles.get(task.assignedSessionId) ?? task.assignedSessionTitle;
+      const nextSessionTitle =
+        this.config.sessionTitles.get(task.assignedSessionId) ?? task.assignedSessionTitle;
 
       const allNeedsNoneOrSimple = parentTasks.every(
-        t => !t.output?.needs || t.output.needs.trim().toLowerCase() === 'none'
+        (t) => !t.output?.needs || t.output.needs.trim().toLowerCase() === 'none'
       );
 
       if (allNeedsNoneOrSimple && parentTasks.length === 1) {
@@ -330,17 +343,25 @@ export class OrchestratorEngine {
         try {
           if (parentTasks.length === 1) {
             const { system, userContent } = buildRelayPrompt(
-              this.plan.goal, completedContexts[0], task.description, nextSessionTitle,
+              this.plan.goal,
+              completedContexts[0],
+              task.description,
+              nextSessionTitle
             );
             contextBrief = await this.config.relayProvider.complete(
-              [{ role: 'user', content: userContent }], system,
+              [{ role: 'user', content: userContent }],
+              system
             );
           } else {
             const { system, userContent } = buildMergeRelayPrompt(
-              this.plan.goal, completedContexts, task.description, nextSessionTitle,
+              this.plan.goal,
+              completedContexts,
+              task.description,
+              nextSessionTitle
             );
             contextBrief = await this.config.relayProvider.complete(
-              [{ role: 'user', content: userContent }], system,
+              [{ role: 'user', content: userContent }],
+              system
             );
           }
 
@@ -354,14 +375,19 @@ export class OrchestratorEngine {
           }
         } catch {
           contextBrief = buildPassThroughBrief(completedContexts, task.description);
-          this.log('info', `Provider unavailable — pass-through relay used for "${task.title}"`, task.id);
+          this.log(
+            'info',
+            `Provider unavailable — pass-through relay used for "${task.title}"`,
+            task.id
+          );
         }
       }
     }
 
     // Build the full dispatch prompt
-    const prompt = parentTasks.length > 0
-      ? `TASK ID: ${task.id}
+    const prompt =
+      parentTasks.length > 0
+        ? `TASK ID: ${task.id}
 AGENT: ${task.assignedSessionTitle}
 PROJECT: ${this.plan.goal}
 
@@ -370,7 +396,7 @@ ${contextBrief}
 
 YOUR TASK:
 ${task.description}${buildAgentProtocol(task.id)}`
-      : `TASK ID: ${task.id}
+        : `TASK ID: ${task.id}
 AGENT: ${task.assignedSessionTitle}
 PROJECT: ${this.plan.goal}
 
@@ -390,7 +416,8 @@ ${task.description}${buildAgentProtocol(task.id)}`;
           try {
             const { system, userContent } = buildAutoAnswerPrompt(promptText);
             const answer = await this.config.autoAnswerProvider.complete(
-              [{ role: 'user', content: userContent }], system,
+              [{ role: 'user', content: userContent }],
+              system
             );
             const trimmed = answer.trim().toUpperCase() === 'ENTER' ? '' : answer.trim();
 
@@ -405,7 +432,12 @@ ${task.description}${buildAgentProtocol(task.id)}`;
               return;
             }
           } catch (err) {
-            this.log('error', `Auto-answer provider error: ${err}`, task.id, task.assignedSessionId);
+            this.log(
+              'error',
+              `Auto-answer provider error: ${err}`,
+              task.id,
+              task.assignedSessionId
+            );
           }
         }
 
@@ -423,7 +455,12 @@ ${task.description}${buildAgentProtocol(task.id)}`;
     try {
       await writePtyChunked(task.assignedSessionId, prompt + '\r');
     } catch (err: unknown) {
-      this.log('error', `Failed to inject task "${task.title}" into session: ${err}`, task.id, task.assignedSessionId);
+      this.log(
+        'error',
+        `Failed to inject task "${task.title}" into session: ${err}`,
+        task.id,
+        task.assignedSessionId
+      );
       this.updateTask(task.id, { status: 'failed' });
       this.emitState();
       this.checkPlanCompletion();
@@ -449,13 +486,10 @@ ${task.description}${buildAgentProtocol(task.id)}`;
 
     this.clearTaskTimer(taskId);
     this.updateTask(taskId, { status: 'done', completedAt: Date.now(), output });
-    this.log(
-      'sentinel',
-      `Task "${task.title}" complete`,
-      taskId,
-      task.assignedSessionId,
-      { taskOutput: output, agentTitle: task.assignedSessionTitle },
-    );
+    this.log('sentinel', `Task "${task.title}" complete`, taskId, task.assignedSessionId, {
+      taskOutput: output,
+      agentTitle: task.assignedSessionTitle,
+    });
     this.emitState();
     this.dispatchReady();
     this.checkPlanCompletion();
@@ -484,9 +518,9 @@ ${task.description}${buildAgentProtocol(task.id)}`;
   private checkPlanCompletion(): void {
     if (!this.plan) return;
 
-    const allDone    = this.plan.tasks.every(t => t.status === 'done');
-    const anyRunning = this.plan.tasks.some(t => t.status === 'running');
-    const anyPending = this.plan.tasks.some(t => t.status === 'pending');
+    const allDone = this.plan.tasks.every((t) => t.status === 'done');
+    const anyRunning = this.plan.tasks.some((t) => t.status === 'running');
+    const anyPending = this.plan.tasks.some((t) => t.status === 'pending');
 
     if (allDone) {
       this.mutatePlan({ status: 'done', completedAt: Date.now() });
@@ -498,7 +532,10 @@ ${task.description}${buildAgentProtocol(task.id)}`;
     // If nothing is running and nothing can run (all blocked by failures)
     if (!anyRunning && !anyPending) {
       this.mutatePlan({ status: 'failed' });
-      this.log('error', 'Orchestration failed — remaining tasks are blocked by failed dependencies.');
+      this.log(
+        'error',
+        'Orchestration failed — remaining tasks are blocked by failed dependencies.'
+      );
       this.emitState();
     }
   }
@@ -506,14 +543,12 @@ ${task.description}${buildAgentProtocol(task.id)}`;
   // ── Private: helpers ────────────────────────────────────────────────────────
 
   private getTask(taskId: string): OrchestratorTask | undefined {
-    return this.plan?.tasks.find(t => t.id === taskId);
+    return this.plan?.tasks.find((t) => t.id === taskId);
   }
 
   private updateTask(taskId: string, updates: Partial<OrchestratorTask>): void {
     if (!this.plan) return;
-    this.plan.tasks = this.plan.tasks.map(t =>
-      t.id === taskId ? { ...t, ...updates } : t
-    );
+    this.plan.tasks = this.plan.tasks.map((t) => (t.id === taskId ? { ...t, ...updates } : t));
   }
 
   private mutatePlan(updates: Partial<OrchestratorPlan>): void {
@@ -533,7 +568,7 @@ ${task.description}${buildAgentProtocol(task.id)}`;
     if (!this.plan) return;
     const snapshot: OrchestratorPlan = {
       ...this.plan,
-      tasks: this.plan.tasks.map(t => ({ ...t })),
+      tasks: this.plan.tasks.map((t) => ({ ...t })),
     };
     for (const cb of this.stateListeners) cb(snapshot);
   }
@@ -568,10 +603,10 @@ ${task.description}${buildAgentProtocol(task.id)}`;
 const _defaultProvider = createProvider({ provider: 'ollama', model: 'llama3.2' });
 
 export const orchestratorEngine = new OrchestratorEngine({
-  relayProvider:      _defaultProvider,
-  planGenProvider:    _defaultProvider,
+  relayProvider: _defaultProvider,
+  planGenProvider: _defaultProvider,
   autoAnswerProvider: _defaultProvider,
   taskTimeoutMinutes: 0,
-  interactionMode:    'auto',
-  sessionTitles:      new Map(),
+  interactionMode: 'auto',
+  sessionTitles: new Map(),
 });

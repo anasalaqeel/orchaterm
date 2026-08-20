@@ -39,13 +39,13 @@ export interface QuickActionContextSource {
  */
 export function buildPromptContext(
   term: TerminalLike | null,
-  source: QuickActionContextSource,
+  source: QuickActionContextSource
 ): PromptContext {
-  const activeWorkspace = source.workspaces.find(w => w.id === source.activeWorkspaceId);
-  const activeSpace = source.spaces.find(s => s.id === source.activeSpaceId);
+  const activeWorkspace = source.workspaces.find((w) => w.id === source.activeWorkspaceId);
+  const activeSpace = source.spaces.find((s) => s.id === source.activeSpaceId);
 
   return {
-    selection: (term && term.hasSelection()) ? term.getSelection() : '',
+    selection: term && term.hasSelection() ? term.getSelection() : '',
     terminalOutput: extractTerminalBuffer(term),
     workspaceName: activeWorkspace?.name,
     workspacePath: activeWorkspace?.path || source.fallbackWorkspacePath,
@@ -66,7 +66,7 @@ export function buildPromptContext(
 export function formatTerminalWrite(
   text: string,
   autoExecute: boolean,
-  bracketedPasteMode: boolean,
+  bracketedPasteMode: boolean
 ): string {
   const bracketed = bracketedPasteMode ? `\x1b[200~${text}\x1b[201~` : text;
   return autoExecute ? `${bracketed}\r` : bracketed;

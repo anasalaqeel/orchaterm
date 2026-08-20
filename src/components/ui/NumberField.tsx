@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Input, InputProps } from './Input';
 
-export interface NumberFieldProps extends Omit<InputProps, 'type' | 'value' | 'onChange' | 'min' | 'max' | 'step'> {
+export interface NumberFieldProps extends Omit<
+  InputProps,
+  'type' | 'value' | 'onChange' | 'min' | 'max' | 'step'
+> {
   value: number;
   onValueChange: (value: number) => void;
   min?: number;
@@ -42,7 +45,7 @@ export const NumberField: React.FC<NumberFieldProps> = ({
       type="text"
       inputMode={step < 1 ? 'decimal' : 'numeric'}
       value={text}
-      onChange={e => {
+      onChange={(e) => {
         const raw = e.target.value;
         if (!/^-?\d*\.?\d*$/.test(raw)) return;
         setText(raw);
@@ -57,7 +60,7 @@ export const NumberField: React.FC<NumberFieldProps> = ({
         onValueChange(v);
         setText(String(v));
       }}
-      onKeyDown={e => {
+      onKeyDown={(e) => {
         if (e.key === 'ArrowUp') {
           e.preventDefault();
           onValueChange(clamp(value + step));

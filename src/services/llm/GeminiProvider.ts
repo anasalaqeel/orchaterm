@@ -10,14 +10,17 @@ export class GeminiProvider implements LLMProvider {
   private apiKey: string;
 
   constructor(config: ProviderConfig) {
-    this.baseUrl = (config.baseUrl || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
+    this.baseUrl = (config.baseUrl || 'https://generativelanguage.googleapis.com').replace(
+      /\/$/,
+      ''
+    );
     this.model = config.model || 'gemini-2.0-flash';
     this.apiKey = config.apiKey ?? '';
   }
 
   private toContents(messages: ChatMessage[], systemPrompt?: string) {
     return {
-      contents: messages.map(m => ({
+      contents: messages.map((m) => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }],
       })),
@@ -39,7 +42,9 @@ export class GeminiProvider implements LLMProvider {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error(`Gemini error: ${response.status} — ${(err as any)?.error?.message ?? response.statusText}`);
+        throw new Error(
+          `Gemini error: ${response.status} — ${(err as any)?.error?.message ?? response.statusText}`
+        );
       }
       const data = await response.json();
       const text = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
@@ -72,7 +77,10 @@ export class GeminiProvider implements LLMProvider {
           return;
         }
         const reader = res.body?.getReader();
-        if (!reader) { onError('No response body'); return; }
+        if (!reader) {
+          onError('No response body');
+          return;
+        }
         const decoder = new TextDecoder();
         let buf = '';
 
@@ -90,8 +98,13 @@ export class GeminiProvider implements LLMProvider {
               const text = obj.candidates?.[0]?.content?.parts?.[0]?.text;
               if (text) onToken(text);
               const finishReason = obj.candidates?.[0]?.finishReason;
-              if (finishReason && finishReason !== 'FINISH_REASON_UNSPECIFIED') { onDone(); return; }
-            } catch { /* skip */ }
+              if (finishReason && finishReason !== 'FINISH_REASON_UNSPECIFIED') {
+                onDone();
+                return;
+              }
+            } catch {
+              /* skip */
+            }
           }
         }
         onDone();
@@ -107,7 +120,9 @@ export class GeminiProvider implements LLMProvider {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
     try {
-      const res = await fetch(`${this.baseUrl}/v1beta/models?key=${this.apiKey}`, { signal: controller.signal });
+      const res = await fetch(`${this.baseUrl}/v1beta/models?key=${this.apiKey}`, {
+        signal: controller.signal,
+      });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(`Gemini ${res.status}: ${(err as any)?.error?.message ?? res.statusText}`);
@@ -119,17 +134,24 @@ export class GeminiProvider implements LLMProvider {
     } catch (err: any) {
       if (err?.name === 'AbortError') throw new Error('Request timed out');
       throw err;
-    } finally { clearTimeout(timer); }
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async checkOnline(): Promise<boolean> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 2000);
     try {
-      const res = await fetch(`${this.baseUrl}/v1beta/models?key=${this.apiKey}`, { signal: controller.signal });
+      const res = await fetch(`${this.baseUrl}/v1beta/models?key=${this.apiKey}`, {
+        signal: controller.signal,
+      });
       // Gemini returns 400 for missing/invalid key but server is reachable
       return res.ok || res.status === 400;
-    } catch { return false; }
-    finally { clearTimeout(timer); }
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

@@ -19,11 +19,7 @@ interface MarkdownViewerProps {
 export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({ content, className }) => {
   if (!content) return null;
 
-  return (
-    <div className={cx(styles.container, className)}>
-      {parseMarkdownBlocks(content)}
-    </div>
-  );
+  return <div className={cx(styles.container, className)}>{parseMarkdownBlocks(content)}</div>;
 };
 
 // ── Code Block with Copy Button ────────────────────────────────────────────────
@@ -84,7 +80,8 @@ function renderInline(text: string): React.ReactNode {
   // 3. *italic* or _italic_
   // 4. ~~strikethrough~~
   // 5. [link](url)
-  const inlineRegex = /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|~~[^~]+~~|\[[^\]]+\]\([^)]+\))/g;
+  const inlineRegex =
+    /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_|~~[^~]+~~|\[[^\]]+\]\([^)]+\))/g;
   const parts = text.split(inlineRegex);
 
   return parts.map((part, index) => {
@@ -100,7 +97,10 @@ function renderInline(text: string): React.ReactNode {
     }
 
     // Bold: **bold** or __bold__
-    if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) {
+    if (
+      (part.startsWith('**') && part.endsWith('**')) ||
+      (part.startsWith('__') && part.endsWith('__'))
+    ) {
       return (
         <strong key={index} className={styles.bold}>
           {renderInline(part.slice(2, -2))}
@@ -109,7 +109,10 @@ function renderInline(text: string): React.ReactNode {
     }
 
     // Italic: *italic* or _italic_
-    if ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))) {
+    if (
+      (part.startsWith('*') && part.endsWith('*')) ||
+      (part.startsWith('_') && part.endsWith('_'))
+    ) {
       return (
         <em key={index} className={styles.italic}>
           {renderInline(part.slice(1, -1))}
@@ -168,13 +171,7 @@ function parseMarkdownBlocks(text: string): React.ReactNode[] {
         i++;
       }
       i++; // Skip closing ```
-      nodes.push(
-        <CodeBlock
-          key={`code-${i}`}
-          language={lang}
-          code={codeLines.join('\n')}
-        />
-      );
+      nodes.push(<CodeBlock key={`code-${i}`} language={lang} code={codeLines.join('\n')} />);
       continue;
     }
 
@@ -292,8 +289,8 @@ function parseMarkdownBlocks(text: string): React.ReactNode[] {
         const headerCells = tableLines[0]
           .slice(1, -1)
           .split('|')
-          .map(c => c.trim());
-        
+          .map((c) => c.trim());
+
         // Check if second line is separator like |---|---|
         const isSeparator = /^\|?(\s*:?-+:?\s*\|?)+$/.test(tableLines[1]);
         const dataRows = isSeparator ? tableLines.slice(2) : tableLines.slice(1);
@@ -315,7 +312,7 @@ function parseMarkdownBlocks(text: string): React.ReactNode[] {
                   const cells = rowStr
                     .slice(1, -1)
                     .split('|')
-                    .map(c => c.trim());
+                    .map((c) => c.trim());
                   return (
                     <tr key={rIdx} className={styles.tr}>
                       {cells.map((cell, cIdx) => (

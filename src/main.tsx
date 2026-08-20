@@ -1,6 +1,6 @@
-import ReactDOM from "react-dom/client";
-import App from "./App";
-import "./index.css";
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
 
 // ── Boot the keyboard manager (registers the single capture-phase listener) ───
 // Import triggers module execution — the listener attaches once at startup so
@@ -19,7 +19,10 @@ import { registerShortcut } from './services/keyboardManager';
 const noop = () => {};
 
 const TERMINAL_BLOCKED: Array<{
-  key: string; ctrl?: boolean; shift?: boolean; alt?: boolean;
+  key: string;
+  ctrl?: boolean;
+  shift?: boolean;
+  alt?: boolean;
 }> = [
   // DevTools — Windows/Linux
   { key: 'F12' },
@@ -43,6 +46,4 @@ for (const def of TERMINAL_BLOCKED) {
 // for several seconds on startup. PTY processes are external OS resources that
 // cannot be cheaply re-created, so the StrictMode "run cleanup → re-run effect"
 // cycle provides no benefit here and only causes visible freezing.
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <App />
-);
+ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(<App />);

@@ -42,9 +42,9 @@ export interface LLMProvider {
 
 /** The five use-case slots for per-use-case provider configuration. */
 export interface UseCaseProviders {
-  relay:      ProviderConfig;   // task handoff summarization
-  planGen:    ProviderConfig;   // NL → task plan, intent classification, needs resolution
-  autoAnswer: ProviderConfig;   // interactive terminal prompt auto-answering
-  chat:       ProviderConfig;   // GroupChat streaming conversation
-  routing:    ProviderConfig;   // autonomous agent routing + terminal summarization
+  relay: ProviderConfig; // task handoff summarization
+  planGen: ProviderConfig; // NL → task plan, intent classification, needs resolution
+  autoAnswer: ProviderConfig; // interactive terminal prompt auto-answering
+  chat: ProviderConfig; // GroupChat streaming conversation
+  routing: ProviderConfig; // autonomous agent routing + terminal summarization
 }

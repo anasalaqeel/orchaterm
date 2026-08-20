@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { interpolatePromptTemplate, extractTerminalBuffer, PromptContext } from '../utils/promptTemplate';
+import {
+  interpolatePromptTemplate,
+  extractTerminalBuffer,
+  PromptContext,
+} from '../utils/promptTemplate';
 
 describe('interpolatePromptTemplate', () => {
   it('returns empty string if template is empty', () => {

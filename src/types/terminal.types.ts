@@ -85,4 +85,3 @@ export interface QuickAction {
   /** Set when this action was pinned from a Prompt Vault entry. */
   promptVaultId?: string;
 }
-

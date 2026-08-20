@@ -18,17 +18,17 @@ interface DependencyGraphProps {
 }
 
 const STATUS_FILL: Record<OrchestratorTask['status'], string> = {
-  pending:  'var(--bg-tertiary)',
-  running:  'var(--color-brand)',
-  done:     'var(--color-success)',
-  failed:   'var(--color-error)',
+  pending: 'var(--bg-tertiary)',
+  running: 'var(--color-brand)',
+  done: 'var(--color-success)',
+  failed: 'var(--color-error)',
 };
 
 const STATUS_STROKE: Record<OrchestratorTask['status'], string> = {
-  pending:  'var(--border-color-hover)',
-  running:  'var(--color-brand)',
-  done:     'var(--color-success)',
-  failed:   'var(--color-error)',
+  pending: 'var(--border-color-hover)',
+  running: 'var(--color-brand)',
+  done: 'var(--color-success)',
+  failed: 'var(--color-error)',
 };
 
 interface LaidOut {
@@ -45,14 +45,17 @@ interface LaidOut {
  * stack rows within a column. The algorithm is intentionally simple — plans
  * typically have ≤ 12 tasks.
  */
-function layout(tasks: OrchestratorTask[], compact?: boolean): { nodes: LaidOut[]; width: number; height: number } {
+function layout(
+  tasks: OrchestratorTask[],
+  compact?: boolean
+): { nodes: LaidOut[]; width: number; height: number } {
   if (tasks.length === 0) return { nodes: [], width: 0, height: 0 };
 
   const COL_W = compact ? 110 : 140;
-  const ROW_H = compact ? 48  : 56;
-  const PAD   = 12;
+  const ROW_H = compact ? 48 : 56;
+  const PAD = 12;
 
-  const byId = new Map(tasks.map(t => [t.id, t]));
+  const byId = new Map(tasks.map((t) => [t.id, t]));
   const depthCache = new Map<string, number>();
 
   const depthOf = (id: string): number => {
@@ -62,7 +65,7 @@ function layout(tasks: OrchestratorTask[], compact?: boolean): { nodes: LaidOut[
       depthCache.set(id, 0);
       return 0;
     }
-    const d = 1 + Math.max(...task.dependsOn.map(d => depthOf(d)));
+    const d = 1 + Math.max(...task.dependsOn.map((d) => depthOf(d)));
     depthCache.set(id, d);
     return d;
   };
@@ -92,7 +95,7 @@ function layout(tasks: OrchestratorTask[], compact?: boolean): { nodes: LaidOut[
   }
 
   // Centre each column vertically relative to the tallest column.
-  const tallest = Math.max(...[...columns.values()].map(c => c.length));
+  const tallest = Math.max(...[...columns.values()].map((c) => c.length));
   const colHeights = new Map<number, number>();
   for (const [d, col] of columns) colHeights.set(d, col.length);
 
@@ -104,7 +107,7 @@ function layout(tasks: OrchestratorTask[], compact?: boolean): { nodes: LaidOut[
 
   return {
     nodes,
-    width:  PAD * 2 + (maxDepth + 1) * COL_W - (COL_W - 100),
+    width: PAD * 2 + (maxDepth + 1) * COL_W - (COL_W - 100),
     height: PAD * 2 + tallest * ROW_H - (ROW_H - 36),
   };
 }
@@ -115,10 +118,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ tasks, title, 
   // task list below), NOT its position in the depth-sorted layout — those only
   // coincide for a strictly linear chain. A plan with real parallel branches
   // would otherwise show mismatched numbers between the graph and the list.
-  const taskIndexById = useMemo(
-    () => new Map(tasks.map((t, i) => [t.id, i + 1])),
-    [tasks],
-  );
+  const taskIndexById = useMemo(() => new Map(tasks.map((t, i) => [t.id, i + 1])), [tasks]);
 
   if (tasks.length === 0) {
     return (
@@ -133,7 +133,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ tasks, title, 
   const edges: { from: LaidOut; to: LaidOut; key: string }[] = [];
   for (const node of nodes) {
     for (const depId of node.task.dependsOn) {
-      const from = nodes.find(n => n.id === depId);
+      const from = nodes.find((n) => n.id === depId);
       if (from) edges.push({ from, to: node, key: `${from.id}-${node.id}` });
     }
   }
@@ -145,32 +145,25 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ tasks, title, 
     <div className={s.wrap}>
       {title && <div className={s.titleRow}>{title}</div>}
       <div className={s.scroll}>
-        <svg
-          width={Math.max(width, NODE_W + 24)}
-          height={height + NODE_H}
-          className={s.svg}
-        >
+        <svg width={Math.max(width, NODE_W + 24)} height={height + NODE_H} className={s.svg}>
           <defs>
             <marker
               id="dep-arrow"
               viewBox="0 0 10 10"
-              refX="9" refY="5"
-              markerWidth="6" markerHeight="6"
+              refX="9"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
               orient="auto-start-reverse"
             >
               <path d="M0,0 L10,5 L0,10 z" fill="var(--border-color-hover)" />
             </marker>
           </defs>
 
-          {edges.map(e => (
+          {edges.map((e) => (
             <path
               key={e.key}
-              d={bezierPath(
-                e.from.x + NODE_W,
-                e.from.y + NODE_H / 2,
-                e.to.x,
-                e.to.y + NODE_H / 2,
-              )}
+              d={bezierPath(e.from.x + NODE_W, e.from.y + NODE_H / 2, e.to.x, e.to.y + NODE_H / 2)}
               fill="none"
               stroke="var(--border-color-hover)"
               strokeWidth={1.2}
@@ -178,7 +171,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ tasks, title, 
             />
           ))}
 
-          {nodes.map(node => {
+          {nodes.map((node) => {
             const fill = STATUS_FILL[node.task.status];
             const stroke = STATUS_STROKE[node.task.status];
             const label = truncate(node.title, compact ? 12 : 16);
@@ -232,20 +225,32 @@ function bezierPath(x1: number, y1: number, x2: number, y2: number): string {
 
 const s = {
   wrap: css`
-    display: flex; flex-direction: column; gap: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   `,
   titleRow: css`
-    font-size: 10px; font-weight: 700; color: var(--text-tertiary);
-    text-transform: uppercase; letter-spacing: 0.06em;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
   `,
   scroll: css`
-    overflow: auto; max-height: 240px;
+    overflow: auto;
+    max-height: 240px;
     background: var(--bg-tertiary);
     border-radius: 6px;
     border: 1px solid var(--border-color);
     padding: 6px;
-    &::-webkit-scrollbar { height: 6px; width: 6px; }
-    &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+    &::-webkit-scrollbar {
+      height: 6px;
+      width: 6px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: var(--border-color);
+      border-radius: 3px;
+    }
   `,
   svg: css`
     display: block;
@@ -259,17 +264,26 @@ const s = {
   nodePulse: css`
     animation: nodepulse 1.4s ease-in-out infinite;
     @keyframes nodepulse {
-      0%, 100% { filter: brightness(1); }
-      50%      { filter: brightness(1.18); }
+      0%,
+      100% {
+        filter: brightness(1);
+      }
+      50% {
+        filter: brightness(1.18);
+      }
     }
   `,
   empty: css`
-    display: flex; flex-direction: column; gap: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
     padding: 12px;
-    background: var(--bg-tertiary); border-radius: 6px;
+    background: var(--bg-tertiary);
+    border-radius: 6px;
     border: 1px solid var(--border-color);
   `,
   emptyText: css`
-    font-size: 11px; color: var(--text-tertiary);
+    font-size: 11px;
+    color: var(--text-tertiary);
   `,
 };

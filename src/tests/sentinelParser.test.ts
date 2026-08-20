@@ -56,11 +56,9 @@ describe('parseNeedsBlock', () => {
   });
 
   it('returns empty string for context when field is missing', () => {
-    const buf = [
-      '###ORCHATERM_NEEDS###',
-      'ask: What is X?',
-      '###ORCHATERM_NEEDS_END###',
-    ].join('\n');
+    const buf = ['###ORCHATERM_NEEDS###', 'ask: What is X?', '###ORCHATERM_NEEDS_END###'].join(
+      '\n'
+    );
 
     const result = parseNeedsBlock(buf);
     expect(result!.ask).toBe('What is X?');
@@ -189,7 +187,9 @@ describe('parseSentinel', () => {
     ].join('\n');
     const result = parseSentinel(buf);
     expect(result).not.toBeNull();
-    expect(result!.summary).toBe('Designed the payment flow. Defined the webhook schema for receipt validation.');
+    expect(result!.summary).toBe(
+      'Designed the payment flow. Defined the webhook schema for receipt validation.'
+    );
     expect(result!.needs).toBe('Implement the backend endpoints. Start with the webhook receiver.');
   });
 });

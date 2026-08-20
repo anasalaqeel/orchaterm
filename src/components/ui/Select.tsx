@@ -115,53 +115,59 @@ export const Select: React.FC<SelectProps> = ({
   const selectedOption = options.find((opt) => opt.value === value) ?? options[0];
   const ActiveIcon = selectedOption?.icon ?? (selectedOption?.value === '' ? null : Terminal);
 
-  const dropdown = isOpen && dropdownPos
-    ? ReactDOM.createPortal(
-        <div
-          data-select-dropdown
-          className={styles.dropdown}
-          style={{
-            position: 'fixed',
-            top: dropdownPos.top,
-            bottom: dropdownPos.bottom,
-            left: dropdownPos.left,
-            width: dropdownPos.width,
-          }}
-        >
-          {options.map((opt, i) => {
-            const isActive = opt.value === value;
-            const OptIcon = opt.icon ?? (opt.value === '' ? null : Terminal);
-            const showGroupHeader = opt.group !== undefined && opt.group !== options[i - 1]?.group;
-            return (
-              <React.Fragment key={opt.value}>
-                {showGroupHeader && <div className={styles.groupHeader}>{opt.group}</div>}
-                <button
-                  type="button"
-                  className={cx(styles.item, isActive && styles.itemActive, opt.disabled && styles.itemDisabled)}
-                  disabled={opt.disabled}
-                  onMouseDown={e => {
-                    if (opt.disabled) return;
-                    e.preventDefault(); // prevent blur before click
-                    onChange(opt.value);
-                    closeDropdown();
-                  }}
-                >
-                  {OptIcon && <OptIcon className={styles.itemIcon} />}
-                  <div className={styles.itemText}>
-                    <span className={styles.itemName}>{opt.name}</span>
-                    {opt.description && (
-                      <span className={styles.itemDescription}>{opt.description}</span>
+  const dropdown =
+    isOpen && dropdownPos
+      ? ReactDOM.createPortal(
+          <div
+            data-select-dropdown
+            className={styles.dropdown}
+            style={{
+              position: 'fixed',
+              top: dropdownPos.top,
+              bottom: dropdownPos.bottom,
+              left: dropdownPos.left,
+              width: dropdownPos.width,
+            }}
+          >
+            {options.map((opt, i) => {
+              const isActive = opt.value === value;
+              const OptIcon = opt.icon ?? (opt.value === '' ? null : Terminal);
+              const showGroupHeader =
+                opt.group !== undefined && opt.group !== options[i - 1]?.group;
+              return (
+                <React.Fragment key={opt.value}>
+                  {showGroupHeader && <div className={styles.groupHeader}>{opt.group}</div>}
+                  <button
+                    type="button"
+                    className={cx(
+                      styles.item,
+                      isActive && styles.itemActive,
+                      opt.disabled && styles.itemDisabled
                     )}
-                  </div>
-                  {isActive && <Check className={styles.itemCheck} />}
-                </button>
-              </React.Fragment>
-            );
-          })}
-        </div>,
-        document.body,
-      )
-    : null;
+                    disabled={opt.disabled}
+                    onMouseDown={(e) => {
+                      if (opt.disabled) return;
+                      e.preventDefault(); // prevent blur before click
+                      onChange(opt.value);
+                      closeDropdown();
+                    }}
+                  >
+                    {OptIcon && <OptIcon className={styles.itemIcon} />}
+                    <div className={styles.itemText}>
+                      <span className={styles.itemName}>{opt.name}</span>
+                      {opt.description && (
+                        <span className={styles.itemDescription}>{opt.description}</span>
+                      )}
+                    </div>
+                    {isActive && <Check className={styles.itemCheck} />}
+                  </button>
+                </React.Fragment>
+              );
+            })}
+          </div>,
+          document.body
+        )
+      : null;
 
   return (
     <div className={styles.container} ref={containerRef}>
@@ -175,13 +181,9 @@ export const Select: React.FC<SelectProps> = ({
       >
         {ActiveIcon && <ActiveIcon className={styles.triggerIcon} />}
         <div className={styles.textContainer}>
-          <span className={styles.activeName}>
-            {selectedOption?.name ?? 'Select option...'}
-          </span>
+          <span className={styles.activeName}>{selectedOption?.name ?? 'Select option...'}</span>
           {selectedOption?.description && (
-            <span className={styles.activeDescription}>
-              {selectedOption.description}
-            </span>
+            <span className={styles.activeDescription}>{selectedOption.description}</span>
           )}
         </div>
         <ChevronDown className={cx(styles.chevron, isOpen && styles.chevronOpen)} />

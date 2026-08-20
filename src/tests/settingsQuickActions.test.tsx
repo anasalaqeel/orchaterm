@@ -74,33 +74,41 @@ async function renderSettings() {
     root!.render(
       <MemoryRouter initialEntries={['/settings#terminal']}>
         <SettingsView />
-      </MemoryRouter>,
+      </MemoryRouter>
     );
   });
   // The #terminal effect scrolls to the section after 100ms.
-  await act(async () => { await new Promise(r => setTimeout(r, 130)); });
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 130));
+  });
 }
 
 function setValueByPlaceholder(placeholderSubstring: string, value: string) {
-  const el = container.querySelector(`[placeholder*="${placeholderSubstring}"]`) as HTMLInputElement;
+  const el = container.querySelector(
+    `[placeholder*="${placeholderSubstring}"]`
+  ) as HTMLInputElement;
   expect(el, `input with placeholder containing "${placeholderSubstring}"`).toBeTruthy();
-  const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const proto =
+    el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(el, value);
   el.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 function clickByText(text: string, scope: ParentNode = container, selector = 'button') {
-  const el = Array.from(scope.querySelectorAll(selector))
-    .find(n => n.textContent?.trim() === text || n.getAttribute('title') === text);
+  const el = Array.from(scope.querySelectorAll(selector)).find(
+    (n) => n.textContent?.trim() === text || n.getAttribute('title') === text
+  );
   expect(el, `element "${text}" should be rendered`).toBeTruthy();
   el!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 }
 
 function savedQuickActions(): QuickAction[] {
   // updateSettings takes a single patch object; mock.calls entries are [patch].
-  const call = updateSettings.mock.calls.find(args => args[0] && 'quickActions' in (args[0] as object));
+  const call = updateSettings.mock.calls.find(
+    (args) => args[0] && 'quickActions' in (args[0] as object)
+  );
   expect(call, 'updateSettings should have been called with quickActions').toBeTruthy();
-  return ((call![0] as { quickActions: QuickAction[] }).quickActions);
+  return (call![0] as { quickActions: QuickAction[] }).quickActions;
 }
 
 describe('Settings quick actions editor', () => {
@@ -111,7 +119,10 @@ describe('Settings quick actions editor', () => {
   });
 
   afterEach(async () => {
-    if (root) await act(async () => { root!.unmount(); });
+    if (root)
+      await act(async () => {
+        root!.unmount();
+      });
     container.remove();
     root = null;
   });
@@ -121,10 +132,14 @@ describe('Settings quick actions editor', () => {
 
     setValueByPlaceholder('e.g. Status', 'Build');
     setValueByPlaceholder('e.g. git status', 'npm run build');
-    await act(async () => { clickByText('+ Add Quick Action'); });
+    await act(async () => {
+      clickByText('+ Add Quick Action');
+    });
     expect(container.textContent).toContain('Build'); // appears in the table
 
-    await act(async () => { clickByText('Save Terminal Settings'); });
+    await act(async () => {
+      clickByText('Save Terminal Settings');
+    });
     const actions = savedQuickActions();
     expect(actions).toHaveLength(1);
     expect(actions[0].label).toBe('Build');
@@ -140,20 +155,28 @@ describe('Settings quick actions editor', () => {
 
     // Open the custom Select (portal dropdown) and pick the saved prompt.
     // Options select on mousedown and their text includes the description.
-    await act(async () => { clickByText('Choose a prompt to copy...'); });
-    const option = Array.from(document.body.querySelectorAll('button'))
-      .find(b => b.textContent?.includes('Explain Error'));
+    await act(async () => {
+      clickByText('Choose a prompt to copy...');
+    });
+    const option = Array.from(document.body.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Explain Error')
+    );
     expect(option, 'vault prompt option should be rendered in the dropdown').toBeTruthy();
     await act(async () => {
       option!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     });
 
     // The form should now hold the prompt's title + content.
-    expect((container.querySelector('[placeholder*="e.g. Status"]') as HTMLInputElement).value)
-      .toBe('Explain Error');
+    expect(
+      (container.querySelector('[placeholder*="e.g. Status"]') as HTMLInputElement).value
+    ).toBe('Explain Error');
 
-    await act(async () => { clickByText('+ Add Quick Action'); });
-    await act(async () => { clickByText('Save Terminal Settings'); });
+    await act(async () => {
+      clickByText('+ Add Quick Action');
+    });
+    await act(async () => {
+      clickByText('Save Terminal Settings');
+    });
 
     const actions = savedQuickActions();
     expect(actions).toHaveLength(1);
@@ -173,10 +196,14 @@ describe('Settings quick actions editor', () => {
     await renderSettings();
     expect(container.textContent).toContain('git status');
 
-    await act(async () => { clickByText('Delete action'); });
+    await act(async () => {
+      clickByText('Delete action');
+    });
     expect(container.textContent).not.toContain('git status');
 
-    await act(async () => { clickByText('Save Terminal Settings'); });
+    await act(async () => {
+      clickByText('Save Terminal Settings');
+    });
     expect(savedQuickActions()).toHaveLength(0);
   });
 });

@@ -9,8 +9,9 @@ let container: HTMLDivElement;
 let root: Root | null = null;
 
 function sectionButton(title: string): HTMLButtonElement {
-  const btn = Array.from(container.querySelectorAll('button'))
-    .find(b => b.textContent?.trim() === title);
+  const btn = Array.from(container.querySelectorAll('button')).find(
+    (b) => b.textContent?.trim() === title
+  );
   expect(btn, `section button "${title}" should render`).toBeTruthy();
   return btn!;
 }
@@ -33,7 +34,9 @@ async function renderAllSections(): Promise<string> {
     'Settings & AI Configuration',
   ]) {
     await act(async () => {
-      sectionButton(title).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      sectionButton(title).dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true })
+      );
     });
     html += container.innerHTML;
   }
@@ -42,7 +45,10 @@ async function renderAllSections(): Promise<string> {
 
 describe('HelpModal', () => {
   afterEach(async () => {
-    if (root) await act(async () => { root!.unmount(); });
+    if (root)
+      await act(async () => {
+        root!.unmount();
+      });
     container.remove();
     root = null;
   });

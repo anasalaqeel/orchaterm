@@ -7,28 +7,31 @@ import { registerShortcut } from '../../services/keyboardManager';
 import { Input } from './Input';
 
 export const QuickSwitcher: React.FC = () => {
-  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, setViewMode, showToast } = useDashboard();
+  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, setViewMode, showToast } =
+    useDashboard();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
-  
+
   const modalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Filter workspaces based on search query
-  const filtered = workspaces.filter(p => 
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.description.toLowerCase().includes(search.toLowerCase())
+  const filtered = workspaces.filter(
+    (p) =>
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.description.toLowerCase().includes(search.toLowerCase())
   );
 
   // Ctrl+K — open/close switcher (skipped when terminal has focus)
   useEffect(() => {
     return registerShortcut({
-      key: 'k', ctrl: true,
+      key: 'k',
+      ctrl: true,
       context: 'non-terminal',
       handler: () => {
-        setIsOpen(prev => !prev);
+        setIsOpen((prev) => !prev);
         setSearch('');
         setSelectedIndex(0);
       },
@@ -47,18 +50,42 @@ export const QuickSwitcher: React.FC = () => {
   // Modal navigation — active only while open (global: modal is above terminal)
   useEffect(() => {
     if (!isOpen) return;
-    const removeEsc   = registerShortcut({ key: 'Escape',    context: 'global', handler: () => setIsOpen(false) });
-    const removeDown  = registerShortcut({ key: 'ArrowDown', context: 'global', handler: () => setSelectedIndex(prev => (prev + 1) % Math.max(1, filtered.length)) });
-    const removeUp    = registerShortcut({ key: 'ArrowUp',   context: 'global', handler: () => setSelectedIndex(prev => (prev - 1 + filtered.length) % Math.max(1, filtered.length)) });
-    const removeEnter = registerShortcut({ key: 'Enter',     context: 'global', handler: () => { if (filtered[selectedIndex]) handleSelect(filtered[selectedIndex].id); } });
-    return () => { removeEsc(); removeDown(); removeUp(); removeEnter(); };
+    const removeEsc = registerShortcut({
+      key: 'Escape',
+      context: 'global',
+      handler: () => setIsOpen(false),
+    });
+    const removeDown = registerShortcut({
+      key: 'ArrowDown',
+      context: 'global',
+      handler: () => setSelectedIndex((prev) => (prev + 1) % Math.max(1, filtered.length)),
+    });
+    const removeUp = registerShortcut({
+      key: 'ArrowUp',
+      context: 'global',
+      handler: () =>
+        setSelectedIndex((prev) => (prev - 1 + filtered.length) % Math.max(1, filtered.length)),
+    });
+    const removeEnter = registerShortcut({
+      key: 'Enter',
+      context: 'global',
+      handler: () => {
+        if (filtered[selectedIndex]) handleSelect(filtered[selectedIndex].id);
+      },
+    });
+    return () => {
+      removeEsc();
+      removeDown();
+      removeUp();
+      removeEnter();
+    };
   }, [isOpen, filtered, selectedIndex]);
 
   const handleSelect = (id: string) => {
     setActiveWorkspaceId(id);
     setViewMode('grid');
     navigate('/');
-    const proj = workspaces.find(p => p.id === id);
+    const proj = workspaces.find((p) => p.id === id);
     if (proj) showToast(`Switched active workspace to ${proj.name}`, 'success');
     setIsOpen(false);
     setSearch('');
@@ -74,14 +101,8 @@ export const QuickSwitcher: React.FC = () => {
   if (!isOpen) return null;
 
   return (
-    <div
-      onClick={handleOverlayClick}
-      className={styles.overlay}
-    >
-      <div
-        ref={modalRef}
-        className={styles.modal}
-      >
+    <div onClick={handleOverlayClick} className={styles.overlay}>
+      <div ref={modalRef} className={styles.modal}>
         {/* Search Input Bar */}
         <div className={styles.searchBar}>
           <Search className={styles.searchIcon} />
@@ -96,9 +117,7 @@ export const QuickSwitcher: React.FC = () => {
             }}
             className={styles.searchInput}
           />
-          <kbd className={styles.escKey}>
-             ESC
-          </kbd>
+          <kbd className={styles.escKey}>ESC</kbd>
         </div>
 
         {/* Results List */}
@@ -154,7 +173,7 @@ export const QuickSwitcher: React.FC = () => {
                       </p>
                     </div>
                   </div>
-                  
+
                   {isSelected && (
                     <div className={styles.selectAction}>
                       <span>Select</span>
@@ -165,9 +184,7 @@ export const QuickSwitcher: React.FC = () => {
               );
             })
           ) : (
-            <div className={styles.emptyState}>
-              No workspaces match "{search}"
-            </div>
+            <div className={styles.emptyState}>No workspaces match "{search}"</div>
           )}
         </div>
 
@@ -214,7 +231,9 @@ const styles = {
     border-radius: var(--border-radius-lg);
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-lg), 0 0 15px -3px rgba(var(--color-primary-rgb), 0.25);
+    box-shadow:
+      var(--shadow-lg),
+      0 0 15px -3px rgba(var(--color-primary-rgb), 0.25);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -280,7 +299,9 @@ const styles = {
     padding: 10px 12px;
     border-radius: var(--border-radius-md);
     cursor: pointer;
-    transition: background-color 150ms ease, color 150ms ease;
+    transition:
+      background-color 150ms ease,
+      color 150ms ease;
   `,
   itemSelected: css`
     background-color: var(--color-primary);
@@ -337,7 +358,7 @@ const styles = {
     background-color: rgba(255, 255, 255, 0.25);
     color: #ffffff;
 
-    [data-theme="dark"] & {
+    [data-theme='dark'] & {
       background-color: rgba(0, 0, 0, 0.2);
       color: var(--text-inverse);
     }
@@ -356,7 +377,7 @@ const styles = {
   descriptionSelected: css`
     color: rgba(255, 255, 255, 0.85);
 
-    [data-theme="dark"] & {
+    [data-theme='dark'] & {
       color: rgba(0, 0, 0, 0.7);
     }
   `,

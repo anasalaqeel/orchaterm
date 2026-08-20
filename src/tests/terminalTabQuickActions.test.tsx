@@ -20,7 +20,12 @@ const mockedInvoke = vi.mocked(invoke);
 const { mockDashboard } = vi.hoisted(() => ({
   mockDashboard: {
     settings: {
-      quickActions: [] as Array<{ id: string; label: string; command: string; autoExecute: boolean }>,
+      quickActions: [] as Array<{
+        id: string;
+        label: string;
+        command: string;
+        autoExecute: boolean;
+      }>,
     },
     workspaces: [{ id: 'w1', name: 'Orchaterm', path: 'C:\\dev\\orchaterm' }],
     spaces: [],
@@ -41,7 +46,9 @@ vi.mock('@xterm/xterm', async () => {
 const { getLastTerminal } = await import('./helpers/fakeTerminal');
 vi.mock('@xterm/addon-fit', () => ({
   FitAddon: class {
-    proposeDimensions() { return { cols: 80, rows: 24 }; }
+    proposeDimensions() {
+      return { cols: 80, rows: 24 };
+    }
     fit() {}
   },
 }));
@@ -83,16 +90,19 @@ async function renderTerminalTab() {
     root!.render(
       <MemoryRouter>
         <TerminalTab sessionId="s-test" workspacePath={'C:\\dev\\orchaterm'} shell="pwsh.exe" />
-      </MemoryRouter>,
+      </MemoryRouter>
     );
   });
   // Let the mount effect settle (spawn polling runs on rAF timers).
-  await act(async () => { await new Promise(r => setTimeout(r, 50)); });
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 50));
+  });
 }
 
 async function clickActionButton(label: string) {
-  const btn = Array.from(container.querySelectorAll('button'))
-    .find(b => b.textContent?.includes(label));
+  const btn = Array.from(container.querySelectorAll('button')).find((b) =>
+    b.textContent?.includes(label)
+  );
   expect(btn, `quick action button "${label}" should be rendered`).toBeTruthy();
   await act(async () => {
     btn!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -105,7 +115,10 @@ describe('TerminalTab quick action injection (integration)', () => {
   });
 
   afterEach(async () => {
-    if (root) await act(async () => { root!.unmount(); });
+    if (root)
+      await act(async () => {
+        root!.unmount();
+      });
     container.remove();
     root = null;
   });
@@ -126,9 +139,9 @@ describe('TerminalTab quick action injection (integration)', () => {
     await renderTerminalTab();
     getLastTerminal().lines = ['$ npm run buld', 'npm ERR! missing script: buld'];
     await clickActionButton('Explain');
-    expect(writtenPayloads()).toEqual(
-      ['\x1b[200~Fix this:\n$ npm run buld\nnpm ERR! missing script: buld\x1b[201~'],
-    );
+    expect(writtenPayloads()).toEqual([
+      '\x1b[200~Fix this:\n$ npm run buld\nnpm ERR! missing script: buld\x1b[201~',
+    ]);
   });
 
   it('expands {{selection}} from the highlighted terminal text', async () => {
@@ -168,11 +181,13 @@ describe('TerminalTab quick action injection (integration)', () => {
     await clickActionButton('Explain Error');
     // The expanded default template exceeds one 80-char chunk — wait for the
     // inter-chunk delays (8ms each) before asserting.
-    await act(async () => { await new Promise(r => setTimeout(r, 60)); });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 60));
+    });
 
     const chunks = writtenPayloads();
     expect(chunks.length).toBeGreaterThanOrEqual(2); // really went through chunking
-    const defaultAction = DEFAULT_QUICK_ACTIONS.find(a => a.id === 'ai-explain')!;
+    const defaultAction = DEFAULT_QUICK_ACTIONS.find((a) => a.id === 'ai-explain')!;
     const expected = `\x1b[200~${defaultAction.command.replace('{{terminal_output}}', bufferText)}\x1b[201~`;
     expect(chunks.join('')).toBe(expected); // pasted, NOT executed: no trailing \r
   });

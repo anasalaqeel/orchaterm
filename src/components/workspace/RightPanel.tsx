@@ -20,9 +20,7 @@ import { GroupChat } from '../ui/GroupChat';
 import { PipelinePanel } from '../pipeline/PipelinePanel';
 import { useDashboard } from '../../context/DashboardContext';
 import { orchestratorEngine } from '../../services/orchestratorEngine';
-import type {
-  OrchestratorPlan, OrchestratorTask, PipelineTemplate,
-} from '../../types';
+import type { OrchestratorPlan, OrchestratorTask, PipelineTemplate } from '../../types';
 
 type ActiveTab = 'chat' | 'pipeline';
 type SubTab = 'builder' | 'live' | 'history' | 'templates';
@@ -38,28 +36,34 @@ interface PendingPlan {
 
 export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
   const {
-    spaces, terminalSessions,
-    activeSpaceId, settings, llmProviders,
-    addPlan, addPipelineTemplate, incrementTemplateUse,
-    pipelineTemplates, showToast,
+    spaces,
+    terminalSessions,
+    activeSpaceId,
+    settings,
+    llmProviders,
+    addPlan,
+    addPipelineTemplate,
+    incrementTemplateUse,
+    pipelineTemplates,
+    showToast,
   } = useDashboard();
 
   const aiEnabled = settings.aiEnabled !== false;
 
-  const activeSpace   = spaces.find(g => g.id === activeSpaceId);
-  const allSessions   = terminalSessions.filter(s => s.workspaceId === workspaceId);
+  const activeSpace = spaces.find((g) => g.id === activeSpaceId);
+  const allSessions = terminalSessions.filter((s) => s.workspaceId === workspaceId);
   const groupSessions = activeSpace
-    ? allSessions.filter(s => activeSpace.sessionIds.includes(s.id))
+    ? allSessions.filter((s) => activeSpace.sessionIds.includes(s.id))
     : allSessions;
 
   // ── Top-level tab + sub-tab ────────────────────────────────────────────────
-  const [activeTab, setActiveTab]       = useState<ActiveTab>('chat');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('chat');
   const [pinnedSubTab, setPinnedSubTab] = useState<SubTab | undefined>(undefined);
 
   // ── Pipeline state (lifted from GroupChat) ──────────────────────────────────
-  const [pendingPlan,   setPendingPlan]   = useState<PendingPlan | null>(null);
-  const [livePlan,      setLivePlan]      = useState<OrchestratorPlan | null>(null);
-  const [buildTasks,    setBuildTasks]    = useState<OrchestratorTask[]>([]);
+  const [pendingPlan, setPendingPlan] = useState<PendingPlan | null>(null);
+  const [livePlan, setLivePlan] = useState<OrchestratorPlan | null>(null);
+  const [buildTasks, setBuildTasks] = useState<OrchestratorTask[]>([]);
   const [executionMode, setExecutionMode] = useState<'sequential' | 'parallel'>('sequential');
 
   // ── Listen for custom event to switch pipeline sub-tab ─────────────────────
@@ -71,7 +75,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
       setPinnedSubTab(detail.subTab);
     };
     window.addEventListener('orchaterm:open-pipeline-subtab', onOpenSubtab as EventListener);
-    return () => window.removeEventListener('orchaterm:open-pipeline-subtab', onOpenSubtab as EventListener);
+    return () =>
+      window.removeEventListener('orchaterm:open-pipeline-subtab', onOpenSubtab as EventListener);
   }, []);
 
   // ── Engine subscription: state + log → re-renders + chat feed relay ────────
@@ -86,7 +91,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
     });
     const existing = orchestratorEngine.getCurrentPlan();
     if (existing) setLivePlan({ ...existing });
-    return () => { unsubLog(); unsubState(); };
+    return () => {
+      unsubLog();
+      unsubState();
+    };
   }, [workspaceId]);
 
   // Keep livePlan visible indefinitely once reached a terminal state until dismissed
@@ -100,47 +108,58 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
   }, []);
 
   // ── Run pending plan (manual or chat-generated) ─────────────────────────────
-  const runPlan = useCallback((plan: PendingPlan) => {
-    if (!aiEnabled) return;
-    const currentPlan = orchestratorEngine.getCurrentPlan();
-    if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
-      showToast('A plan is already running — stop it first via the Live Run tab', 'error');
-      return;
-    }
+  const runPlan = useCallback(
+    (plan: PendingPlan) => {
+      if (!aiEnabled) return;
+      const currentPlan = orchestratorEngine.getCurrentPlan();
+      if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
+        showToast('A plan is already running — stop it first via the Live Run tab', 'error');
+        return;
+      }
 
-    const finalTasks = plan.tasks.map((t, idx) => ({
-      ...t,
-      dependsOn: executionMode === 'sequential'
-        ? (idx > 0 ? [plan.tasks[idx - 1].id] : [])
-        : [],
-    }));
+      const finalTasks = plan.tasks.map((t, idx) => ({
+        ...t,
+        dependsOn: executionMode === 'sequential' ? (idx > 0 ? [plan.tasks[idx - 1].id] : []) : [],
+      }));
 
-    const orchPlan: OrchestratorPlan = {
-      id:            crypto.randomUUID(),
-      goal:          plan.goal,
-      tasks:         finalTasks,
-      status:        'approved',
-      createdAt:     Date.now(),
-      workspaceId,
-      spaceId:       activeSpaceId ?? null,
+      const orchPlan: OrchestratorPlan = {
+        id: crypto.randomUUID(),
+        goal: plan.goal,
+        tasks: finalTasks,
+        status: 'approved',
+        createdAt: Date.now(),
+        workspaceId,
+        spaceId: activeSpaceId ?? null,
+        executionMode,
+      };
+
+      orchestratorEngine.updateConfig({
+        relayProvider: llmProviders.relay,
+        planGenProvider: llmProviders.planGen,
+        autoAnswerProvider: llmProviders.autoAnswer,
+        taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
+        interactionMode: settings.conductorInteractionMode,
+        sessionTitles: new Map(groupSessions.map((s) => [s.id, s.title])),
+      });
+
+      orchestratorEngine.start(orchPlan);
+      addPlan(orchPlan);
+      setPendingPlan(null);
+      setPinnedSubTab('live');
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [
+      aiEnabled,
       executionMode,
-    };
-
-    orchestratorEngine.updateConfig({
-      relayProvider:      llmProviders.relay,
-      planGenProvider:    llmProviders.planGen,
-      autoAnswerProvider: llmProviders.autoAnswer,
-      taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
-      interactionMode:    settings.conductorInteractionMode,
-      sessionTitles:      new Map(groupSessions.map(s => [s.id, s.title])),
-    });
-
-    orchestratorEngine.start(orchPlan);
-    addPlan(orchPlan);
-    setPendingPlan(null);
-    setPinnedSubTab('live');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiEnabled, executionMode, activeSpaceId, workspaceId, groupSessions, settings, addPlan, llmProviders, showToast]);
+      activeSpaceId,
+      workspaceId,
+      groupSessions,
+      settings,
+      addPlan,
+      llmProviders,
+      showToast,
+    ]
+  );
 
   const handleRunPending = useCallback(() => {
     if (pendingPlan) runPlan(pendingPlan);
@@ -154,7 +173,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
   const handleRunBuild = useCallback(() => {
     if (!aiEnabled || buildTasks.length === 0) return;
     runPlan({
-      goal:  buildTasks.map(t => t.title).join(' → '),
+      goal: buildTasks.map((t) => t.title).join(' → '),
       tasks: buildTasks,
     });
   }, [aiEnabled, buildTasks, runPlan]);
@@ -168,77 +187,95 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
   // Allocates fresh task IDs so the new plan doesn't collide with the source in
   // History. Preserves the original dependency graph rather than re-deriving it
   // from executionMode — re-run means "same pipeline again".
-  const handleRerun = useCallback((sourcePlan: OrchestratorPlan) => {
-    if (!aiEnabled) {
-      showToast('Enable AI features to re-run a pipeline', 'error');
-      return;
-    }
-    const currentPlan = orchestratorEngine.getCurrentPlan();
-    if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
-      showToast('A plan is already running — stop it first via the Live Run tab', 'error');
-      return;
-    }
-    if (sourcePlan.tasks.length === 0) {
-      showToast('Cannot re-run an empty plan', 'error');
-      return;
-    }
+  const handleRerun = useCallback(
+    (sourcePlan: OrchestratorPlan) => {
+      if (!aiEnabled) {
+        showToast('Enable AI features to re-run a pipeline', 'error');
+        return;
+      }
+      const currentPlan = orchestratorEngine.getCurrentPlan();
+      if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
+        showToast('A plan is already running — stop it first via the Live Run tab', 'error');
+        return;
+      }
+      if (sourcePlan.tasks.length === 0) {
+        showToast('Cannot re-run an empty plan', 'error');
+        return;
+      }
 
-    const newIds = sourcePlan.tasks.map(() => crypto.randomUUID());
-    const freshTasks: OrchestratorTask[] = sourcePlan.tasks.map((t, i) => ({
-      id:                   newIds[i],
-      title:                t.title,
-      description:          t.description,
-      assignedSessionId:    t.assignedSessionId,
-      assignedSessionTitle: t.assignedSessionTitle,
-      dependsOn:            t.dependsOn
-        .map(oldId => {
-          const idx = sourcePlan.tasks.findIndex(tt => tt.id === oldId);
-          return idx >= 0 ? newIds[idx] : '';
-        })
-        .filter(Boolean),
-      status: 'pending' as const,
-    }));
+      const newIds = sourcePlan.tasks.map(() => crypto.randomUUID());
+      const freshTasks: OrchestratorTask[] = sourcePlan.tasks.map((t, i) => ({
+        id: newIds[i],
+        title: t.title,
+        description: t.description,
+        assignedSessionId: t.assignedSessionId,
+        assignedSessionTitle: t.assignedSessionTitle,
+        dependsOn: t.dependsOn
+          .map((oldId) => {
+            const idx = sourcePlan.tasks.findIndex((tt) => tt.id === oldId);
+            return idx >= 0 ? newIds[idx] : '';
+          })
+          .filter(Boolean),
+        status: 'pending' as const,
+      }));
 
-    const orchPlan: OrchestratorPlan = {
-      id:            crypto.randomUUID(),
-      goal:          sourcePlan.goal,
-      tasks:         freshTasks,
-      status:        'approved',
-      createdAt:     Date.now(),
+      const orchPlan: OrchestratorPlan = {
+        id: crypto.randomUUID(),
+        goal: sourcePlan.goal,
+        tasks: freshTasks,
+        status: 'approved',
+        createdAt: Date.now(),
+        workspaceId,
+        spaceId: sourcePlan.spaceId ?? activeSpaceId ?? null,
+        executionMode: sourcePlan.executionMode,
+      };
+
+      orchestratorEngine.updateConfig({
+        relayProvider: llmProviders.relay,
+        planGenProvider: llmProviders.planGen,
+        autoAnswerProvider: llmProviders.autoAnswer,
+        taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
+        interactionMode: settings.conductorInteractionMode,
+        sessionTitles: new Map(groupSessions.map((s) => [s.id, s.title])),
+      });
+
+      orchestratorEngine.start(orchPlan);
+      addPlan(orchPlan);
+      setPendingPlan(null);
+      setActiveTab('pipeline');
+      setPinnedSubTab('live');
+      showToast(
+        `Re-running "${sourcePlan.goal.slice(0, 60)}${sourcePlan.goal.length > 60 ? '…' : ''}"`,
+        'success'
+      );
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [
+      aiEnabled,
       workspaceId,
-      spaceId:       sourcePlan.spaceId ?? activeSpaceId ?? null,
-      executionMode: sourcePlan.executionMode,
-    };
-
-    orchestratorEngine.updateConfig({
-      relayProvider:      llmProviders.relay,
-      planGenProvider:    llmProviders.planGen,
-      autoAnswerProvider: llmProviders.autoAnswer,
-      taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
-      interactionMode:    settings.conductorInteractionMode,
-      sessionTitles:      new Map(groupSessions.map(s => [s.id, s.title])),
-    });
-
-    orchestratorEngine.start(orchPlan);
-    addPlan(orchPlan);
-    setPendingPlan(null);
-    setActiveTab('pipeline');
-    setPinnedSubTab('live');
-    showToast(`Re-running "${sourcePlan.goal.slice(0, 60)}${sourcePlan.goal.length > 60 ? '…' : ''}"`, 'success');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiEnabled, workspaceId, activeSpaceId, groupSessions, settings, addPlan, llmProviders, showToast]);
+      activeSpaceId,
+      groupSessions,
+      settings,
+      addPlan,
+      llmProviders,
+      showToast,
+    ]
+  );
 
   // ── Save-as-template ───────────────────────────────────────────────────────
-  const handleSaveTemplate = useCallback((t: Omit<PipelineTemplate, 'id' | 'createdAt' | 'usedAt' | 'useCount'>) => {
-    addPipelineTemplate(t);
-  }, [addPipelineTemplate]);
+  const handleSaveTemplate = useCallback(
+    (t: Omit<PipelineTemplate, 'id' | 'createdAt' | 'usedAt' | 'useCount'>) => {
+      addPipelineTemplate(t);
+    },
+    [addPipelineTemplate]
+  );
 
   // ── Sidebar / Pipelines page → load a template into the builder ────────────
   useEffect(() => {
     const onLoadTemplate = (e: Event) => {
       const detail = (e as CustomEvent<{ templateId: string }>).detail;
       if (!detail?.templateId) return;
-      const tpl = pipelineTemplates.find(t => t.id === detail.templateId);
+      const tpl = pipelineTemplates.find((t) => t.id === detail.templateId);
       if (!tpl) return;
 
       // First pass: allocate IDs.
@@ -248,21 +285,19 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
       const matchSession = (hint?: string) => {
         if (!hint) return undefined;
         const lc = hint.toLowerCase();
-        return groupSessions.find(s => s.title.toLowerCase().includes(lc));
+        return groupSessions.find((s) => s.title.toLowerCase().includes(lc));
       };
 
       const tasks: OrchestratorTask[] = tpl.tasks.map((tt, i) => {
         const session = matchSession(tt.agentHint);
         return {
-          id:                   newIds[i],
-          title:                tt.title,
-          description:          tt.description,
-          assignedSessionId:    session?.id ?? '',
+          id: newIds[i],
+          title: tt.title,
+          description: tt.description,
+          assignedSessionId: session?.id ?? '',
           assignedSessionTitle: session?.title ?? '(assign tab)',
-          dependsOn:            tt.dependsOnIndices
-            .map(j => newIds[j])
-            .filter(Boolean),
-          status:               'pending' as const,
+          dependsOn: tt.dependsOnIndices.map((j) => newIds[j]).filter(Boolean),
+          status: 'pending' as const,
         };
       });
 
@@ -276,7 +311,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
     };
 
     window.addEventListener('orchaterm:load-template', onLoadTemplate as EventListener);
-    return () => window.removeEventListener('orchaterm:load-template', onLoadTemplate as EventListener);
+    return () =>
+      window.removeEventListener('orchaterm:load-template', onLoadTemplate as EventListener);
   }, [pipelineTemplates, groupSessions, incrementTemplateUse, showToast]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -294,7 +330,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
           </button>
           <button
             className={cx(s.tab, activeTab === 'pipeline' && s.tabActive)}
-            onClick={() => { setActiveTab('pipeline'); setPinnedSubTab(undefined); }}
+            onClick={() => {
+              setActiveTab('pipeline');
+              setPinnedSubTab(undefined);
+            }}
             title="Build & monitor task pipelines"
           >
             <Workflow size={11} />
@@ -302,11 +341,16 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
             {livePlan && (
               <span
                 className={s.tabDot}
-                style={{ background:
-                  livePlan.status === 'running' ? 'var(--color-brand)' :
-                  livePlan.status === 'done'    ? 'var(--color-success)' :
-                  livePlan.status === 'failed'  ? 'var(--color-error)'  :
-                  'var(--text-tertiary)' }}
+                style={{
+                  background:
+                    livePlan.status === 'running'
+                      ? 'var(--color-brand)'
+                      : livePlan.status === 'done'
+                        ? 'var(--color-success)'
+                        : livePlan.status === 'failed'
+                          ? 'var(--color-error)'
+                          : 'var(--text-tertiary)',
+                }}
               />
             )}
             {pendingPlan && <span className={cx(s.tabDot, s.tabDotPending)} />}
@@ -352,9 +396,13 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
 
 const s = {
   root: css`
-    display: flex; flex-direction: column;
-    flex: 1; min-height: 0; height: 100%;
-    background: var(--bg-canvas); overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    background: var(--bg-canvas);
+    overflow: hidden;
   `,
   tabs: css`
     flex-shrink: 0;
@@ -363,51 +411,76 @@ const s = {
     border-bottom: 1px solid var(--border-color);
   `,
   tabsInner: css`
-    display: flex; gap: 2px;
+    display: flex;
+    gap: 2px;
     background: var(--bg-canvas);
     border: 1px solid var(--border-color);
     border-radius: 99px;
     padding: 3px;
   `,
   tab: css`
-    display: flex; align-items: center; gap: 5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
     padding: 5px 14px;
     border-radius: 99px;
-    font-size: 11px; font-weight: 600;
+    font-size: 11px;
+    font-weight: 600;
     color: var(--text-tertiary);
     background: transparent;
-    border: none; cursor: pointer;
-    transition: color 0.15s, background 0.15s;
+    border: none;
+    cursor: pointer;
+    transition:
+      color 0.15s,
+      background 0.15s;
     white-space: nowrap;
     position: relative;
-    &:hover { color: var(--text-secondary); }
+    &:hover {
+      color: var(--text-secondary);
+    }
   `,
   tabActive: css`
     background: var(--color-brand);
     color: #fff;
     box-shadow: 0 2px 6px rgba(var(--color-brand-rgb), 0.3);
-    &:hover { color: #fff; }
+    &:hover {
+      color: #fff;
+    }
   `,
   tabDot: css`
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--text-tertiary); flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+    flex-shrink: 0;
     animation: tabdotpulse 1.2s ease-in-out infinite;
     @keyframes tabdotpulse {
-      0%,100% { transform: scale(1); opacity: 1; }
-      50%     { transform: scale(1.3); opacity: 0.6; }
+      0%,
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+      50% {
+        transform: scale(1.3);
+        opacity: 0.6;
+      }
     }
   `,
   tabDotPending: css`
     background: var(--color-info);
   `,
   body: css`
-    flex: 1; min-height: 0;
-    display: flex; flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     position: relative;
   `,
   layer: css`
-    flex: 1; min-height: 0;
-    display: flex; flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   `,
   layerVisible: css`
     flex: 1;

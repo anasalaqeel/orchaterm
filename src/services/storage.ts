@@ -1,11 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import { AppData, AppSettings, OrchestratorPlan, PipelineTemplate } from '../types';
 
-const FILE_DATA      = 'orchaterm_data.json';
-const FILE_PLANS     = 'orchaterm_plans.json';
+const FILE_DATA = 'orchaterm_data.json';
+const FILE_PLANS = 'orchaterm_plans.json';
 const FILE_PIPELINES = 'orchaterm_pipelines.json';
-const FILE_UI        = 'orchaterm_ui.json';
-const FILE_TERMS     = 'orchaterm_terminals.json';
+const FILE_UI = 'orchaterm_ui.json';
+const FILE_TERMS = 'orchaterm_terminals.json';
 
 // ── Tauri detection ────────────────────────────────────────────────────────────
 
@@ -26,11 +26,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   conductorTaskTimeoutMinutes: 0,
   conductorInteractionMode: 'auto',
   llmProviders: {
-    relay:      { ...DEFAULT_OLLAMA_CONFIG },
-    planGen:    { ...DEFAULT_OLLAMA_CONFIG },
+    relay: { ...DEFAULT_OLLAMA_CONFIG },
+    planGen: { ...DEFAULT_OLLAMA_CONFIG },
     autoAnswer: { ...DEFAULT_OLLAMA_CONFIG },
-    chat:       { ...DEFAULT_OLLAMA_CONFIG },
-    routing:    { ...DEFAULT_OLLAMA_CONFIG },
+    chat: { ...DEFAULT_OLLAMA_CONFIG },
+    routing: { ...DEFAULT_OLLAMA_CONFIG },
   },
 };
 

@@ -14,8 +14,10 @@ describe('OpenAICompatProvider.complete', () => {
       json: async () => ({ choices: [{ message: { content: 'Answer' } }] }),
     });
     const provider = new OpenAICompatProvider({
-      provider: 'openai-compatible', model: 'gpt-4o',
-      baseUrl: 'https://api.openai.com', apiKey: 'sk-test',
+      provider: 'openai-compatible',
+      model: 'gpt-4o',
+      baseUrl: 'https://api.openai.com',
+      apiKey: 'sk-test',
     });
     const result = await provider.complete([{ role: 'user', content: 'Hi' }], 'Be helpful');
     expect(result).toBe('Answer');
@@ -33,7 +35,9 @@ describe('OpenAICompatProvider.complete', () => {
       json: async () => ({ choices: [{ message: { content: 'OK' } }] }),
     });
     const provider = new OpenAICompatProvider({
-      provider: 'openai-compatible', model: 'llama3', baseUrl: 'http://localhost:1234',
+      provider: 'openai-compatible',
+      model: 'llama3',
+      baseUrl: 'http://localhost:1234',
     });
     await provider.complete([{ role: 'user', content: 'Hi' }]);
     const opts = mockFetch.mock.calls[0][1];
@@ -42,11 +46,15 @@ describe('OpenAICompatProvider.complete', () => {
 
   it('throws on non-ok response', async () => {
     mockFetch.mockResolvedValue({
-      ok: false, status: 401, statusText: 'Unauthorized',
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
       json: async () => ({ error: { message: 'Invalid API key' } }),
     });
     const provider = new OpenAICompatProvider({ provider: 'openai-compatible', model: 'gpt-4o' });
-    await expect(provider.complete([{ role: 'user', content: 'Hi' }])).rejects.toThrow('Invalid API key');
+    await expect(provider.complete([{ role: 'user', content: 'Hi' }])).rejects.toThrow(
+      'Invalid API key'
+    );
   });
 });
 

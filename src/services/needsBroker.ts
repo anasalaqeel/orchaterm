@@ -53,7 +53,7 @@ export class NeedsBroker {
   onEvent(cb: (event: RoutingEvent) => void): () => void {
     this.eventListeners.push(cb);
     return () => {
-      this.eventListeners = this.eventListeners.filter(l => l !== cb);
+      this.eventListeners = this.eventListeners.filter((l) => l !== cb);
     };
   }
 
@@ -66,7 +66,7 @@ export class NeedsBroker {
     spaceId: string,
     request: AgentNeedsRequest,
     onAnswer: (answer: string) => void,
-    onError: (err: string) => void,
+    onError: (err: string) => void
   ): Promise<void> {
     const sessions = this.spaces.get(spaceId);
     if (!sessions) {
@@ -74,15 +74,15 @@ export class NeedsBroker {
       return;
     }
 
-    const requestingSession = sessions.find(s => s.id === requestingSessionId);
+    const requestingSession = sessions.find((s) => s.id === requestingSessionId);
     if (!requestingSession) {
       onError(`Session "${requestingSessionId}" not found in space "${spaceId}"`);
       return;
     }
 
-    const peers = sessions.filter(s => s.id !== requestingSessionId);
-    const peerContext = peers.map(s => ({
-      title:        s.title,
+    const peers = sessions.filter((s) => s.id !== requestingSessionId);
+    const peerContext = peers.map((s) => ({
+      title: s.title,
       // Trim to last 1200 chars to keep Ollama prompt manageable
       recentOutput: bufferWatcher.getBuffer(s.id).slice(-1200),
     }));
@@ -93,7 +93,7 @@ export class NeedsBroker {
         request.ask,
         request.context,
         requestingSession.title,
-        peerContext,
+        peerContext
       );
       answer = await this.provider.complete([{ role: 'user', content: userContent }], system);
     } catch (err: any) {
@@ -113,9 +113,9 @@ export class NeedsBroker {
     }
 
     this.emit({
-      type:            'needs-answered',
+      type: 'needs-answered',
       requestingAgent: requestingSession.title,
-      question:        request.ask,
+      question: request.ask,
       answer,
     });
   }

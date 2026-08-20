@@ -78,7 +78,7 @@ function collectLeafIdsWithSession(node: SplitNode, sessionId: string, out: stri
 function mapNode(
   node: SplitNode,
   targetId: string,
-  fn: (n: SplitNode) => SplitNode | null,
+  fn: (n: SplitNode) => SplitNode | null
 ): SplitNode | null {
   if (node.id === targetId) return fn(node);
   if (node.type !== 'split') return node;
@@ -96,13 +96,13 @@ function mapNode(
   if (kept.length === 0) return null;
   if (kept.length === 1) return kept[0].node; // collapse single child
 
-  const keptRatios = kept.map(k => node.ratios[k.origIdx]);
+  const keptRatios = kept.map((k) => node.ratios[k.origIdx]);
   const sum = keptRatios.reduce((a, b) => a + b, 0);
 
   return {
     ...node,
-    children: kept.map(k => k.node),
-    ratios: keptRatios.map(r => r / sum),
+    children: kept.map((k) => k.node),
+    ratios: keptRatios.map((r) => r / sum),
   };
 }
 
@@ -129,12 +129,12 @@ export function useSplitTree(sessions: { id: string }[]) {
   // 1. Remove any closed sessions
   // 2. Add new sessions to their own group
   useEffect(() => {
-    const sessionIds = new Set(sessions.map(s => s.id));
-    setGroups(prevGroups => {
+    const sessionIds = new Set(sessions.map((s) => s.id));
+    setGroups((prevGroups) => {
       let nextGroups = [...prevGroups];
 
       // Remove any leaf nodes whose session is no longer in sessions list
-      nextGroups = nextGroups.map(g => {
+      nextGroups = nextGroups.map((g) => {
         let tree = g.tree;
         const leafSessions = collectLeafSessionIds(tree);
         for (const sid of leafSessions) {
@@ -147,10 +147,10 @@ export function useSplitTree(sessions: { id: string }[]) {
       });
 
       // Filter out empty groups
-      nextGroups = nextGroups.filter(g => collectLeafSessionIds(g.tree).length > 0);
+      nextGroups = nextGroups.filter((g) => collectLeafSessionIds(g.tree).length > 0);
 
       // For any session in sessions that is not in any group, create a new group
-      const existingSessionIds = new Set(nextGroups.flatMap(g => collectLeafSessionIds(g.tree)));
+      const existingSessionIds = new Set(nextGroups.flatMap((g) => collectLeafSessionIds(g.tree)));
       for (const s of sessions) {
         if (!existingSessionIds.has(s.id)) {
           const root = newLeaf(s.id);
@@ -169,7 +169,7 @@ export function useSplitTree(sessions: { id: string }[]) {
   // Ensure activeGroupId is always valid (fallback to first group or empty)
   useEffect(() => {
     if (groups.length > 0) {
-      const activeGroupExists = groups.some(g => g.id === activeGroupId);
+      const activeGroupExists = groups.some((g) => g.id === activeGroupId);
       if (!activeGroupExists) {
         setActiveGroupId(groups[0].id);
       }
@@ -178,149 +178,177 @@ export function useSplitTree(sessions: { id: string }[]) {
     }
   }, [groups, activeGroupId]);
 
-  const activeGroup = groups.find(g => g.id === activeGroupId) || groups[0];
+  const activeGroup = groups.find((g) => g.id === activeGroupId) || groups[0];
   const tree = activeGroup ? activeGroup.tree : { type: 'leaf' as const, id: '', sessionId: '' };
   const activePaneId = activeGroup ? activeGroup.activePaneId : '';
 
-  const setActivePaneId = useCallback((id: string) => {
-    setGroups(prev => prev.map(g => g.id === activeGroupId ? { ...g, activePaneId: id } : g));
-  }, [activeGroupId]);
+  const setActivePaneId = useCallback(
+    (id: string) => {
+      setGroups((prev) =>
+        prev.map((g) => (g.id === activeGroupId ? { ...g, activePaneId: id } : g))
+      );
+    },
+    [activeGroupId]
+  );
 
   const switchSession = useCallback((sessionId: string) => {
-    setGroups(prevGroups => {
-      const targetGroup = prevGroups.find(g => collectLeafSessionIds(g.tree).includes(sessionId));
+    setGroups((prevGroups) => {
+      const targetGroup = prevGroups.find((g) => collectLeafSessionIds(g.tree).includes(sessionId));
       if (targetGroup) {
         setActiveGroupId(targetGroup.id);
         const leaf = findLeafForSession(targetGroup.tree, sessionId);
         if (leaf) {
-          return prevGroups.map(g => g.id === targetGroup.id ? { ...g, activePaneId: leaf.id } : g);
+          return prevGroups.map((g) =>
+            g.id === targetGroup.id ? { ...g, activePaneId: leaf.id } : g
+          );
         }
       }
       return prevGroups;
     });
   }, []);
 
-  const moveSession = useCallback((sessionId: string, targetLeafId: string, direction: 'h' | 'v', before: boolean) => {
-    setGroups(prevGroups => {
-      let tgtGroupIdx = -1;
-      for (let i = 0; i < prevGroups.length; i++) {
-        if (findNodeById(prevGroups[i].tree, targetLeafId)) {
-          tgtGroupIdx = i;
-          break;
-        }
-      }
-      if (tgtGroupIdx === -1) return prevGroups;
-
-      let srcGroupIdx = -1;
-      for (let i = 0; i < prevGroups.length; i++) {
-        const leafIds: string[] = [];
-        collectLeafIdsWithSession(prevGroups[i].tree, sessionId, leafIds);
-        if (leafIds.length > 0) {
-          srcGroupIdx = i;
-          break;
-        }
-      }
-
-      let nextGroups = [...prevGroups];
-
-      // 1. Remove from source tree
-      if (srcGroupIdx !== -1) {
-        const srcGroup = nextGroups[srcGroupIdx];
-        const newTree = removeSessionFromTree(srcGroup.tree, sessionId);
-        if (newTree === null) {
-          nextGroups[srcGroupIdx] = { ...srcGroup, tree: null as any };
-        } else {
-          let activePaneId = srcGroup.activePaneId;
-          const toRemove: string[] = [];
-          collectLeafIdsWithSession(srcGroup.tree, sessionId, toRemove);
-          if (toRemove.includes(activePaneId)) {
-            activePaneId = findFirstLeaf(newTree)?.id ?? activePaneId;
+  const moveSession = useCallback(
+    (sessionId: string, targetLeafId: string, direction: 'h' | 'v', before: boolean) => {
+      setGroups((prevGroups) => {
+        let tgtGroupIdx = -1;
+        for (let i = 0; i < prevGroups.length; i++) {
+          if (findNodeById(prevGroups[i].tree, targetLeafId)) {
+            tgtGroupIdx = i;
+            break;
           }
-          nextGroups[srcGroupIdx] = {
-            ...srcGroup,
-            tree: newTree,
-            activePaneId,
-          };
         }
-      }
+        if (tgtGroupIdx === -1) return prevGroups;
 
-      // 2. Split in target tree
-      const targetGroup = nextGroups[tgtGroupIdx];
-      const newLeafNode = newLeaf(sessionId);
-      const newTree = mapNode(targetGroup.tree, targetLeafId, node => {
-        if (node.type !== 'leaf') return node;
-        if (node.sessionId === sessionId) return node; // already there, no-op
-        const children = before ? [newLeafNode, node] : [node, newLeafNode];
-        return {
-          type: 'split' as const,
-          id: crypto.randomUUID(),
-          direction,
-          children,
-          ratios: [0.5, 0.5],
+        let srcGroupIdx = -1;
+        for (let i = 0; i < prevGroups.length; i++) {
+          const leafIds: string[] = [];
+          collectLeafIdsWithSession(prevGroups[i].tree, sessionId, leafIds);
+          if (leafIds.length > 0) {
+            srcGroupIdx = i;
+            break;
+          }
+        }
+
+        let nextGroups = [...prevGroups];
+
+        // 1. Remove from source tree
+        if (srcGroupIdx !== -1) {
+          const srcGroup = nextGroups[srcGroupIdx];
+          const newTree = removeSessionFromTree(srcGroup.tree, sessionId);
+          if (newTree === null) {
+            nextGroups[srcGroupIdx] = { ...srcGroup, tree: null as any };
+          } else {
+            let activePaneId = srcGroup.activePaneId;
+            const toRemove: string[] = [];
+            collectLeafIdsWithSession(srcGroup.tree, sessionId, toRemove);
+            if (toRemove.includes(activePaneId)) {
+              activePaneId = findFirstLeaf(newTree)?.id ?? activePaneId;
+            }
+            nextGroups[srcGroupIdx] = {
+              ...srcGroup,
+              tree: newTree,
+              activePaneId,
+            };
+          }
+        }
+
+        // 2. Split in target tree
+        const targetGroup = nextGroups[tgtGroupIdx];
+        const newLeafNode = newLeaf(sessionId);
+        const newTree = mapNode(targetGroup.tree, targetLeafId, (node) => {
+          if (node.type !== 'leaf') return node;
+          if (node.sessionId === sessionId) return node; // already there, no-op
+          const children = before ? [newLeafNode, node] : [node, newLeafNode];
+          return {
+            type: 'split' as const,
+            id: crypto.randomUUID(),
+            direction,
+            children,
+            ratios: [0.5, 0.5],
+          };
+        });
+
+        nextGroups[tgtGroupIdx] = {
+          ...targetGroup,
+          tree: newTree ?? targetGroup.tree,
+          activePaneId: newLeafNode.id,
         };
+
+        return nextGroups.filter(
+          (g) => g.tree !== null && collectLeafSessionIds(g.tree).length > 0
+        );
       });
+    },
+    []
+  );
 
-      nextGroups[tgtGroupIdx] = {
-        ...targetGroup,
-        tree: newTree ?? targetGroup.tree,
-        activePaneId: newLeafNode.id,
-      };
+  const closePane = useCallback(
+    (leafId: string) => {
+      setGroups((prev) => {
+        const activeGroup = prev.find((g) => g.id === activeGroupId);
+        if (!activeGroup || activeGroup.tree.type === 'leaf') return prev;
 
-      return nextGroups.filter(g => g.tree !== null && collectLeafSessionIds(g.tree).length > 0);
-    });
-  }, []);
+        const leafNode = findNodeById(activeGroup.tree, leafId);
+        if (!leafNode || leafNode.type !== 'leaf') return prev;
+        const sessionId = leafNode.sessionId;
 
-  const closePane = useCallback((leafId: string) => {
-    setGroups(prev => {
-      const activeGroup = prev.find(g => g.id === activeGroupId);
-      if (!activeGroup || activeGroup.tree.type === 'leaf') return prev;
-      
-      const leafNode = findNodeById(activeGroup.tree, leafId);
-      if (!leafNode || leafNode.type !== 'leaf') return prev;
-      const sessionId = leafNode.sessionId;
+        const newTree = mapNode(activeGroup.tree, leafId, () => null);
+        if (!newTree) return prev;
+        const activePaneId =
+          activeGroup.activePaneId === leafId
+            ? (findFirstLeaf(newTree)?.id ?? activeGroup.activePaneId)
+            : activeGroup.activePaneId;
+        const nextGroups = prev.map((g) =>
+          g.id === activeGroupId ? { ...g, tree: newTree, activePaneId } : g
+        );
 
-      const newTree = mapNode(activeGroup.tree, leafId, () => null);
-      if (!newTree) return prev;
-      const activePaneId = activeGroup.activePaneId === leafId
-        ? (findFirstLeaf(newTree)?.id ?? activeGroup.activePaneId)
-        : activeGroup.activePaneId;
-      const nextGroups = prev.map(g => g.id === activeGroupId ? { ...g, tree: newTree, activePaneId } : g);
-      
-      const root = newLeaf(sessionId);
-      nextGroups.push({
-        id: crypto.randomUUID(),
-        tree: root,
-        activePaneId: root.id,
+        const root = newLeaf(sessionId);
+        nextGroups.push({
+          id: crypto.randomUUID(),
+          tree: root,
+          activePaneId: root.id,
+        });
+        return nextGroups;
       });
-      return nextGroups;
-    });
-  }, [activeGroupId]);
+    },
+    [activeGroupId]
+  );
 
-  const setRatios = useCallback((containerId: string, ratios: number[]) => {
-    setGroups(prev => prev.map(g => {
-      if (g.id !== activeGroupId) return g;
-      const newTree = mapNode(g.tree, containerId, node => {
-        if (node.type !== 'split') return node;
-        return { ...node, ratios };
-      });
-      return { ...g, tree: newTree ?? g.tree };
-    }));
-  }, [activeGroupId]);
+  const setRatios = useCallback(
+    (containerId: string, ratios: number[]) => {
+      setGroups((prev) =>
+        prev.map((g) => {
+          if (g.id !== activeGroupId) return g;
+          const newTree = mapNode(g.tree, containerId, (node) => {
+            if (node.type !== 'split') return node;
+            return { ...node, ratios };
+          });
+          return { ...g, tree: newTree ?? g.tree };
+        })
+      );
+    },
+    [activeGroupId]
+  );
 
-  const setLeafSession = useCallback((leafId: string, sessionId: string) => {
-    setGroups(prev => prev.map(g => {
-      if (g.id !== activeGroupId) return g;
-      const newTree = mapNode(g.tree, leafId, node => {
-        if (node.type !== 'leaf') return node;
-        return { ...node, sessionId };
-      });
-      return { ...g, tree: newTree ?? g.tree };
-    }));
-  }, [activeGroupId]);
+  const setLeafSession = useCallback(
+    (leafId: string, sessionId: string) => {
+      setGroups((prev) =>
+        prev.map((g) => {
+          if (g.id !== activeGroupId) return g;
+          const newTree = mapNode(g.tree, leafId, (node) => {
+            if (node.type !== 'leaf') return node;
+            return { ...node, sessionId };
+          });
+          return { ...g, tree: newTree ?? g.tree };
+        })
+      );
+    },
+    [activeGroupId]
+  );
 
   const removePanesBySession = useCallback((sessionId: string) => {
-    setGroups(prev => {
-      let nextGroups = prev.map(g => {
+    setGroups((prev) => {
+      let nextGroups = prev.map((g) => {
         const newTree = removeSessionFromTree(g.tree, sessionId);
         if (newTree === null) return { ...g, tree: null as any };
         let activePaneId = g.activePaneId;
@@ -334,7 +362,9 @@ export function useSplitTree(sessions: { id: string }[]) {
       // Drop groups left empty by the removal. Do NOT recreate a group for the
       // removed session — it's being closed. (The sessions-sync effect owns
       // re-adding a group for any *live* session that lost its group.)
-      nextGroups = nextGroups.filter(g => g.tree !== null && collectLeafSessionIds(g.tree).length > 0);
+      nextGroups = nextGroups.filter(
+        (g) => g.tree !== null && collectLeafSessionIds(g.tree).length > 0
+      );
       return nextGroups;
     });
   }, []);

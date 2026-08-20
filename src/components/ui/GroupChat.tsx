@@ -25,9 +25,21 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { css, cx } from '@emotion/css';
 import {
-  Send, Bot, User, WifiOff, RefreshCw, Users,
-  ChevronDown, BookmarkPlus, Download, X as XIcon, SlidersHorizontal, Check,
-  Copy, Square, Sparkles,
+  Send,
+  Bot,
+  User,
+  WifiOff,
+  RefreshCw,
+  Users,
+  ChevronDown,
+  BookmarkPlus,
+  Download,
+  X as XIcon,
+  SlidersHorizontal,
+  Check,
+  Copy,
+  Square,
+  Sparkles,
 } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
 import { writePtyChunked } from '../../utils/ptyUtils';
@@ -95,7 +107,9 @@ function loadPersistedMessages(key: string): DisplayMessage[] {
 function saveMessages(key: string, messages: DisplayMessage[]): void {
   try {
     localStorage.setItem(key, JSON.stringify(messages.slice(-MAX_STORED)));
-  } catch { /* storage full — ignore */ }
+  } catch {
+    /* storage full — ignore */
+  }
 }
 
 // ── Inline Markdown renderer ───────────────────────────────────────────────────
@@ -109,7 +123,9 @@ function renderMarkdown(text: string): React.ReactNode {
         if (part.startsWith('```') && part.endsWith('```')) {
           const inner = part.slice(3, -3).replace(/^\w+\n/, '');
           return (
-            <pre key={i} className={md.codeBlock}>{inner}</pre>
+            <pre key={i} className={md.codeBlock}>
+              {inner}
+            </pre>
           );
         }
         // Inline: **bold**, `code`
@@ -118,9 +134,17 @@ function renderMarkdown(text: string): React.ReactNode {
           <span key={i}>
             {segments.map((seg, j) => {
               if (seg.startsWith('**') && seg.endsWith('**'))
-                return <strong key={j} className={md.bold}>{seg.slice(2, -2)}</strong>;
+                return (
+                  <strong key={j} className={md.bold}>
+                    {seg.slice(2, -2)}
+                  </strong>
+                );
               if (seg.startsWith('`') && seg.endsWith('`'))
-                return <code key={j} className={md.inlineCode}>{seg.slice(1, -1)}</code>;
+                return (
+                  <code key={j} className={md.inlineCode}>
+                    {seg.slice(1, -1)}
+                  </code>
+                );
               return seg;
             })}
           </span>
@@ -132,14 +156,26 @@ function renderMarkdown(text: string): React.ReactNode {
 
 const md = {
   codeBlock: css`
-    background: var(--bg-tertiary); border-radius: 6px; padding: 8px 10px;
-    margin: 6px 0; font-family: var(--font-family-mono);
-    font-size: 11px; overflow-x: auto; white-space: pre; color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin: 6px 0;
+    font-family: var(--font-family-mono);
+    font-size: 11px;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--text-secondary);
   `,
-  bold: css`color: var(--text-primary);`,
+  bold: css`
+    color: var(--text-primary);
+  `,
   inlineCode: css`
-    background: var(--bg-tertiary); border-radius: 3px; padding: 1px 5px;
-    font-family: var(--font-family-mono); font-size: 0.9em; color: var(--color-warning);
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: var(--font-family-mono);
+    font-size: 0.9em;
+    color: var(--color-warning);
   `,
 };
 
@@ -149,24 +185,22 @@ function buildSystemPrompt(
   workspaceName: string,
   spaceName: string | null,
   sessionTitles: string[],
-  sessionOutputs?: { title: string; content: string }[],
+  sessionOutputs?: { title: string; content: string }[]
 ): string {
-  const spaceLine = spaceName
-    ? `Active Space: "${spaceName}"`
-    : 'No space is currently selected.';
-  const sessionsLine = sessionTitles.length > 0
-    ? `Terminal sessions in this space:\n${sessionTitles.map(t => `  • ${t}`).join('\n')}`
-    : 'No terminal sessions are currently assigned to this space.';
+  const spaceLine = spaceName ? `Active Space: "${spaceName}"` : 'No space is currently selected.';
+  const sessionsLine =
+    sessionTitles.length > 0
+      ? `Terminal sessions in this space:\n${sessionTitles.map((t) => `  • ${t}`).join('\n')}`
+      : 'No terminal sessions are currently assigned to this space.';
 
   // Include recent terminal output so the LLM can answer questions about what
   // agents printed without asking the user to paste it in manually.
-  const outputsSection = sessionOutputs && sessionOutputs.length > 0
-    ? `\n\nCurrent terminal output (most recent ~2 000 chars each, ANSI stripped):\n\n${
-        sessionOutputs
-          .map(s => `=== ${s.title} ===\n${s.content || '(no output yet)'}`)
-          .join('\n\n')
-      }`
-    : '';
+  const outputsSection =
+    sessionOutputs && sessionOutputs.length > 0
+      ? `\n\nCurrent terminal output (most recent ~2 000 chars each, ANSI stripped):\n\n${sessionOutputs
+          .map((s) => `=== ${s.title} ===\n${s.content || '(no output yet)'}`)
+          .join('\n\n')}`
+      : '';
 
   return `You are an AI orchestration assistant embedded inside Orchaterm, a developer workspace management tool.
 
@@ -186,17 +220,25 @@ Only use INJECT when the user explicitly asks you to send/relay something to a t
 
 function parseInject(
   content: string,
-  sessions: { id: string; title: string; color: string | null }[],
-): { sessionId: string; sessionTitle: string; sessionColor: string | null; message: string } | null {
+  sessions: { id: string; title: string; color: string | null }[]
+): {
+  sessionId: string;
+  sessionTitle: string;
+  sessionColor: string | null;
+  message: string;
+} | null {
   const match = content.match(/INJECT\s*→\s*([^:\n]+):\s*(.+)/i);
   if (!match) return null;
   const targetTitle = match[1].trim();
-  const message     = match[2].trim();
-  const session = sessions.find(
-    s => s.title.toLowerCase().includes(targetTitle.toLowerCase()),
-  );
+  const message = match[2].trim();
+  const session = sessions.find((s) => s.title.toLowerCase().includes(targetTitle.toLowerCase()));
   if (!session) return null;
-  return { sessionId: session.id, sessionTitle: session.title, sessionColor: session.color, message };
+  return {
+    sessionId: session.id,
+    sessionTitle: session.title,
+    sessionColor: session.color,
+    message,
+  };
 }
 
 // ── Suggested prompts ──────────────────────────────────────────────────────────
@@ -214,17 +256,25 @@ function getSuggestions(sessionTitles: string[]): string[] {
 
 export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan }) => {
   const {
-    workspaces, spaces, terminalSessions,
-    activeSpaceId, settings, updateSettings, addSavedPrompt, showToast, llmProviders,
+    workspaces,
+    spaces,
+    terminalSessions,
+    activeSpaceId,
+    settings,
+    updateSettings,
+    addSavedPrompt,
+    showToast,
+    llmProviders,
   } = useDashboard();
 
   /** Master AI switch — when off, every LLM-triggering feature is disabled. */
   const aiEnabled = settings.aiEnabled !== false;
 
   const getProviderLabel = () => {
-    const effectiveChatCfg = settings.llmProviderMode === 'simple'
-      ? settings.simpleLlmProvider
-      : settings.llmProviders?.chat;
+    const effectiveChatCfg =
+      settings.llmProviderMode === 'simple'
+        ? settings.simpleLlmProvider
+        : settings.llmProviders?.chat;
     const provider = effectiveChatCfg?.provider;
     if (provider === 'ollama') return 'Ollama';
     if (provider === 'openai-compatible') {
@@ -240,20 +290,20 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
   };
   const providerLabel = getProviderLabel();
 
-  const workspace     = workspaces.find(w => w.id === workspaceId);
-  const activeSpace   = spaces.find(g => g.id === activeSpaceId);
-  const allSessions   = terminalSessions.filter(s => s.workspaceId === workspaceId);
+  const workspace = workspaces.find((w) => w.id === workspaceId);
+  const activeSpace = spaces.find((g) => g.id === activeSpaceId);
+  const allSessions = terminalSessions.filter((s) => s.workspaceId === workspaceId);
   const groupSessions = activeSpace
-    ? allSessions.filter(s => activeSpace.sessionIds.includes(s.id))
+    ? allSessions.filter((s) => activeSpace.sessionIds.includes(s.id))
     : allSessions;
 
   // ── Storage key — changes when space changes ──────────────────────────────
-  const storageKey    = chatStorageKey(workspaceId, activeSpaceId ?? null);
+  const storageKey = chatStorageKey(workspaceId, activeSpaceId ?? null);
   const storageKeyRef = useRef(storageKey);
 
   // ── Provider status ─────────────────────────────────────────────────────────
   const [providerOnline, setProviderOnline] = useState<boolean | null>(null);
-  const [checking, setChecking]             = useState(false);
+  const [checking, setChecking] = useState(false);
 
   const checkOnline = useCallback(async () => {
     setChecking(true);
@@ -262,20 +312,24 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
     setChecking(false);
   }, [llmProviders.chat]);
 
-  useEffect(() => { checkOnline(); }, [checkOnline]);
+  useEffect(() => {
+    checkOnline();
+  }, [checkOnline]);
 
   // ── Message history (persisted) ───────────────────────────────────────────
-  const [messages,   setMessages]   = useState<DisplayMessage[]>(() => loadPersistedMessages(storageKey));
+  const [messages, setMessages] = useState<DisplayMessage[]>(() =>
+    loadPersistedMessages(storageKey)
+  );
   const [apiHistory, setApiHistory] = useState<ChatMessage[]>([]);
-  const [input,      setInput]      = useState('');
-  const [streaming,  setStreaming]  = useState(false);
+  const [input, setInput] = useState('');
+  const [streaming, setStreaming] = useState(false);
 
   // ── Plan generation state (intent + plan-gen) ──────────────────────────────
-  const [classifying,    setClassifying]    = useState(false); // intent classification phase
+  const [classifying, setClassifying] = useState(false); // intent classification phase
   const [generatingPlan, setGeneratingPlan] = useState(false); // actual plan generation phase
 
   // ── Features popover ─────────────────────────────────────────────────────
-  const [featuresOpen,   setFeaturesOpen]   = useState(false);
+  const [featuresOpen, setFeaturesOpen] = useState(false);
   const featuresRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -291,10 +345,10 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
 
   // Tracks streaming content so onDone never needs to read state
   const streamingContentRef = useRef('');
-  const cancelRef           = useRef<(() => void) | null>(null);
-  const planAbortRef        = useRef<AbortController | null>(null);
-  const bottomRef           = useRef<HTMLDivElement>(null);
-  const textareaRef         = useRef<HTMLTextAreaElement>(null);
+  const cancelRef = useRef<(() => void) | null>(null);
+  const planAbortRef = useRef<AbortController | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   // Persist on every message change (debounced 300 ms)
@@ -302,7 +356,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
   useEffect(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => saveMessages(storageKeyRef.current, messages), 300);
-    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
   }, [messages]);
 
   // Swap persisted history when space changes
@@ -316,7 +372,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
   const scrollToBottom = (smooth = true) =>
     bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant' });
 
-  useEffect(() => { if (!streaming) scrollToBottom(); }, [messages.length, streaming]);
+  useEffect(() => {
+    if (!streaming) scrollToBottom();
+  }, [messages.length, streaming]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
@@ -325,28 +383,28 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
 
   // ── Live feed (watchForSummary) ───────────────────────────────────────────
   const [liveFeedOn, setLiveFeedOn] = useState(
-    () => localStorage.getItem('orchaterm:livefeed') === 'true',
+    () => localStorage.getItem('orchaterm:livefeed') === 'true'
   );
 
   const toggleLiveFeed = () => {
-    setLiveFeedOn(prev => {
+    setLiveFeedOn((prev) => {
       localStorage.setItem('orchaterm:livefeed', String(!prev));
       return !prev;
     });
   };
 
   const [autoModeOn, setAutoModeOn] = useState(
-    () => localStorage.getItem('orchaterm:automode') === 'true',
+    () => localStorage.getItem('orchaterm:automode') === 'true'
   );
 
   const toggleAutoMode = () => {
-    setAutoModeOn(prev => {
+    setAutoModeOn((prev) => {
       localStorage.setItem('orchaterm:automode', String(!prev));
       return !prev;
     });
   };
 
-  const groupSessionIds = groupSessions.map(s => s.id).join(',');
+  const groupSessionIds = groupSessions.map((s) => s.id).join(',');
 
   // ── "Agent done" notifications ────────────────────────────────────────────
   // Fires when a non-conductor terminal returns to a shell prompt after 2 s idle.
@@ -354,19 +412,26 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
   useEffect(() => {
     const unsubscribers: (() => void)[] = [];
 
-    groupSessions.forEach(session => {
-      bufferWatcher.watchForIdle(session.id, () => {
-        setMessages(prev => [...prev, {
-          id:           crypto.randomUUID(),
-          role:         'system' as const,
-          content:      `✅ ${session.title} returned to shell prompt — agent finished`,
-          sessionTitle: session.title,
-          sessionColor: session.color,
-        }]);
-      }).then(unsub => unsubscribers.push(unsub));
+    groupSessions.forEach((session) => {
+      bufferWatcher
+        .watchForIdle(session.id, () => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: 'system' as const,
+              content: `✅ ${session.title} returned to shell prompt — agent finished`,
+              sessionTitle: session.title,
+              sessionColor: session.color,
+            },
+          ]);
+        })
+        .then((unsub) => unsubscribers.push(unsub));
     });
 
-    return () => { unsubscribers.forEach(fn => fn()); };
+    return () => {
+      unsubscribers.forEach((fn) => fn());
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupSessionIds]);
 
@@ -375,7 +440,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
 
     const unsubscribers: (() => void)[] = [];
 
-    groupSessions.forEach(session => {
+    groupSessions.forEach((session) => {
       const onChunk = async (chunk: string) => {
         // Skip chunks with no readable content — avoids flooding chat with
         // "output consists entirely of ANSI escape codes" noise messages.
@@ -384,23 +449,33 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
 
         try {
           const { system, userContent } = buildSummarisePrompt(chunk, session.title);
-          const summary = await llmProviders.routing.complete([{ role: 'user', content: userContent }], system);
-          setMessages(prev => [...prev, {
-            id: crypto.randomUUID(),
-            role: 'agent-summary',
-            content: summary,
-            sessionTitle: session.title,
-            sessionColor: session.color,
-          }]);
-        } catch { /* silently skip */ }
+          const summary = await llmProviders.routing.complete(
+            [{ role: 'user', content: userContent }],
+            system
+          );
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: 'agent-summary',
+              content: summary,
+              sessionTitle: session.title,
+              sessionColor: session.color,
+            },
+          ]);
+        } catch {
+          /* silently skip */
+        }
       };
 
-      bufferWatcher.watchForSummary(session.id, onChunk).then(unsub => {
+      bufferWatcher.watchForSummary(session.id, onChunk).then((unsub) => {
         unsubscribers.push(unsub);
       });
     });
 
-    return () => { unsubscribers.forEach(fn => fn()); };
+    return () => {
+      unsubscribers.forEach((fn) => fn());
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiEnabled, liveFeedOn, groupSessionIds, llmProviders.routing]);
 
@@ -408,41 +483,52 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
   useEffect(() => {
     if (!aiEnabled || !activeSpaceId) return;
 
-    needsBroker.registerSpace(activeSpaceId, groupSessions.map(s => ({
-      id:              s.id,
-      title:           s.title,
-      color:           s.color,
-      interruptPolicy: s.interruptPolicy ?? 'never',
-    })));
+    needsBroker.registerSpace(
+      activeSpaceId,
+      groupSessions.map((s) => ({
+        id: s.id,
+        title: s.title,
+        color: s.color,
+        interruptPolicy: s.interruptPolicy ?? 'never',
+      }))
+    );
 
     const unsubNeeds: (() => void)[] = [];
 
-    groupSessions.forEach(session => {
-      bufferWatcher.watchForNeeds(session.id, async (request) => {
-        await needsBroker.handleNeedsRequest(
-          session.id,
-          activeSpaceId,
-          request,
-          (_answer) => {
-            setMessages(prev => [...prev, {
-              id:   crypto.randomUUID(),
-              role: 'system' as const,
-              content: `🔄 ${session.title} asked: "${request.ask}" → Orchaterm answered`,
-            }]);
-          },
-          (err) => {
-            setMessages(prev => [...prev, {
-              id:   crypto.randomUUID(),
-              role: 'system' as const,
-              content: `⚠ Could not resolve ${session.title}'s request: ${err}`,
-            }]);
-          },
-        );
-      }).then(unsub => unsubNeeds.push(unsub));
+    groupSessions.forEach((session) => {
+      bufferWatcher
+        .watchForNeeds(session.id, async (request) => {
+          await needsBroker.handleNeedsRequest(
+            session.id,
+            activeSpaceId,
+            request,
+            (_answer) => {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  role: 'system' as const,
+                  content: `🔄 ${session.title} asked: "${request.ask}" → Orchaterm answered`,
+                },
+              ]);
+            },
+            (err) => {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  role: 'system' as const,
+                  content: `⚠ Could not resolve ${session.title}'s request: ${err}`,
+                },
+              ]);
+            }
+          );
+        })
+        .then((unsub) => unsubNeeds.push(unsub));
     });
 
     return () => {
-      unsubNeeds.forEach(fn => fn());
+      unsubNeeds.forEach((fn) => fn());
       if (activeSpaceId) needsBroker.unregisterSpace(activeSpaceId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -453,11 +539,11 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
     if (!aiEnabled || !autoModeOn || !activeSpaceId) return;
 
     autonomousOrchestrator.startSpace({
-      spaceId:  activeSpaceId,
-      sessions: groupSessions.map(s => ({
-        id:              s.id,
-        title:           s.title,
-        color:           s.color,
+      spaceId: activeSpaceId,
+      sessions: groupSessions.map((s) => ({
+        id: s.id,
+        title: s.title,
+        color: s.color,
         interruptPolicy: s.interruptPolicy ?? 'never',
       })),
     });
@@ -471,7 +557,10 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
         content = `⏸ Relay to ${event.target} skipped (${event.reason})`;
       }
       if (content) {
-        setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'system' as const, content }]);
+        setMessages((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), role: 'system' as const, content },
+        ]);
       }
     });
 
@@ -490,14 +579,17 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
       const entry = (e as CustomEvent<ConductorLogEntry>).detail;
       if (!entry) return;
       if (entry.workspaceId && entry.workspaceId !== workspaceId) return;
-      setMessages(prev => [...prev, {
-        id:            crypto.randomUUID(),
-        role:          'conductor',
-        content:       entry.message,
-        conductorType: entry.type,
-        taskOutput:    entry.taskOutput,
-        agentTitle:    entry.agentTitle,
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'conductor',
+          content: entry.message,
+          conductorType: entry.type,
+          taskOutput: entry.taskOutput,
+          agentTitle: entry.agentTitle,
+        },
+      ]);
     };
     window.addEventListener('orchaterm:conductor-log', onLog as EventListener);
     return () => {
@@ -507,177 +599,245 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
 
   // ── Send message ──────────────────────────────────────────────────────────
 
-  const handleSend = useCallback((overrideText?: string) => {
-    const text = (overrideText ?? input).trim();
-    if (!text || streaming || classifying || generatingPlan) return;
+  const handleSend = useCallback(
+    (overrideText?: string) => {
+      const text = (overrideText ?? input).trim();
+      if (!text || streaming || classifying || generatingPlan) return;
 
-    if (!aiEnabled) {
-      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'system', content: '⚠ AI features are disabled. Enable them in Settings to chat.' }]);
-      setInput('');
-      return;
-    }
-
-    setInput('');
-    if (textareaRef.current) textareaRef.current.style.height = 'auto';
-
-    // ── Intent Classification & Autonomous Routing ──────────────────────────
-    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content: text }]);
-    setClassifying(true);
-
-    const planAbort = new AbortController();
-    planAbortRef.current = planAbort;
-
-    const { system: intentSystem, userContent: intentContent } = buildIntentClassifyPrompt(text);
-    llmProviders.planGen.complete([{ role: 'user', content: intentContent }], intentSystem).then(res => {
-      if (planAbort.signal.aborted) return;
-      const intent = /\bplan\b/.test(res.toLowerCase().trim()) ? 'plan' : 'chat';
-      if (intent === 'plan') {
-        setClassifying(false);
-        setGeneratingPlan(true);
-        // Plan generation mode — hand off to the parent (RightPanel) via onPendingPlan.
-        const { system: planSystem, userContent: planContent } = buildPlanGenPrompt(
-          text, groupSessions.map(s => ({ title: s.title })),
-        );
-        llmProviders.planGen.complete([{ role: 'user', content: planContent }], planSystem).then(planRes => {
-          if (planAbort.signal.aborted) return;
-          const { goal: extractedGoal, tasks: rawTasks } = parsePlanGenResponse(planRes, text);
-          const idMap = new Map<string, string>();
-          rawTasks.forEach(t => idMap.set(t.title, crypto.randomUUID()));
-
-          const tasks: OrchestratorTask[] = rawTasks.map((t: RawPlanTask, idx: number) => {
-            const session = groupSessions.find(s =>
-              s.title.toLowerCase() === t.assignedSessionTitle.toLowerCase()
-            ) ?? groupSessions[0];
-            let dependsOn = t.dependsOn
-              .map(depTitle => idMap.get(depTitle) ?? '')
-              .filter(Boolean);
-
-            // If AI left dependsOn empty for step 2+ but user prompt implies sequential steps or answering, chain to prior step
-            if (idx > 0 && dependsOn.length === 0 && /\b(then|after|next|second|follow|->|answer|reply|respond|afterwards)\b/i.test(text)) {
-              const prevId = idMap.get(rawTasks[idx - 1].title);
-              if (prevId) dependsOn = [prevId];
-            }
-
-            return {
-              id:                   idMap.get(t.title)!,
-              title:                t.title,
-              description:          t.description,
-              assignedSessionId:    session?.id    ?? '',
-              assignedSessionTitle: session?.title ?? t.assignedSessionTitle,
-              dependsOn,
-              status: 'pending' as const,
-            };
-          });
-
-          if (onPendingPlan) {
-            onPendingPlan(extractedGoal, tasks);
-            setMessages(prev => [...prev, {
-              id: crypto.randomUUID(), role: 'system',
-              content: `🔀 Plan generated — view it in the Pipeline tab (${tasks.length} task${tasks.length !== 1 ? 's' : ''})`,
-            }]);
-          } else {
-            setMessages(prev => [...prev, {
-              id: crypto.randomUUID(), role: 'system',
-              content: `Plan generated — ${tasks.length} task${tasks.length !== 1 ? 's' : ''}`,
-            }]);
-          }
-        }).catch((err: Error) => {
-          if (planAbort.signal.aborted) return;
-          setMessages(prev => [...prev, {
-            id: crypto.randomUUID(), role: 'system',
-            content: `⚠ Plan generation failed: ${err.message}`,
-          }]);
-        }).finally(() => {
-          planAbortRef.current = null;
-          setGeneratingPlan(false);
-        });
-      } else {
-        // Chat mode — classification done, route straight to streaming
-        setClassifying(false);
-        planAbortRef.current = null;
-        streamingContentRef.current = '';
-
-        const assistantId                  = crypto.randomUUID();
-        const assistantMsg: DisplayMessage = { id: assistantId, role: 'assistant', content: '', streaming: true };
-
-        setMessages(prev => [...prev, assistantMsg]);
-        const newHistory: ChatMessage[] = [...apiHistory, { role: 'user', content: text }];
-        setApiHistory(newHistory);
-        setStreaming(true);
-        setProviderOnline(true); // optimistic
-
-        // Snapshot each session's buffer at send time so the LLM can answer
-        // questions about terminal output without the user having to paste it.
-        const sessionOutputs = groupSessions.map(s => ({
-          title:   s.title,
-          content: stripAnsiCodes(bufferWatcher.getBuffer(s.id)).slice(-2000).trim(),
-        }));
-
-        const systemPrompt = buildSystemPrompt(
-          workspace?.name ?? workspaceId,
-          activeSpace?.name ?? null,
-          groupSessions.map(s => s.title),
-          sessionOutputs,
-        );
-
-        const cancel = llmProviders.chat.stream(
-          newHistory,
-          systemPrompt,
+      if (!aiEnabled) {
+        setMessages((prev) => [
+          ...prev,
           {
-            onToken: (token) => {
-              streamingContentRef.current += token;
-              setMessages(prev =>
-                prev.map(m => m.id === assistantId ? { ...m, content: m.content + token } : m),
-              );
-            },
-            onDone: () => {
-              const finalContent = streamingContentRef.current;
-              setStreaming(false);
-              setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, streaming: false } : m));
-              setApiHistory(h => [...h, { role: 'assistant', content: finalContent }]);
-              cancelRef.current = null;
-              scrollToBottom();
-
-              const inj = parseInject(finalContent, groupSessions);
-              if (inj) {
-                writePtyChunked(inj.sessionId, inj.message + '\r').catch(() => {});
-                setMessages(prev => [...prev, {
-                  id: crypto.randomUUID(),
-                  role: 'system',
-                  content: `✦ Sent to ${inj.sessionTitle}: ${inj.message}`,
-                  injectedSessionTitle: inj.sessionTitle,
-                  sessionColor: inj.sessionColor,
-                }]);
-              }
-            },
-            onError: (err) => {
-              setStreaming(false);
-              setProviderOnline(false);
-              setMessages(prev =>
-                prev.map(m => m.id === assistantId ? { ...m, content: `Error: ${err}`, streaming: false } : m),
-              );
-              cancelRef.current = null;
-            },
-          }
-        );
-
-        cancelRef.current = cancel;
+            id: crypto.randomUUID(),
+            role: 'system',
+            content: '⚠ AI features are disabled. Enable them in Settings to chat.',
+          },
+        ]);
+        setInput('');
+        return;
       }
-    }).catch((err: Error) => {
-      planAbortRef.current = null;
-      setClassifying(false);
-      setGeneratingPlan(false);
-      if ((err as any)?.name === 'AbortError') return;
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(), role: 'system',
-        content: `⚠ Request failed: ${err.message}`,
-      }]);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, streaming, classifying, generatingPlan, settings, workspace, activeSpace, groupSessions, apiHistory, workspaceId, llmProviders, onPendingPlan]);
+
+      setInput('');
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
+
+      // ── Intent Classification & Autonomous Routing ──────────────────────────
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: text }]);
+      setClassifying(true);
+
+      const planAbort = new AbortController();
+      planAbortRef.current = planAbort;
+
+      const { system: intentSystem, userContent: intentContent } = buildIntentClassifyPrompt(text);
+      llmProviders.planGen
+        .complete([{ role: 'user', content: intentContent }], intentSystem)
+        .then((res) => {
+          if (planAbort.signal.aborted) return;
+          const intent = /\bplan\b/.test(res.toLowerCase().trim()) ? 'plan' : 'chat';
+          if (intent === 'plan') {
+            setClassifying(false);
+            setGeneratingPlan(true);
+            // Plan generation mode — hand off to the parent (RightPanel) via onPendingPlan.
+            const { system: planSystem, userContent: planContent } = buildPlanGenPrompt(
+              text,
+              groupSessions.map((s) => ({ title: s.title }))
+            );
+            llmProviders.planGen
+              .complete([{ role: 'user', content: planContent }], planSystem)
+              .then((planRes) => {
+                if (planAbort.signal.aborted) return;
+                const { goal: extractedGoal, tasks: rawTasks } = parsePlanGenResponse(
+                  planRes,
+                  text
+                );
+                const idMap = new Map<string, string>();
+                rawTasks.forEach((t) => idMap.set(t.title, crypto.randomUUID()));
+
+                const tasks: OrchestratorTask[] = rawTasks.map((t: RawPlanTask, idx: number) => {
+                  const session =
+                    groupSessions.find(
+                      (s) => s.title.toLowerCase() === t.assignedSessionTitle.toLowerCase()
+                    ) ?? groupSessions[0];
+                  let dependsOn = t.dependsOn
+                    .map((depTitle) => idMap.get(depTitle) ?? '')
+                    .filter(Boolean);
+
+                  // If AI left dependsOn empty for step 2+ but user prompt implies sequential steps or answering, chain to prior step
+                  if (
+                    idx > 0 &&
+                    dependsOn.length === 0 &&
+                    /\b(then|after|next|second|follow|->|answer|reply|respond|afterwards)\b/i.test(
+                      text
+                    )
+                  ) {
+                    const prevId = idMap.get(rawTasks[idx - 1].title);
+                    if (prevId) dependsOn = [prevId];
+                  }
+
+                  return {
+                    id: idMap.get(t.title)!,
+                    title: t.title,
+                    description: t.description,
+                    assignedSessionId: session?.id ?? '',
+                    assignedSessionTitle: session?.title ?? t.assignedSessionTitle,
+                    dependsOn,
+                    status: 'pending' as const,
+                  };
+                });
+
+                if (onPendingPlan) {
+                  onPendingPlan(extractedGoal, tasks);
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: crypto.randomUUID(),
+                      role: 'system',
+                      content: `🔀 Plan generated — view it in the Pipeline tab (${tasks.length} task${tasks.length !== 1 ? 's' : ''})`,
+                    },
+                  ]);
+                } else {
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: crypto.randomUUID(),
+                      role: 'system',
+                      content: `Plan generated — ${tasks.length} task${tasks.length !== 1 ? 's' : ''}`,
+                    },
+                  ]);
+                }
+              })
+              .catch((err: Error) => {
+                if (planAbort.signal.aborted) return;
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: crypto.randomUUID(),
+                    role: 'system',
+                    content: `⚠ Plan generation failed: ${err.message}`,
+                  },
+                ]);
+              })
+              .finally(() => {
+                planAbortRef.current = null;
+                setGeneratingPlan(false);
+              });
+          } else {
+            // Chat mode — classification done, route straight to streaming
+            setClassifying(false);
+            planAbortRef.current = null;
+            streamingContentRef.current = '';
+
+            const assistantId = crypto.randomUUID();
+            const assistantMsg: DisplayMessage = {
+              id: assistantId,
+              role: 'assistant',
+              content: '',
+              streaming: true,
+            };
+
+            setMessages((prev) => [...prev, assistantMsg]);
+            const newHistory: ChatMessage[] = [...apiHistory, { role: 'user', content: text }];
+            setApiHistory(newHistory);
+            setStreaming(true);
+            setProviderOnline(true); // optimistic
+
+            // Snapshot each session's buffer at send time so the LLM can answer
+            // questions about terminal output without the user having to paste it.
+            const sessionOutputs = groupSessions.map((s) => ({
+              title: s.title,
+              content: stripAnsiCodes(bufferWatcher.getBuffer(s.id)).slice(-2000).trim(),
+            }));
+
+            const systemPrompt = buildSystemPrompt(
+              workspace?.name ?? workspaceId,
+              activeSpace?.name ?? null,
+              groupSessions.map((s) => s.title),
+              sessionOutputs
+            );
+
+            const cancel = llmProviders.chat.stream(newHistory, systemPrompt, {
+              onToken: (token) => {
+                streamingContentRef.current += token;
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + token } : m))
+                );
+              },
+              onDone: () => {
+                const finalContent = streamingContentRef.current;
+                setStreaming(false);
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === assistantId ? { ...m, streaming: false } : m))
+                );
+                setApiHistory((h) => [...h, { role: 'assistant', content: finalContent }]);
+                cancelRef.current = null;
+                scrollToBottom();
+
+                const inj = parseInject(finalContent, groupSessions);
+                if (inj) {
+                  writePtyChunked(inj.sessionId, inj.message + '\r').catch(() => {});
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: crypto.randomUUID(),
+                      role: 'system',
+                      content: `✦ Sent to ${inj.sessionTitle}: ${inj.message}`,
+                      injectedSessionTitle: inj.sessionTitle,
+                      sessionColor: inj.sessionColor,
+                    },
+                  ]);
+                }
+              },
+              onError: (err) => {
+                setStreaming(false);
+                setProviderOnline(false);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, content: `Error: ${err}`, streaming: false } : m
+                  )
+                );
+                cancelRef.current = null;
+              },
+            });
+
+            cancelRef.current = cancel;
+          }
+        })
+        .catch((err: Error) => {
+          planAbortRef.current = null;
+          setClassifying(false);
+          setGeneratingPlan(false);
+          if ((err as any)?.name === 'AbortError') return;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: 'system',
+              content: `⚠ Request failed: ${err.message}`,
+            },
+          ]);
+        });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [
+      input,
+      streaming,
+      classifying,
+      generatingPlan,
+      settings,
+      workspace,
+      activeSpace,
+      groupSessions,
+      apiHistory,
+      workspaceId,
+      llmProviders,
+      onPendingPlan,
+    ]
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -690,7 +850,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
     cancelRef.current?.();
     cancelRef.current = null;
     setStreaming(false);
-    setMessages(prev => prev.map(m => m.streaming ? { ...m, streaming: false } : m));
+    setMessages((prev) => prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)));
   };
 
   const handleCancelPlan = () => {
@@ -702,33 +862,38 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
 
   // ── Save to Prompt Vault ──────────────────────────────────────────────────
 
-  const handleSaveToVault = useCallback((msg: DisplayMessage) => {
-    const title = msg.content.slice(0, 60) + (msg.content.length > 60 ? '…' : '');
-    addSavedPrompt({
-      workspaceId,
-      spaceId: activeSpaceId ?? null,
-      title,
-      content: msg.content,
-      tags: [],
-    });
-    showToast('Saved to Prompt Vault', 'success');
-  }, [workspaceId, activeSpaceId, addSavedPrompt, showToast]);
+  const handleSaveToVault = useCallback(
+    (msg: DisplayMessage) => {
+      const title = msg.content.slice(0, 60) + (msg.content.length > 60 ? '…' : '');
+      addSavedPrompt({
+        workspaceId,
+        spaceId: activeSpaceId ?? null,
+        title,
+        content: msg.content,
+        tags: [],
+      });
+      showToast('Saved to Prompt Vault', 'success');
+    },
+    [workspaceId, activeSpaceId, addSavedPrompt, showToast]
+  );
 
   // ── Export transcript ─────────────────────────────────────────────────────
 
   const handleExport = () => {
     const today = new Date().toISOString().slice(0, 10);
-    const lines = messages.map(m => {
-      if (m.role === 'user')          return `**You** (${today}):\n${m.content}\n`;
-      if (m.role === 'assistant')     return `**${providerLabel}** (${today}):\n${m.content}\n`;
-      if (m.role === 'agent-summary') return `*[${m.sessionTitle}]:* ${m.content}\n`;
-      if (m.role === 'system')        return `*${m.content}*\n`;
-      return '';
-    }).filter(Boolean);
+    const lines = messages
+      .map((m) => {
+        if (m.role === 'user') return `**You** (${today}):\n${m.content}\n`;
+        if (m.role === 'assistant') return `**${providerLabel}** (${today}):\n${m.content}\n`;
+        if (m.role === 'agent-summary') return `*[${m.sessionTitle}]:* ${m.content}\n`;
+        if (m.role === 'system') return `*${m.content}*\n`;
+        return '';
+      })
+      .filter(Boolean);
     const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
     a.download = `orchaterm-chat-${today}.md`;
     a.click();
     URL.revokeObjectURL(url);
@@ -744,23 +909,21 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
 
   // ── Guards ────────────────────────────────────────────────────────────────
 
-  const effectiveChatModel = settings.llmProviderMode === 'simple'
-    ? settings.simpleLlmProvider?.model
-    : settings.llmProviders?.chat?.model;
+  const effectiveChatModel =
+    settings.llmProviderMode === 'simple'
+      ? settings.simpleLlmProvider?.model
+      : settings.llmProviders?.chat?.model;
   const modelMissing = !effectiveChatModel;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className={s.root}>
-
       {/* Header */}
       <div className={s.header}>
         <div className={s.headerLeft}>
           <Bot size={14} className={s.botIcon} />
-          <span className={s.headerTitle}>
-            {activeSpace ? activeSpace.name : 'Workspace'} Chat
-          </span>
+          <span className={s.headerTitle}>{activeSpace ? activeSpace.name : 'Workspace'} Chat</span>
           {activeSpace && (
             <span
               className={s.groupBadge}
@@ -769,7 +932,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
                 color: activeSpace.color,
                 borderColor: activeSpace.color + '44',
               }}
-              title={groupSessions.map(s => s.title).join(', ') || 'No sessions assigned'}
+              title={groupSessions.map((s) => s.title).join(', ') || 'No sessions assigned'}
             >
               <Users size={9} />
               {groupSessions.length} session{groupSessions.length !== 1 ? 's' : ''}
@@ -782,16 +945,22 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
           <button
             className={cx(s.aiToggle, aiEnabled && s.aiToggleOn)}
             onClick={() => updateSettings({ aiEnabled: !aiEnabled })}
-            title={aiEnabled
-              ? 'AI features ON — click to disable (use as a plain terminal)'
-              : 'AI features OFF — click to enable'}
+            title={
+              aiEnabled
+                ? 'AI features ON — click to disable (use as a plain terminal)'
+                : 'AI features OFF — click to enable'
+            }
           >
             <Sparkles size={11} />
             <span>{aiEnabled ? 'AI On' : 'AI Off'}</span>
           </button>
           {/* Export */}
           {messages.length > 0 && (
-            <button className={s.headerIconBtn} onClick={handleExport} title="Export transcript (.md)">
+            <button
+              className={s.headerIconBtn}
+              onClick={handleExport}
+              title="Export transcript (.md)"
+            >
               <Download size={12} />
             </button>
           )}
@@ -803,7 +972,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
           )}
           {/* Provider status */}
           {providerOnline === false && (
-            <span className={s.offlineBadge}><WifiOff size={10} /> Offline</span>
+            <span className={s.offlineBadge}>
+              <WifiOff size={10} /> Offline
+            </span>
           )}
           {providerOnline === true && (
             <span className={s.onlineBadge}>
@@ -818,7 +989,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
           >
             <RefreshCw size={11} className={cx(checking && s.spin)} />
           </button>
-
         </div>
       </div>
 
@@ -832,7 +1002,10 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
             <p className={s.disabledHint}>
               Orchaterm is running as a plain terminal. No LLM calls are made.
             </p>
-            <button className={s.disabledEnableBtn} onClick={() => updateSettings({ aiEnabled: true })}>
+            <button
+              className={s.disabledEnableBtn}
+              onClick={() => updateSettings({ aiEnabled: true })}
+            >
               Enable AI
             </button>
           </div>
@@ -842,7 +1015,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
       {/* Warning banners */}
       {modelMissing && (
         <div className={s.warningBanner}>
-          ⚠ No chat model configured — go to <strong>Settings → LLM Providers</strong> to configure one.
+          ⚠ No chat model configured — go to <strong>Settings → LLM Providers</strong> to configure
+          one.
         </div>
       )}
       {providerOnline === false && !modelMissing && (
@@ -862,7 +1036,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
             }}
           >
             Re-add sessions
-          </button>{' '}via Space settings.
+          </button>{' '}
+          via Space settings.
         </div>
       )}
 
@@ -875,11 +1050,11 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
               {activeSpace ? `Orchestrating "${activeSpace.name}"` : 'Workspace AI'}
             </p>
             <p className={s.emptyHint}>
-              Ask anything about your terminals, tasks, or workflow.
-              Describe a multi-step goal and the plan will appear in the Pipeline tab.
+              Ask anything about your terminals, tasks, or workflow. Describe a multi-step goal and
+              the plan will appear in the Pipeline tab.
             </p>
             <div className={s.suggestions}>
-              {getSuggestions(groupSessions.map(s => s.title)).map(suggestion => (
+              {getSuggestions(groupSessions.map((s) => s.title)).map((suggestion) => (
                 <button
                   key={suggestion}
                   className={s.suggestionBtn}
@@ -892,12 +1067,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
             </div>
           </div>
         ) : (
-          messages.map(msg => (
-            <MessageRow
-              key={msg.id}
-              msg={msg}
-              onSaveToVault={() => handleSaveToVault(msg)}
-            />
+          messages.map((msg) => (
+            <MessageRow key={msg.id} msg={msg} onSaveToVault={() => handleSaveToVault(msg)} />
           ))
         )}
         {/* Thinking / plan generating indicator */}
@@ -906,7 +1077,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
             <span className={s.planThinkingDot} />
             <span className={s.planThinkingDot} style={{ animationDelay: '0.2s' }} />
             <span className={s.planThinkingDot} style={{ animationDelay: '0.4s' }} />
-            <span className={s.planThinkingLabel}>{generatingPlan ? 'Generating plan…' : 'Thinking…'}</span>
+            <span className={s.planThinkingLabel}>
+              {generatingPlan ? 'Generating plan…' : 'Thinking…'}
+            </span>
           </div>
         )}
 
@@ -928,7 +1101,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
           <div ref={featuresRef} style={{ position: 'relative' }}>
             <button
               className={cx(s.inputModeIconBtn, featuresOpen && s.inputModeIconBtnActive)}
-              onClick={() => setFeaturesOpen(p => !p)}
+              onClick={() => setFeaturesOpen((p) => !p)}
               title="Chat features"
             >
               <SlidersHorizontal size={11} />
@@ -956,7 +1129,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
                     <span className={s.featureOptionCheck}>{autoModeOn && <Check size={9} />}</span>
                     <span className={s.featureOptionContent}>
                       <span className={s.featureOptionTitle}>Auto-route</span>
-                      <span className={s.featureOptionDesc}>Relay context between agents automatically</span>
+                      <span className={s.featureOptionDesc}>
+                        Relay context between agents automatically
+                      </span>
                     </span>
                   </button>
                 </div>
@@ -978,22 +1153,26 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
             modelMissing
               ? `Configure a ${providerLabel} model in Settings first…`
               : classifying
-              ? 'Thinking…'
-              : generatingPlan
-              ? 'Generating plan…'
-              : streaming
-              ? `${providerLabel} is responding…`
-              : providerOnline === false
-              ? `${providerLabel} offline — check connection`
-              : 'Ask anything or describe a goal — ↵ send, Shift+↵ newline'
+                ? 'Thinking…'
+                : generatingPlan
+                  ? 'Generating plan…'
+                  : streaming
+                    ? `${providerLabel} is responding…`
+                    : providerOnline === false
+                      ? `${providerLabel} offline — check connection`
+                      : 'Ask anything or describe a goal — ↵ send, Shift+↵ newline'
           }
           disabled={modelMissing || providerOnline === false || classifying || generatingPlan}
           rows={1}
         />
         {classifying || generatingPlan ? (
-          <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleCancelPlan} title="Cancel"><Square size={12} fill="currentColor" strokeWidth={0} /></button>
+          <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleCancelPlan} title="Cancel">
+            <Square size={12} fill="currentColor" strokeWidth={0} />
+          </button>
         ) : streaming ? (
-          <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleStop} title="Stop"><Square size={12} fill="currentColor" strokeWidth={0} /></button>
+          <button className={cx(s.sendBtn, s.stopBtn)} onClick={handleStop} title="Stop">
+            <Square size={12} fill="currentColor" strokeWidth={0} />
+          </button>
         ) : (
           <button
             className={s.sendBtn}
@@ -1016,7 +1195,7 @@ const MessageRow: React.FC<{
   onSaveToVault: () => void;
 }> = ({ msg, onSaveToVault }) => {
   const [hovered, setHovered] = useState(false);
-  const [copied, setCopied]   = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
     writeText(msg.content).then(() => {
@@ -1027,12 +1206,22 @@ const MessageRow: React.FC<{
 
   if (msg.role === 'conductor') {
     const icons: Record<string, string> = {
-      dispatch: '→', sentinel: '✓', relay: '⚡',
-      error: '✗', timeout: '⏱', info: 'ℹ', 'user-override': '⚙',
+      dispatch: '→',
+      sentinel: '✓',
+      relay: '⚡',
+      error: '✗',
+      timeout: '⏱',
+      info: 'ℹ',
+      'user-override': '⚙',
     };
     const colors: Record<string, string> = {
-      dispatch: 'var(--color-brand)', sentinel: 'var(--color-success)', relay: 'var(--color-info)',
-      error: 'var(--color-error)', timeout: 'var(--color-warning)', info: 'var(--text-tertiary)', 'user-override': 'var(--color-warning)',
+      dispatch: 'var(--color-brand)',
+      sentinel: 'var(--color-success)',
+      relay: 'var(--color-info)',
+      error: 'var(--color-error)',
+      timeout: 'var(--color-warning)',
+      info: 'var(--text-tertiary)',
+      'user-override': 'var(--color-warning)',
     };
     const type = msg.conductorType ?? 'info';
 
@@ -1049,16 +1238,30 @@ const MessageRow: React.FC<{
         line-height: 1.5;
       `;
       const headerStyle = css`
-        display: flex; align-items: center; gap: 6px;
-        font-weight: 600; color: var(--color-success); margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 600;
+        color: var(--color-success);
+        margin-bottom: 6px;
       `;
-      const labelStyle = css`color: var(--text-secondary); font-size: 11px; font-weight: 600; margin-top: 4px;`;
-      const valueStyle = css`color: var(--text-primary);`;
+      const labelStyle = css`
+        color: var(--text-secondary);
+        font-size: 11px;
+        font-weight: 600;
+        margin-top: 4px;
+      `;
+      const valueStyle = css`
+        color: var(--text-primary);
+      `;
       return (
         <div className={cardStyle}>
           <div className={headerStyle}>
             <span>✓</span>
-            <span>{msg.agentTitle ?? 'Agent'} completed: {msg.content.replace('Task "', '').replace('" complete', '')}</span>
+            <span>
+              {msg.agentTitle ?? 'Agent'} completed:{' '}
+              {msg.content.replace('Task "', '').replace('" complete', '')}
+            </span>
           </div>
           <div className={labelStyle}>SUMMARY</div>
           <div className={valueStyle}>{out.summary}</div>
@@ -1091,7 +1294,10 @@ const MessageRow: React.FC<{
   if (msg.role === 'agent-summary') {
     return (
       <div className={s.agentSummaryRow}>
-        <span className={s.agentSummaryDot} style={{ backgroundColor: msg.sessionColor ?? 'var(--text-tertiary)' }} />
+        <span
+          className={s.agentSummaryDot}
+          style={{ backgroundColor: msg.sessionColor ?? 'var(--text-tertiary)' }}
+        />
         <span className={s.agentSummaryTitle}>{msg.sessionTitle}</span>
         <span className={s.agentSummaryText}>{msg.content}</span>
       </div>
@@ -1102,15 +1308,22 @@ const MessageRow: React.FC<{
     return (
       <div
         className={s.systemRow}
-        style={msg.sessionColor
-          ? { borderLeftColor: msg.sessionColor, backgroundColor: msg.sessionColor + '0d' }
-          : undefined}
+        style={
+          msg.sessionColor
+            ? { borderLeftColor: msg.sessionColor, backgroundColor: msg.sessionColor + '0d' }
+            : undefined
+        }
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
         {msg.content}
         {hovered && (
-          <button className={s.actionBtn} onClick={handleCopy} title="Copy" style={{ position: 'absolute', top: -8, right: -8 }}>
+          <button
+            className={s.actionBtn}
+            onClick={handleCopy}
+            title="Copy"
+            style={{ position: 'absolute', top: -8, right: -8 }}
+          >
             {copied ? <Check size={11} /> : <Copy size={11} />}
           </button>
         )}
@@ -1124,7 +1337,11 @@ const MessageRow: React.FC<{
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {msg.role === 'assistant' && <div className={s.avatar}><Bot size={12} /></div>}
+      {msg.role === 'assistant' && (
+        <div className={s.avatar}>
+          <Bot size={12} />
+        </div>
+      )}
       <div className={cx(s.bubble, msg.role === 'user' ? s.bubbleUser : s.bubbleAssistant)}>
         <div className={s.msgText}>{renderMarkdown(msg.content)}</div>
         {msg.streaming && <span className={s.cursor} />}
@@ -1139,7 +1356,11 @@ const MessageRow: React.FC<{
           </div>
         )}
       </div>
-      {msg.role === 'user' && <div className={cx(s.avatar, s.avatarUser)}><User size={12} /></div>}
+      {msg.role === 'user' && (
+        <div className={cx(s.avatar, s.avatarUser)}>
+          <User size={12} />
+        </div>
+      )}
     </div>
   );
 };
@@ -1148,14 +1369,21 @@ const MessageRow: React.FC<{
 
 const s = {
   root: css`
-    display: flex; flex-direction: column;
-    flex: 1; min-height: 0; height: 100%;
-    background: var(--bg-canvas); overflow: hidden; position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    background: var(--bg-canvas);
+    overflow: hidden;
+    position: relative;
   `,
 
   /* ── Features bar ── */
   inputModeBar: css`
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 5px 10px 5px 12px;
     border-top: 1px solid var(--border-color);
     border-bottom: 1px solid var(--border-color);
@@ -1163,22 +1391,34 @@ const s = {
     flex-shrink: 0;
   `,
   modeLabelRow: css`
-    display: flex; align-items: center; gap: 6px;
-    font-size: 11px; color: var(--text-tertiary); font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-weight: 600;
   `,
   modeLabel: css`
-    font-size: 11px; color: var(--text-tertiary); font-weight: 600;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-weight: 600;
   `,
   inputModeIconBtn: css`
-    display: flex; align-items: center; justify-content: center;
-    width: 26px; height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
     border-radius: 7px;
     color: var(--text-tertiary);
     background: transparent;
     border: 1px solid transparent;
     cursor: pointer;
     transition: all 0.15s;
-    &:hover { color: var(--text-secondary); border-color: var(--border-color); }
+    &:hover {
+      color: var(--text-secondary);
+      border-color: var(--border-color);
+    }
   `,
   inputModeIconBtnActive: css`
     color: var(--color-brand);
@@ -1187,255 +1427,631 @@ const s = {
   `,
 
   header: css`
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 12px; border-bottom: 1px solid var(--border-color);
-    background: var(--bg-secondary); flex-shrink: 0; gap: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+    gap: 8px;
     /* Sit above the disabled overlay so the AI toggle stays usable when AI is off. */
-    position: relative; z-index: 30;
+    position: relative;
+    z-index: 30;
   `,
 
   /* ── Disabled overlay (AI features off) ── */
   disabledOverlay: css`
-    position: absolute; inset: 0; z-index: 20;
-    display: flex; align-items: center; justify-content: center;
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 24px;
   `,
   disabledScrim: css`
-    position: absolute; inset: 0;
+    position: absolute;
+    inset: 0;
     background: var(--bg-canvas);
     opacity: 0.62;
     backdrop-filter: grayscale(0.6);
   `,
   disabledCard: css`
-    position: relative; z-index: 1;
-    display: flex; flex-direction: column; align-items: center; text-align: center;
-    gap: 8px; max-width: 260px;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+    max-width: 260px;
     padding: 20px 22px;
     border: 1px solid var(--border-color);
     border-radius: 12px;
     background: var(--bg-secondary);
     box-shadow: var(--shadow-md);
   `,
-  disabledIcon: css`color: var(--text-tertiary);`,
-  disabledTitle: css`font-size: 13px; font-weight: 700; color: var(--text-primary);`,
-  disabledHint: css`font-size: 12px; color: var(--text-tertiary); line-height: 1.5;`,
+  disabledIcon: css`
+    color: var(--text-tertiary);
+  `,
+  disabledTitle: css`
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+  `,
+  disabledHint: css`
+    font-size: 12px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+  `,
   disabledEnableBtn: css`
     margin-top: 4px;
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 7px 14px; border-radius: 8px; border: none; cursor: pointer;
-    font-size: 12px; font-weight: 700;
-    background: var(--color-brand); color: white;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    background: var(--color-brand);
+    color: white;
     transition: filter 0.15s;
-    &:hover { filter: brightness(1.08); }
+    &:hover {
+      filter: brightness(1.08);
+    }
   `,
-  headerLeft: css`display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; overflow: hidden;`,
-  headerRight: css`display: flex; align-items: center; gap: 4px; flex-shrink: 0;`,
-  botIcon: css`color: var(--color-brand); flex-shrink: 0;`,
-  headerTitle: css`font-size: 12px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;`,
+  headerLeft: css`
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+  `,
+  headerRight: css`
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  `,
+  botIcon: css`
+    color: var(--color-brand);
+    flex-shrink: 0;
+  `,
+  headerTitle: css`
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  `,
   groupBadge: css`
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 10px; font-weight: 600; padding: 1px 6px;
-    border-radius: 99px; border: 1px solid; flex-shrink: 0; cursor: default;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 99px;
+    border: 1px solid;
+    flex-shrink: 0;
+    cursor: default;
     opacity: 0.85;
   `,
   headerIconBtn: css`
-    width: 24px; height: 24px; border-radius: 5px; border: none;
-    background: transparent; color: var(--text-tertiary); cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 5px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: all 150ms ease;
-    &:hover { background: var(--bg-hover); color: var(--text-primary); }
+    &:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
   `,
   aiToggle: css`
-    display: flex; align-items: center; gap: 4px;
-    height: 24px; padding: 0 8px; border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 6px;
     border: 1px solid var(--border-color);
-    background: transparent; color: var(--text-tertiary);
-    font-size: 10px; font-weight: 700; letter-spacing: 0.02em;
-    cursor: pointer; flex-shrink: 0;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    flex-shrink: 0;
     transition: all 150ms ease;
-    &:hover { background: var(--bg-hover); color: var(--text-secondary); }
+    &:hover {
+      background: var(--bg-hover);
+      color: var(--text-secondary);
+    }
   `,
   aiToggleOn: css`
     color: var(--color-brand);
     border-color: rgba(var(--color-brand-rgb), 0.4);
     background: rgba(var(--color-brand-rgb), 0.08);
-    &:hover { background: rgba(var(--color-brand-rgb), 0.14); color: var(--color-brand); }
+    &:hover {
+      background: rgba(var(--color-brand-rgb), 0.14);
+      color: var(--color-brand);
+    }
   `,
-  onlineBadge: css`display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: var(--color-success);`,
+  onlineBadge: css`
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--color-success);
+  `,
   onlineDot: css`
-    width: 5px; height: 5px; border-radius: 50%; background: var(--color-success);
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--color-success);
     animation: blink 2.5s ease-in-out infinite;
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    @keyframes blink {
+      0%,
+      100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.3;
+      }
+    }
   `,
-  offlineBadge: css`display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: var(--color-error);`,
+  offlineBadge: css`
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--color-error);
+  `,
   refreshBtn: css`
-    width: 22px; height: 22px; border-radius: 5px; border: none;
-    background: transparent; color: var(--text-tertiary); cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: all 150ms ease;
-    &:hover { background: var(--bg-hover); color: var(--text-primary); }
-    &:disabled { opacity: 0.4; cursor: default; }
+    &:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
   `,
-  spin: css`animation: spin 0.8s linear infinite; @keyframes spin { to { transform: rotate(360deg); } }`,
+  spin: css`
+    animation: spin 0.8s linear infinite;
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  `,
   warningBanner: css`
-    background: rgba(var(--color-warning-rgb), 0.07); border-bottom: 1px solid rgba(var(--color-warning-rgb), 0.2);
-    padding: 8px 14px; font-size: 11px; color: var(--color-warning); flex-shrink: 0; line-height: 1.5;
-    code { font-family: var(--font-family-mono); color: var(--color-warning); }
-    strong { color: var(--color-warning); }
+    background: rgba(var(--color-warning-rgb), 0.07);
+    border-bottom: 1px solid rgba(var(--color-warning-rgb), 0.2);
+    padding: 8px 14px;
+    font-size: 11px;
+    color: var(--color-warning);
+    flex-shrink: 0;
+    line-height: 1.5;
+    code {
+      font-family: var(--font-family-mono);
+      color: var(--color-warning);
+    }
+    strong {
+      color: var(--color-warning);
+    }
   `,
   inlineLinkBtn: css`
-    background: transparent; border: none; color: var(--color-warning);
-    text-decoration: underline; cursor: pointer; font-size: inherit; padding: 0;
-    &:hover { color: var(--text-primary); }
+    background: transparent;
+    border: none;
+    color: var(--color-warning);
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: inherit;
+    padding: 0;
+    &:hover {
+      color: var(--text-primary);
+    }
   `,
   messageList: css`
-    flex: 1; overflow-y: auto; padding: 14px 12px;
-    display: flex; flex-direction: column; gap: 10px;
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     scroll-behavior: smooth;
-    &::-webkit-scrollbar { width: 4px; }
-    &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+    &::-webkit-scrollbar {
+      width: 4px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: var(--border-color);
+      border-radius: 2px;
+    }
   `,
   emptyState: css`
-    flex: 1; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; text-align: center; padding: 40px 24px;
-    gap: 8px; margin: auto 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 24px;
+    gap: 8px;
+    margin: auto 0;
   `,
-  emptyIcon: css`color: var(--border-color-hover); margin-bottom: 4px;`,
-  emptyTitle: css`font-size: 13px; font-weight: 700; color: var(--text-tertiary); margin: 0;`,
-  emptyHint: css`font-size: 11px; color: var(--text-tertiary); line-height: 1.5; margin: 0; max-width: 260px; opacity: 0.8;`,
+  emptyIcon: css`
+    color: var(--border-color-hover);
+    margin-bottom: 4px;
+  `,
+  emptyTitle: css`
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    margin: 0;
+  `,
+  emptyHint: css`
+    font-size: 11px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+    margin: 0;
+    max-width: 260px;
+    opacity: 0.8;
+  `,
   suggestions: css`
-    display: flex; flex-direction: column; gap: 6px; margin-top: 12px; width: 100%; max-width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 12px;
+    width: 100%;
+    max-width: 280px;
   `,
   suggestionBtn: css`
-    background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px;
-    color: var(--text-tertiary); font-size: 11px; padding: 8px 12px; cursor: pointer;
-    text-align: left; transition: all 150ms ease; line-height: 1.4; width: 100%;
-    &:hover:not(:disabled) { border-color: var(--color-brand); color: var(--text-primary); background: rgba(var(--color-brand-rgb), 0.08); }
-    &:disabled { opacity: 0.4; cursor: not-allowed; }
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    padding: 8px 12px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 150ms ease;
+    line-height: 1.4;
+    width: 100%;
+    &:hover:not(:disabled) {
+      border-color: var(--color-brand);
+      color: var(--text-primary);
+      background: rgba(var(--color-brand-rgb), 0.08);
+    }
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
   `,
-  msgRow: css`display: flex; align-items: flex-end; gap: 8px; position: relative;`,
-  msgRowUser: css`flex-direction: row-reverse;`,
-  msgRowAssistant: css`flex-direction: row;`,
+  msgRow: css`
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    position: relative;
+  `,
+  msgRowUser: css`
+    flex-direction: row-reverse;
+  `,
+  msgRowAssistant: css`
+    flex-direction: row;
+  `,
   avatar: css`
-    width: 22px; height: 22px; border-radius: 50%;
-    background: var(--bg-tertiary); border: 1px solid var(--border-color);
-    display: flex; align-items: center; justify-content: center;
-    color: var(--color-brand); flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-brand);
+    flex-shrink: 0;
   `,
-  avatarUser: css`background: rgba(var(--color-brand-rgb), 0.10); border-color: rgba(var(--color-brand-rgb), 0.28);`,
+  avatarUser: css`
+    background: rgba(var(--color-brand-rgb), 0.1);
+    border-color: rgba(var(--color-brand-rgb), 0.28);
+  `,
   bubble: css`
-    max-width: 82%; padding: 9px 12px; border-radius: 10px;
-    font-size: 12px; line-height: 1.6; word-break: break-word; position: relative;
+    max-width: 82%;
+    padding: 9px 12px;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.6;
+    word-break: break-word;
+    position: relative;
   `,
   bubbleUser: css`
-    background: rgba(var(--color-brand-rgb), 0.12); border: 1px solid rgba(var(--color-brand-rgb), 0.22);
-    border-bottom-right-radius: 3px; color: var(--text-primary);
+    background: rgba(var(--color-brand-rgb), 0.12);
+    border: 1px solid rgba(var(--color-brand-rgb), 0.22);
+    border-bottom-right-radius: 3px;
+    color: var(--text-primary);
   `,
   bubbleAssistant: css`
-    background: var(--bg-tertiary); border: 1px solid var(--border-color);
-    border-bottom-left-radius: 3px; color: var(--text-primary);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-bottom-left-radius: 3px;
+    color: var(--text-primary);
   `,
-  msgText: css`margin: 0; font-size: inherit; line-height: 1.6;`,
+  msgText: css`
+    margin: 0;
+    font-size: inherit;
+    line-height: 1.6;
+  `,
   cursor: css`
-    display: inline-block; width: 6px; height: 12px; background: var(--color-brand);
-    border-radius: 1px; margin-left: 2px; vertical-align: text-bottom;
+    display: inline-block;
+    width: 6px;
+    height: 12px;
+    background: var(--color-brand);
+    border-radius: 1px;
+    margin-left: 2px;
+    vertical-align: text-bottom;
     animation: blink2 0.8s step-end infinite;
-    @keyframes blink2 { 0%,100%{opacity:1} 50%{opacity:0} }
+    @keyframes blink2 {
+      0%,
+      100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0;
+      }
+    }
   `,
   msgActions: css`
-    position: absolute; top: -8px; right: -8px;
-    display: flex; flex-direction: row-reverse; gap: 3px;
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    display: flex;
+    flex-direction: row-reverse;
+    gap: 3px;
   `,
-  msgActionsUser: css`right: auto; left: -8px; flex-direction: row;`,
+  msgActionsUser: css`
+    right: auto;
+    left: -8px;
+    flex-direction: row;
+  `,
   actionBtn: css`
-    width: 20px; height: 20px; border-radius: 50%;
-    background: var(--bg-secondary); border: 1px solid var(--border-color);
-    color: var(--text-tertiary); cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-tertiary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: all 150ms ease;
-    &:hover { border-color: var(--color-brand); color: var(--color-brand); }
+    &:hover {
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+    }
   `,
   agentSummaryRow: css`
-    display: flex; align-items: baseline; gap: 6px;
-    padding: 4px 8px; background: var(--bg-tertiary);
-    border-radius: 5px; border-left: 2px solid var(--border-color);
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 8px;
+    background: var(--bg-tertiary);
+    border-radius: 5px;
+    border-left: 2px solid var(--border-color);
   `,
-  agentSummaryDot: css`width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-top: 3px;`,
-  agentSummaryTitle: css`font-size: 10px; font-weight: 600; color: var(--text-tertiary); white-space: nowrap; flex-shrink: 0;`,
-  agentSummaryText: css`font-size: 11px; color: var(--text-secondary); line-height: 1.4;`,
+  agentSummaryDot: css`
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 3px;
+  `,
+  agentSummaryTitle: css`
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    flex-shrink: 0;
+  `,
+  agentSummaryText: css`
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  `,
   systemRow: css`
-    font-size: 11px; color: var(--text-secondary); padding: 5px 10px;
-    border-left: 2px solid var(--border-color); border-radius: 3px;
-    background: var(--bg-tertiary); line-height: 1.4; position: relative;
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 5px 10px;
+    border-left: 2px solid var(--border-color);
+    border-radius: 3px;
+    background: var(--bg-tertiary);
+    line-height: 1.4;
+    position: relative;
   `,
   scrollBtn: css`
-    position: absolute; bottom: 70px; right: 14px;
-    width: 26px; height: 26px; border-radius: 50%;
-    border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-tertiary);
-    cursor: pointer; display: flex; align-items: center; justify-content: center;
-    box-shadow: var(--shadow-md); transition: all 150ms ease;
-    &:hover { border-color: var(--border-color-hover); color: var(--text-primary); }
+    position: absolute;
+    bottom: 70px;
+    right: 14px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-tertiary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-md);
+    transition: all 150ms ease;
+    &:hover {
+      border-color: var(--border-color-hover);
+      color: var(--text-primary);
+    }
   `,
   inputArea: css`
-    display: flex; align-items: flex-end; gap: 8px;
-    padding: 10px 12px; border-top: 1px solid var(--border-color);
-    background: var(--bg-secondary); flex-shrink: 0;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
   `,
   textarea: css`
-    flex: 1; background: var(--bg-input); border: 1px solid var(--border-color-hover);
-    border-radius: 8px; padding: 8px 12px; color: var(--text-primary);
-    font-size: 12px; font-family: inherit; line-height: 1.5;
-    resize: none; outline: none; max-height: 120px; min-height: 36px;
+    flex: 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color-hover);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: inherit;
+    line-height: 1.5;
+    resize: none;
+    outline: none;
+    max-height: 120px;
+    min-height: 36px;
     transition: border-color 150ms ease;
-    &:focus { border-color: var(--border-color-focus); }
-    &::placeholder { color: var(--text-tertiary); }
-    &:disabled { opacity: 0.4; cursor: not-allowed; }
+    &:focus {
+      border-color: var(--border-color-focus);
+    }
+    &::placeholder {
+      color: var(--text-tertiary);
+    }
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
   `,
   sendBtn: css`
-    width: 32px; height: 32px; flex-shrink: 0; border-radius: 7px; border: none;
-    background: var(--color-brand); color: #fff; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 700; transition: all 150ms ease;
-    &:hover:not(:disabled) { filter: brightness(1.10); }
-    &:disabled { opacity: 0.35; cursor: not-allowed; }
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border-radius: 7px;
+    border: none;
+    background: var(--color-brand);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    transition: all 150ms ease;
+    &:hover:not(:disabled) {
+      filter: brightness(1.1);
+    }
+    &:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
   `,
   stopBtn: css`
     background: transparent;
     border: 1px solid var(--color-error);
     color: var(--color-error);
-    &:hover { background: rgba(var(--color-error-rgb), 0.12); filter: none; }
+    &:hover {
+      background: rgba(var(--color-error-rgb), 0.12);
+      filter: none;
+    }
   `,
 
   // ── Conductor event row ──────────────────────────────────────────────────
   conductorRow: css`
-    display: flex; align-items: baseline; gap: 7px;
-    padding: 3px 10px; border-radius: 4px;
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 3px 10px;
+    border-radius: 4px;
     background: rgba(var(--color-brand-rgb), 0.04);
     border-left: 2px solid rgba(var(--color-brand-rgb), 0.2);
   `,
-  conductorIcon: css`font-size: 11px; font-weight: 700; flex-shrink: 0; min-width: 12px; text-align: center;`,
-  conductorText: css`font-size: 11px; color: var(--text-secondary); line-height: 1.4;`,
+  conductorIcon: css`
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+    min-width: 12px;
+    text-align: center;
+  `,
+  conductorText: css`
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  `,
 
   // ── Plan mode ────────────────────────────────────────────────────────────
   planThinking: css`
-    display: flex; align-items: center; gap: 5px;
-    padding: 8px 12px; border-radius: 6px;
-    background: rgba(var(--color-info-rgb), 0.06); border: 1px solid rgba(var(--color-info-rgb), 0.2);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: rgba(var(--color-info-rgb), 0.06);
+    border: 1px solid rgba(var(--color-info-rgb), 0.2);
   `,
   planThinkingDot: css`
-    width: 5px; height: 5px; border-radius: 50%; background: var(--color-info);
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--color-info);
     animation: planPulse 1.2s ease-in-out infinite;
-    @keyframes planPulse { 0%,100%{opacity:0.2;transform:scale(0.8)} 50%{opacity:1;transform:scale(1)} }
+    @keyframes planPulse {
+      0%,
+      100% {
+        opacity: 0.2;
+        transform: scale(0.8);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
   `,
-  planThinkingLabel: css`font-size: 11px; color: var(--color-info); margin-left: 4px;`,
+  planThinkingLabel: css`
+    font-size: 11px;
+    color: var(--color-info);
+    margin-left: 4px;
+  `,
 
   // ── Features popover ─────────────────────────────────────────────────────
   featuresPopover: css`
-    position: absolute; top: calc(100% + 6px); right: 0;
-    width: 240px; background: var(--bg-secondary);
-    border: 1px solid var(--border-color); border-radius: 10px;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    width: 240px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
     box-shadow: var(--shadow-lg);
-    overflow: hidden; z-index: 50;
+    overflow: hidden;
+    z-index: 50;
   `,
   /* Declared after featuresPopover so its top/bottom override wins the
    * cascade naturally (equal specificity, later insertion) — no !important. */
@@ -1445,28 +2061,67 @@ const s = {
   `,
   featureSection: css`
     padding: 10px 0 6px;
-    & + & { border-top: 1px solid var(--border-color); }
+    & + & {
+      border-top: 1px solid var(--border-color);
+    }
   `,
   featureSectionLabel: css`
-    display: block; font-size: 10px; font-weight: 600;
-    color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em;
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     padding: 0 14px 6px;
   `,
   featureOption: css`
-    display: flex; align-items: flex-start; gap: 10px;
-    width: 100%; padding: 7px 14px; border: none;
-    background: transparent; cursor: pointer; text-align: left;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    padding: 7px 14px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
     transition: background 120ms ease;
-    &:hover { background: var(--bg-hover); }
+    &:hover {
+      background: var(--bg-hover);
+    }
   `,
-  featureOptionActiveGreen: css`background: rgba(var(--color-success-rgb), 0.08);`,
-  featureOptionActiveYellow: css`background: rgba(var(--color-warning-rgb), 0.08);`,
+  featureOptionActiveGreen: css`
+    background: rgba(var(--color-success-rgb), 0.08);
+  `,
+  featureOptionActiveYellow: css`
+    background: rgba(var(--color-warning-rgb), 0.08);
+  `,
   featureOptionCheck: css`
-    width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; margin-top: 1px;
-    border: 1px solid var(--border-color-hover); background: var(--bg-input);
-    display: flex; align-items: center; justify-content: center; color: var(--text-primary);
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    border: 1px solid var(--border-color-hover);
+    background: var(--bg-input);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-primary);
   `,
-  featureOptionContent: css`display: flex; flex-direction: column; gap: 1px; min-width: 0;`,
-  featureOptionTitle: css`font-size: 12px; font-weight: 500; color: var(--text-primary);`,
-  featureOptionDesc: css`font-size: 10px; color: var(--text-tertiary); line-height: 1.4;`,
+  featureOptionContent: css`
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  `,
+  featureOptionTitle: css`
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-primary);
+  `,
+  featureOptionDesc: css`
+    font-size: 10px;
+    color: var(--text-tertiary);
+    line-height: 1.4;
+  `,
 };

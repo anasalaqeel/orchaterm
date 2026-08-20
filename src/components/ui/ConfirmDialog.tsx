@@ -29,7 +29,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     <div
       className={styles.overlay}
       onClick={onCancel}
-      onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onCancel();
+      }}
     >
       <div
         className={styles.box}
@@ -41,7 +43,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <div className={styles.iconRow}>
           <AlertTriangle className={styles.icon} />
         </div>
-        <p id="confirm-msg" className={styles.message}>{message}</p>
+        <p id="confirm-msg" className={styles.message}>
+          {message}
+        </p>
         <div className={styles.actions}>
           <button onClick={onCancel} className={styles.cancelBtn}>
             {cancelLabel}
@@ -67,7 +71,14 @@ const styles = {
     background: rgba(0, 0, 0, 0.65);
     backdrop-filter: blur(4px);
     animation: fadeIn 0.15s ease;
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
   `,
   box: css`
     background: var(--bg-secondary);
@@ -76,11 +87,19 @@ const styles = {
     padding: var(--spacing-lg);
     max-width: 360px;
     width: 100%;
-    box-shadow: var(--shadow-lg), 0 0 20px rgba(248, 113, 113, 0.1);
+    box-shadow:
+      var(--shadow-lg),
+      0 0 20px rgba(248, 113, 113, 0.1);
     animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     @keyframes slideUp {
-      from { transform: translateY(8px); opacity: 0; }
-      to   { transform: translateY(0);   opacity: 1; }
+      from {
+        transform: translateY(8px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
     }
   `,
   iconRow: css`
@@ -130,6 +149,8 @@ const styles = {
     font-weight: var(--font-weight-bold);
     cursor: pointer;
     transition: filter 0.15s ease;
-    &:hover { filter: brightness(1.1); }
+    &:hover {
+      filter: brightness(1.1);
+    }
   `,
 };

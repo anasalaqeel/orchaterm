@@ -5,12 +5,12 @@ import type { ContinuationConfig } from './continuation.types';
 
 export interface Workspace {
   id: string;
-  name: string;           // e.g. "Factinme", "Bulkin", "Exercisee"
-  path: string;           // local directory path
+  name: string; // e.g. "Factinme", "Bulkin", "Exercisee"
+  path: string; // local directory path
   description: string;
-  color: string;          // hex color for visual tags (e.g. "#3b82f6")
+  color: string; // hex color for visual tags (e.g. "#3b82f6")
   status: 'active' | 'paused' | 'idle';
-  currentTask: string;    // free text of what's happening right now
+  currentTask: string; // free text of what's happening right now
   createdAt: string;
   updatedAt: string;
 }
@@ -37,7 +37,7 @@ export interface TaskLog {
   workspaceId: string;
   /** Which Space this log entry belongs to. null = not space-specific. */
   spaceId: string | null;
-  summary: string;        // one-liner summary of handoff/work
+  summary: string; // one-liner summary of handoff/work
   timestamp: string;
   status: 'in-progress' | 'done' | 'blocked';
 }
@@ -48,10 +48,10 @@ export interface SavedPrompt {
   /** Which Space this prompt belongs to. null = not space-specific. */
   spaceId: string | null;
   title: string;
-  content: string;        // full prompt text
+  content: string; // full prompt text
   tags: string[];
   createdAt: string;
-  usedAt: string | null;  // last time copied/used
+  usedAt: string | null; // last time copied/used
 }
 
 export interface AppSettings {

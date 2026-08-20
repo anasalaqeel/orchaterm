@@ -38,17 +38,22 @@ export function computeSplitLayout(
   left: number,
   width: number,
   height: number,
-  headerHeight = PANE_HEADER_PX,
+  headerHeight = PANE_HEADER_PX
 ): SplitLayout {
   if (node.type === 'leaf') {
     return {
-      panes: [{
-        leafId: node.id,
-        sessionId: node.sessionId,
-        top, left, width, height,
-        termTop: top + headerHeight,
-        termHeight: Math.max(0, height - headerHeight),
-      }],
+      panes: [
+        {
+          leafId: node.id,
+          sessionId: node.sessionId,
+          top,
+          left,
+          width,
+          height,
+          termTop: top + headerHeight,
+          termHeight: Math.max(0, height - headerHeight),
+        },
+      ],
       dividers: [],
     };
   }
@@ -64,13 +69,18 @@ export function computeSplitLayout(
 
   for (let i = 0; i < node.children.length; i++) {
     const childSize = node.ratios[i] * available;
-    const childTop    = isH ? top    : offset;
-    const childLeft   = isH ? offset : left;
-    const childWidth  = isH ? childSize : width;
-    const childHeight = isH ? height    : childSize;
+    const childTop = isH ? top : offset;
+    const childLeft = isH ? offset : left;
+    const childWidth = isH ? childSize : width;
+    const childHeight = isH ? height : childSize;
 
     const sub = computeSplitLayout(
-      node.children[i], childTop, childLeft, childWidth, childHeight, headerHeight,
+      node.children[i],
+      childTop,
+      childLeft,
+      childWidth,
+      childHeight,
+      headerHeight
     );
     panes.push(...sub.panes);
     dividers.push(...sub.dividers);
@@ -82,10 +92,10 @@ export function computeSplitLayout(
         containerId: node.id,
         childIndex: i,
         direction: node.direction,
-        top:    isH ? top    : offset,
-        left:   isH ? offset : left,
-        width:  isH ? DIVIDER_PX : width,
-        height: isH ? height     : DIVIDER_PX,
+        top: isH ? top : offset,
+        left: isH ? offset : left,
+        width: isH ? DIVIDER_PX : width,
+        height: isH ? height : DIVIDER_PX,
         containerAvailableSize: available,
       });
       offset += DIVIDER_PX;

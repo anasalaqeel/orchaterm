@@ -51,9 +51,7 @@ describe('AutonomousOrchestrator', () => {
   it('stops a space and cleans up watchers', async () => {
     orchestrator.startSpace({
       spaceId: 'space-1',
-      sessions: [
-        { id: 'sess-a', title: 'Claude', color: null, interruptPolicy: 'always' },
-      ],
+      sessions: [{ id: 'sess-a', title: 'Claude', color: null, interruptPolicy: 'always' }],
     });
 
     orchestrator.stopSpace('space-1');
@@ -66,12 +64,10 @@ describe('AutonomousOrchestrator', () => {
   it('calls routingProvider.complete when a summary chunk arrives', async () => {
     const capturedCallbacks: Array<(chunk: string) => void> = [];
     const { bufferWatcher } = await import('../services/bufferWatcher');
-    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(
-      async (_sessionId, onChunk) => {
-        capturedCallbacks.push(onChunk);
-        return () => {};
-      }
-    );
+    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(async (_sessionId, onChunk) => {
+      capturedCallbacks.push(onChunk);
+      return () => {};
+    });
 
     orchestrator.startSpace({
       spaceId: 'space-1',
@@ -92,12 +88,10 @@ describe('AutonomousOrchestrator', () => {
 
     const capturedCallbacks: Array<(chunk: string) => void> = [];
     const { bufferWatcher } = await import('../services/bufferWatcher');
-    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(
-      async (_sessionId, onChunk) => {
-        capturedCallbacks.push(onChunk);
-        return () => {};
-      }
-    );
+    vi.mocked(bufferWatcher.watchForSummary).mockImplementation(async (_sessionId, onChunk) => {
+      capturedCallbacks.push(onChunk);
+      return () => {};
+    });
 
     orchestrator.startSpace({
       spaceId: 'space-1',
