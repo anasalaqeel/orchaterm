@@ -34,11 +34,15 @@ export class FakeTerminal {
   selectionHandler: (() => void) | null = null;
   bellHandler: (() => void) | null = null;
   keyHandler: ((e: Record<string, unknown>) => boolean | undefined) | null = null;
-  csiHandlers: Array<{ spec: { prefix?: string; final: string }; cb: (p: unknown[]) => boolean }> = [];
+  csiHandlers: Array<{ spec: { prefix?: string; final: string }; cb: (p: unknown[]) => boolean }> =
+    [];
   escHandlers: Array<{ spec: { final: string }; cb: () => boolean }> = [];
 
   parser = {
-    registerCsiHandler: (spec: { prefix?: string; final: string }, cb: (p: unknown[]) => boolean) => {
+    registerCsiHandler: (
+      spec: { prefix?: string; final: string },
+      cb: (p: unknown[]) => boolean
+    ) => {
       this.csiHandlers.push({ spec, cb });
       return () => {};
     },
@@ -55,59 +59,106 @@ export class FakeTerminal {
     const self = this;
     this.buffer = {
       active: {
-        get length() { return self.lines.length; },
+        get length() {
+          return self.lines.length;
+        },
         getLine: (r: number) =>
           self.lines[r] !== undefined
-            ? { translateToString: (trimRight: boolean) => (trimRight ? self.lines[r].trimEnd() : self.lines[r]) }
+            ? {
+                translateToString: (trimRight: boolean) =>
+                  trimRight ? self.lines[r].trimEnd() : self.lines[r],
+              }
             : undefined,
       },
     };
   }
 
-  open(el: HTMLElement) { this.element = el; }
-  loadAddon(addon: unknown) { this.loadedAddons.push(addon); }
+  open(el: HTMLElement) {
+    this.element = el;
+  }
+  loadAddon(addon: unknown) {
+    this.loadedAddons.push(addon);
+  }
 
   onData(cb: (data: string) => void) {
     this.dataHandler = cb;
-    return { dispose: () => { if (this.dataHandler === cb) this.dataHandler = null; } };
+    return {
+      dispose: () => {
+        if (this.dataHandler === cb) this.dataHandler = null;
+      },
+    };
   }
   onSelectionChange(cb: () => void) {
     this.selectionHandler = cb;
-    return { dispose: () => { if (this.selectionHandler === cb) this.selectionHandler = null; } };
+    return {
+      dispose: () => {
+        if (this.selectionHandler === cb) this.selectionHandler = null;
+      },
+    };
   }
   onBell(cb: () => void) {
     this.bellHandler = cb;
-    return { dispose: () => { if (this.bellHandler === cb) this.bellHandler = null; } };
+    return {
+      dispose: () => {
+        if (this.bellHandler === cb) this.bellHandler = null;
+      },
+    };
   }
   onResize(cb: (d: { cols: number; rows: number }) => void) {
     this.resizeHandler = cb;
-    return { dispose: () => { if (this.resizeHandler === cb) this.resizeHandler = null; } };
+    return {
+      dispose: () => {
+        if (this.resizeHandler === cb) this.resizeHandler = null;
+      },
+    };
   }
   attachCustomKeyEventHandler(fn: (e: Record<string, unknown>) => boolean | undefined) {
     this.keyHandler = fn;
   }
 
-  focus() { this.focused++; }
-  write(data: string) { this.writes.push(data); }
+  focus() {
+    this.focused++;
+  }
+  write(data: string) {
+    this.writes.push(data);
+  }
   refresh(_start: number, _end: number) {}
-  clear() { this.cleared++; }
+  clear() {
+    this.cleared++;
+  }
   scrollToTop() {}
   scrollToBottom() {}
-  paste(text: string) { this.pasted.push(text); }
-  selectAll() { this.selectAllCalled = true; }
-  hasSelection() { return this.selectionText !== ''; }
-  getSelection() { return this.selectionText; }
-  dispose() { this.disposed = true; }
+  paste(text: string) {
+    this.pasted.push(text);
+  }
+  selectAll() {
+    this.selectAllCalled = true;
+  }
+  hasSelection() {
+    return this.selectionText !== '';
+  }
+  getSelection() {
+    return this.selectionText;
+  }
+  dispose() {
+    this.disposed = true;
+  }
 
   // ── Test triggers ──────────────────────────────────────────────────────────
-  fireData(data: string) { this.dataHandler?.(data); }
-  fireResize(cols: number, rows: number) { this.resizeHandler?.({ cols, rows }); }
-  fireSelectionChange() { this.selectionHandler?.(); }
+  fireData(data: string) {
+    this.dataHandler?.(data);
+  }
+  fireResize(cols: number, rows: number) {
+    this.resizeHandler?.({ cols, rows });
+  }
+  fireSelectionChange() {
+    this.selectionHandler?.();
+  }
   fireKey(e: Record<string, unknown>): boolean | undefined {
     return this.keyHandler?.({ type: 'keydown', ...e }) as boolean | undefined;
   }
   fireCsi(prefix: string, final: string, params: unknown[]) {
-    this.csiHandlers.find(h => h.spec.prefix === prefix && h.spec.final === final)?.cb(params);
+    this.csiHandlers.find((h) => h.spec.prefix === prefix && h.spec.final === final)?.cb(params);
   }
 }
 

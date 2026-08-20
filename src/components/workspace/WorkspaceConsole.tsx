@@ -96,13 +96,22 @@ export const WorkspaceConsole = memo(function WorkspaceConsole({
 const s = {
   /* Console wrapper — CSS-toggled so TerminalContainer never unmounts */
   consoleLayer: css`
-    display: flex; flex-direction: column;
-    flex: 1; min-height: 0; overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
     background: var(--bg-canvas);
     animation: consoleFadeIn 0.22s ease forwards;
     @keyframes consoleFadeIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to   { opacity: 1; transform: translateY(0);   }
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
   `,
   consoleLayerHidden: css`
@@ -119,17 +128,22 @@ const s = {
     user-select: none;
   `,
   consoleHeaderLeft: css`
-    display: flex; align-items: center; gap: 8px;
-    min-width: 0; overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    overflow: hidden;
   `,
   consoleDot: css`
-    width: 9px; height: 9px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
     flex-shrink: 0;
     box-shadow: 0 0 8px var(--color-brand);
   `,
   consoleName: css`
-    font-size: 13px; font-weight: 700;
+    font-size: 13px;
+    font-weight: 700;
     color: var(--text-primary);
     white-space: nowrap;
   `,
@@ -142,29 +156,44 @@ const s = {
     text-overflow: ellipsis;
   `,
   spacePill: css`
-    display: inline-flex; align-items: center; gap: 5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     padding: 2px 8px;
     border-radius: 99px;
     border: 1px solid;
-    background: rgba(255,255,255,0.04);
+    background: rgba(255, 255, 255, 0.04);
     flex-shrink: 0;
   `,
   spacePillDot: css`
-    width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
   `,
   spacePillName: css`
-    font-size: 10px; font-weight: 600; white-space: nowrap;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
   `,
   backBtn: css`
-    display: flex; align-items: center; gap: 5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
     background: transparent;
     color: var(--text-tertiary);
     padding: 5px 10px;
     border-radius: 8px;
-    font-size: 11px; font-weight: 600;
+    font-size: 11px;
+    font-weight: 600;
     border: 1px solid var(--border-color);
-    cursor: pointer; flex-shrink: 0;
+    cursor: pointer;
+    flex-shrink: 0;
     transition: all 0.15s;
-    &:hover { border-color: var(--border-color-hover); color: var(--text-primary); background: var(--bg-hover); }
+    &:hover {
+      border-color: var(--border-color-hover);
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
   `,
 };

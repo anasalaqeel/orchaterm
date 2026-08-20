@@ -17,9 +17,11 @@ vi.mock('../services/sentinelParser', () => ({
 }));
 
 const mockLlm = {
-  complete: vi.fn().mockResolvedValue(
-    '## What Was Done\nBuilt auth module.\n\n## Files Modified\n- src/auth.ts — added JWT logic\n\n## Decisions Made\nUsed HS256.\n\n## Where It Stopped\nHalfway through refresh token.\n\n## What Needs To Happen Next\nFinish refresh token endpoint.\n\n## Resume Prompt\nContinue building the refresh token endpoint in src/auth.ts.'
-  ),
+  complete: vi
+    .fn()
+    .mockResolvedValue(
+      '## What Was Done\nBuilt auth module.\n\n## Files Modified\n- src/auth.ts — added JWT logic\n\n## Decisions Made\nUsed HS256.\n\n## Where It Stopped\nHalfway through refresh token.\n\n## What Needs To Happen Next\nFinish refresh token endpoint.\n\n## Resume Prompt\nContinue building the refresh token endpoint in src/auth.ts.'
+    ),
   stream: vi.fn(),
   listModels: vi.fn().mockResolvedValue([]),
   checkOnline: vi.fn().mockResolvedValue(true),
@@ -38,7 +40,7 @@ describe('generateCheckpoint', () => {
         triggeredBy: 'auto-detection',
         label: 'LIMIT_HIT',
       },
-      mockLlm,
+      mockLlm
     );
 
     expect(snapshot.sessionId).toBe('sess-1');
@@ -62,12 +64,15 @@ describe('generateCheckpoint', () => {
         triggeredBy: 'manual',
         label: 'STOPPED',
       },
-      mockLlm,
+      mockLlm
     );
-    expect(invoke).toHaveBeenCalledWith('write_file_path', expect.objectContaining({
-      path: expect.stringContaining('.orchaterm/checkpoints'),
-      content: expect.stringContaining('# Checkpoint: Claude'),
-    }));
+    expect(invoke).toHaveBeenCalledWith(
+      'write_file_path',
+      expect.objectContaining({
+        path: expect.stringContaining('.orchaterm/checkpoints'),
+        content: expect.stringContaining('# Checkpoint: Claude'),
+      })
+    );
   });
 
   it('writes partial checkpoint when LLM fails', async () => {
@@ -85,7 +90,7 @@ describe('generateCheckpoint', () => {
         triggeredBy: 'manual',
         label: 'STOPPED',
       },
-      failingLlm,
+      failingLlm
     );
     const call = vi.mocked(invoke).mock.calls[0];
     expect((call[1] as any).content).toContain('LLM unavailable');

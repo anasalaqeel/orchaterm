@@ -38,7 +38,9 @@ export class OpenAICompatProvider implements LLMProvider {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error(`API error: ${response.status} — ${(err as any)?.error?.message ?? response.statusText}`);
+        throw new Error(
+          `API error: ${response.status} — ${(err as any)?.error?.message ?? response.statusText}`
+        );
       }
       const data = await response.json();
       const text = (data.choices?.[0]?.message?.content ?? '').trim();
@@ -74,7 +76,10 @@ export class OpenAICompatProvider implements LLMProvider {
         }
 
         const reader = res.body?.getReader();
-        if (!reader) { onError('No response body'); return; }
+        if (!reader) {
+          onError('No response body');
+          return;
+        }
         const decoder = new TextDecoder();
         let buf = '';
 
@@ -88,12 +93,17 @@ export class OpenAICompatProvider implements LLMProvider {
             const t = line.trim();
             if (!t.startsWith('data: ')) continue;
             const payload = t.slice(6);
-            if (payload === '[DONE]') { onDone(); return; }
+            if (payload === '[DONE]') {
+              onDone();
+              return;
+            }
             try {
               const obj = JSON.parse(payload);
               const delta = obj.choices?.[0]?.delta?.content;
               if (delta) onToken(delta);
-            } catch { /* skip */ }
+            } catch {
+              /* skip */
+            }
           }
         }
         onDone();
@@ -109,7 +119,10 @@ export class OpenAICompatProvider implements LLMProvider {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
     try {
-      const res = await fetch(`${this.baseUrl}/v1/models`, { headers: this.headers, signal: controller.signal });
+      const res = await fetch(`${this.baseUrl}/v1/models`, {
+        headers: this.headers,
+        signal: controller.signal,
+      });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(`API ${res.status}: ${(err as any)?.error?.message ?? res.statusText}`);
@@ -119,16 +132,24 @@ export class OpenAICompatProvider implements LLMProvider {
     } catch (err: any) {
       if (err?.name === 'AbortError') throw new Error('Request timed out');
       throw err;
-    } finally { clearTimeout(timer); }
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async checkOnline(): Promise<boolean> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 2000);
     try {
-      const res = await fetch(`${this.baseUrl}/v1/models`, { headers: this.headers, signal: controller.signal });
+      const res = await fetch(`${this.baseUrl}/v1/models`, {
+        headers: this.headers,
+        signal: controller.signal,
+      });
       return res.ok;
-    } catch { return false; }
-    finally { clearTimeout(timer); }
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

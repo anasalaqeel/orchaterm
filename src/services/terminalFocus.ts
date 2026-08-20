@@ -18,9 +18,5 @@
 export function isTerminalFocused(): boolean {
   if (typeof document === 'undefined') return false;
   const el = document.activeElement;
-  return (
-    !!el &&
-    el.tagName === 'TEXTAREA' &&
-    el.classList.contains('xterm-helper-textarea')
-  );
+  return !!el && el.tagName === 'TEXTAREA' && el.classList.contains('xterm-helper-textarea');
 }

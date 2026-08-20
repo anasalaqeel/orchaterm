@@ -47,7 +47,7 @@ Preserve file paths, function names, type names, and API identifiers exactly as 
 
 export function buildDetectionPrompt(
   delta: string,
-  sessionTitle: string,
+  sessionTitle: string
 ): { system: string; userContent: string } {
   return {
     system: DETECTION_SYSTEM_PROMPT,
@@ -59,10 +59,12 @@ export function buildCheckpointNarrativePrompt(
   rawBuffer: string,
   sessionTitle: string,
   goalHint?: string,
-  previousSummary?: string,
+  previousSummary?: string
 ): { system: string; userContent: string } {
   const goalLine = goalHint ? `\nSession goal: ${goalHint}\n` : '';
-  const prevLine = previousSummary ? `\nPrevious Handoff Summary (incorporate this context to maintain the continuous story of the entire session history):\n${previousSummary}\n` : '';
+  const prevLine = previousSummary
+    ? `\nPrevious Handoff Summary (incorporate this context to maintain the continuous story of the entire session history):\n${previousSummary}\n`
+    : '';
   return {
     system: CHECKPOINT_SYSTEM_PROMPT,
     userContent: `Session: ${sessionTitle}${goalLine}${prevLine}\n\nRecent terminal output:\n${rawBuffer}`,

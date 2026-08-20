@@ -19,20 +19,20 @@ export const Tooltip: React.FC<TooltipProps> = ({ content, children, width = 260
 
     const triggerRect = triggerRef.current.getBoundingClientRect();
     const tooltipRect = tooltipRef.current.getBoundingClientRect();
-    
+
     // 1. Vertical Boundary Check (Flip to bottom if there's no space on top)
     const margin = 12; // Safety margin from screen boundaries
     const tooltipHeight = tooltipRect.height || 140; // Fallback estimate if not fully measured yet
     const fitsTop = triggerRect.top - tooltipHeight - margin > 0;
     const nextPosition = fitsTop ? 'top' : 'bottom';
-    
+
     setPosition(nextPosition);
 
     // 2. Horizontal Boundary Check (Shift left/right if overflowing side edges)
     const leftOffset = (triggerRect.width - width) / 2;
     const viewportLeft = triggerRect.left + triggerRect.width / 2 - width / 2;
     const viewportRight = viewportLeft + width;
-    
+
     let shift = 0;
 
     if (viewportLeft < margin) {
@@ -40,7 +40,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ content, children, width = 260
       shift = margin - viewportLeft;
     } else if (viewportRight > window.innerWidth - margin) {
       // Shift left to stay on screen
-      shift = (window.innerWidth - margin) - viewportRight;
+      shift = window.innerWidth - margin - viewportRight;
     }
 
     // Set styles and pass the offset to the arrow via a CSS variable
@@ -56,7 +56,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ content, children, width = 260
       updatePosition();
       // Measure again immediately in case height changed after rendering
       const handle = requestAnimationFrame(updatePosition);
-      
+
       window.addEventListener('resize', updatePosition);
       window.addEventListener('scroll', updatePosition, { capture: true });
       return () => {
@@ -80,7 +80,10 @@ export const Tooltip: React.FC<TooltipProps> = ({ content, children, width = 260
       {visible && (
         <div
           ref={tooltipRef}
-          className={cx(styles.tooltip, position === 'top' ? styles.tooltipTop : styles.tooltipBottom)}
+          className={cx(
+            styles.tooltip,
+            position === 'top' ? styles.tooltipTop : styles.tooltipBottom
+          )}
           style={style}
         >
           {content}

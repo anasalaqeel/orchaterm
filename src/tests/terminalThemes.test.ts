@@ -1,11 +1,23 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Terminal } from '@xterm/xterm';
-import { buildCombo, resolveTerminalKey, mergeTerminalConfig, DEFAULT_TERMINAL_CONFIG, DEFAULT_QUICK_ACTIONS, kittyEncodeKey, attachKittyProtocol } from '../utils/terminalThemes';
+import {
+  buildCombo,
+  resolveTerminalKey,
+  mergeTerminalConfig,
+  DEFAULT_TERMINAL_CONFIG,
+  DEFAULT_QUICK_ACTIONS,
+  kittyEncodeKey,
+  attachKittyProtocol,
+} from '../utils/terminalThemes';
 import type { TerminalKeybinding } from '../types';
 
 function makeEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
   return {
-    ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, key: '',
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    metaKey: false,
+    key: '',
     ...overrides,
   } as KeyboardEvent;
 }
@@ -36,9 +48,9 @@ describe('buildCombo', () => {
   });
 
   it('modifier order is canonical ctrl→alt→shift→meta', () => {
-    expect(
-      buildCombo(makeEvent({ shiftKey: true, ctrlKey: true, metaKey: true, key: 'p' }))
-    ).toBe('ctrl+shift+meta+p');
+    expect(buildCombo(makeEvent({ shiftKey: true, ctrlKey: true, metaKey: true, key: 'p' }))).toBe(
+      'ctrl+shift+meta+p'
+    );
   });
 });
 
@@ -87,7 +99,9 @@ describe('kittyEncodeKey', () => {
   });
 
   it('Ctrl+Shift+D → shift adds to modifier (mods 6), base codepoint', () => {
-    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, shiftKey: true, key: 'D' }), 1)).toBe('\x1b[100;6u');
+    expect(kittyEncodeKey(makeEvent({ ctrlKey: true, shiftKey: true, key: 'D' }), 1)).toBe(
+      '\x1b[100;6u'
+    );
   });
 
   it('no Ctrl → null (plain typing untouched)', () => {
@@ -100,7 +114,7 @@ describe('kittyEncodeKey', () => {
 
   it('Ctrl+Alt confirmed NOT AltGraph → encodes (mods 7: shift0+alt2+ctrl4, +1)', () => {
     const e = makeEvent({ ctrlKey: true, altKey: true, key: 'd' });
-    (e as any).getModifierState = (name: string) => name === 'AltGraph' ? false : false;
+    (e as any).getModifierState = (name: string) => (name === 'AltGraph' ? false : false);
     expect(kittyEncodeKey(e, 1)).toBe('\x1b[100;7u');
   });
 
@@ -271,11 +285,12 @@ describe('attachKittyProtocol', () => {
 });
 
 describe('mergeTerminalConfig', () => {
-  const combos = (kb: TerminalKeybinding[]) => kb.map(b => `${b.key}:${b.action}`).sort();
+  const combos = (kb: TerminalKeybinding[]) => kb.map((b) => `${b.key}:${b.action}`).sort();
 
   it('no saved config → full defaults', () => {
-    expect(combos(mergeTerminalConfig(undefined).keybindings))
-      .toEqual(combos(DEFAULT_TERMINAL_CONFIG.keybindings));
+    expect(combos(mergeTerminalConfig(undefined).keybindings)).toEqual(
+      combos(DEFAULT_TERMINAL_CONFIG.keybindings)
+    );
   });
 
   it('saved config missing copy → copy backfilled, no duplicates', () => {
@@ -283,14 +298,14 @@ describe('mergeTerminalConfig', () => {
     expect(combos(merged.keybindings)).toContain('ctrl+shift+c:copy');
     expect(combos(merged.keybindings)).toContain('ctrl+shift+v:paste');
     // exactly one entry per combo
-    expect(merged.keybindings.filter(b => b.key === 'ctrl+shift+v')).toHaveLength(1);
+    expect(merged.keybindings.filter((b) => b.key === 'ctrl+shift+v')).toHaveLength(1);
   });
 
   it('user override of a default combo is respected (not clobbered)', () => {
     const merged = mergeTerminalConfig({
       keybindings: [{ key: 'ctrl+shift+c', action: 'passthrough' }],
     });
-    const c = merged.keybindings.filter(b => b.key === 'ctrl+shift+c');
+    const c = merged.keybindings.filter((b) => b.key === 'ctrl+shift+c');
     expect(c).toHaveLength(1);
     expect(c[0].action).toBe('passthrough');
   });
@@ -315,7 +330,7 @@ describe('DEFAULT_QUICK_ACTIONS', () => {
   });
 
   it('keeps auto-run for plain commands', () => {
-    const git = DEFAULT_QUICK_ACTIONS.find(a => a.id === 'git-status')!;
+    const git = DEFAULT_QUICK_ACTIONS.find((a) => a.id === 'git-status')!;
     expect(git.autoExecute).toBe(true);
     expect(git.command).toBe('git status');
   });

@@ -19,13 +19,13 @@ function chunkEnd(data: string, start: number, chunkSize: number): number {
     // Prevent splitting ANSI escape sequences (like \x1b[200~ or \x1b[201~) across chunks.
     // ConPTY drops escape sequences if they are split and delayed.
     let escapeIdx = -1;
-    for (let j = 1; j <= 8 && (end - j) >= start; j++) {
+    for (let j = 1; j <= 8 && end - j >= start; j++) {
       if (data.charCodeAt(end - j) === 0x1b) {
         escapeIdx = end - j;
         break;
       }
     }
-    
+
     if (escapeIdx !== -1) {
       // Check if the escape sequence terminates before `end`.
       let terminated = false;
@@ -35,7 +35,7 @@ function chunkEnd(data: string, start: number, chunkSize: number): number {
           break;
         }
       }
-      
+
       // If unterminated, pull boundary back to before the ESC character
       // (as long as it doesn't cause an empty chunk).
       if (!terminated && escapeIdx > start) {
@@ -64,7 +64,7 @@ export async function writePtyChunked(
   sessionId: string,
   data: string,
   chunkSize = 80,
-  delayMs = 8,
+  delayMs = 8
 ): Promise<void> {
   let i = 0;
   while (i < data.length) {
@@ -72,7 +72,7 @@ export async function writePtyChunked(
     const chunk = data.slice(i, end);
     await invoke('write_pty', { sessionId, data: chunk });
     if (end < data.length) {
-      await new Promise<void>(resolve => setTimeout(resolve, delayMs));
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
     }
     i = end;
   }

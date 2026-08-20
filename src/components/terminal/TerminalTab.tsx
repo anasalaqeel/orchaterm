@@ -20,13 +20,18 @@ import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { css } from '@emotion/css';
 import { Copy, Check, Search, X } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
-import { DEFAULT_TERMINAL_CONFIG, buildCombo, resolveTerminalKey, kittyEncodeKey, attachKittyProtocol } from '../../utils/terminalThemes';
+import {
+  DEFAULT_TERMINAL_CONFIG,
+  buildCombo,
+  resolveTerminalKey,
+  kittyEncodeKey,
+  attachKittyProtocol,
+} from '../../utils/terminalThemes';
 import { writePtyChunked } from '../../utils/ptyUtils';
 import { QuickActionsBar } from './QuickActionsBar';
 import { interpolatePromptTemplate } from '../../utils/promptTemplate';
 import { buildPromptContext, formatTerminalWrite } from '../../utils/quickActionInject';
 import type { QuickAction } from '../../types';
-
 
 // ── Public ref handle exposed to TerminalContainer ─────────────────────────
 export interface TerminalTabHandle {
@@ -63,9 +68,7 @@ let windowsPtyInfoPromise: Promise<IWindowsPty | null> | null = null;
 function getWindowsPtyInfo(): Promise<IWindowsPty | null> {
   if (!windowsPtyInfoPromise) {
     windowsPtyInfoPromise = invoke<number | null>('windows_build_number')
-      .then((buildNumber) =>
-        buildNumber ? { backend: 'conpty' as const, buildNumber } : null,
-      )
+      .then((buildNumber) => (buildNumber ? { backend: 'conpty' as const, buildNumber } : null))
       .catch(() => null);
   }
   return windowsPtyInfoPromise;
@@ -88,7 +91,10 @@ function safeFit(addon: FitAddon): { cols: number; rows: number } | null {
 
 // Matches ANSI escapes / OSC sequences / lone control chars so we can tell
 // whether a chunk has any *printable* content yet.
-const ANSI_CONTROL = new RegExp('\\u001b\\][^\\u0007]*(?:\\u0007|\\u001b\\\\)|\\u001b\\[[0-9;?]*[ -\\/]*[@-~]|\\u001b[@-Z\\\\-_]|[\\u0000-\\u0009\\u000b-\\u001f\\u007f]', 'g');
+const ANSI_CONTROL = new RegExp(
+  '\\u001b\\][^\\u0007]*(?:\\u0007|\\u001b\\\\)|\\u001b\\[[0-9;?]*[ -\\/]*[@-~]|\\u001b[@-Z\\\\-_]|[\\u0000-\\u0009\\u000b-\\u001f\\u007f]',
+  'g'
+);
 
 /**
  * Some shells (notably Git Bash, whose default PS1 starts with `\n`) emit a
@@ -138,7 +144,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // Visual bell state
     const [bellActive, setBellActive] = useState(false);
 
-
     // Search addon ref
     const searchAddonRef = useRef<SearchAddon | null>(null);
     // Guard against React StrictMode double-invocation. When StrictMode runs
@@ -187,7 +192,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         // The WebGL glyph atlas desyncs while the pane is hidden (no paints) —
         // on re-show the first frame draws stale/overlapping glyphs. Rebuild it,
         // then force a full redraw so every cell repaints from clean state.
-        try { webglAddonRef.current?.clearTextureAtlas(); } catch { /* DOM renderer */ }
+        try {
+          webglAddonRef.current?.clearTextureAtlas();
+        } catch {
+          /* DOM renderer */
+        }
         term.scrollToBottom();
         term.refresh(0, term.rows - 1);
       },
@@ -208,32 +217,37 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // term.paste() and then a separate write_pty for '\r': write_pty is an
     // async Tauri command, so two independent invokes here would have no
     // guaranteed ordering — a single combined write does.
-    const runQuickActionCommand = useCallback((command: string, autoExecute: boolean) => {
-      const term = termRef.current;
-      if (!term) return;
-      const data = formatTerminalWrite(command, autoExecute, term.modes.bracketedPasteMode);
-      writePtyChunked(sessionId, data).catch((err) =>
-        console.error('[TerminalTab] write_pty failed:', err),
-      );
-    }, [sessionId]);
+    const runQuickActionCommand = useCallback(
+      (command: string, autoExecute: boolean) => {
+        const term = termRef.current;
+        if (!term) return;
+        const data = formatTerminalWrite(command, autoExecute, term.modes.bracketedPasteMode);
+        writePtyChunked(sessionId, data).catch((err) =>
+          console.error('[TerminalTab] write_pty failed:', err)
+        );
+      },
+      [sessionId]
+    );
 
     // Every quick action injects its text into the terminal (paste or auto-run).
     // {{selection}} / {{terminal_output}} / etc. are expanded from live terminal
     // context just before the text is written to the PTY — no modal, no extra
     // AI round-trip; whatever shell or CLI agent is running in the tab receives
     // the final text.
-    const handleRunAction = useCallback((action: QuickAction) => {
-      const ctx = buildPromptContext(termRef.current, {
-        workspaces,
-        spaces,
-        activeWorkspaceId,
-        activeSpaceId,
-        fallbackWorkspacePath: workspacePath,
-      });
-      const text = interpolatePromptTemplate(action.command, ctx);
-      runQuickActionCommand(text, action.autoExecute);
-    }, [workspaces, spaces, activeWorkspaceId, activeSpaceId, workspacePath, runQuickActionCommand]);
-
+    const handleRunAction = useCallback(
+      (action: QuickAction) => {
+        const ctx = buildPromptContext(termRef.current, {
+          workspaces,
+          spaces,
+          activeWorkspaceId,
+          activeSpaceId,
+          fallbackWorkspacePath: workspacePath,
+        });
+        const text = interpolatePromptTemplate(action.command, ctx);
+        runQuickActionCommand(text, action.autoExecute);
+      },
+      [workspaces, spaces, activeWorkspaceId, activeSpaceId, workspacePath, runQuickActionCommand]
+    );
 
     // ── Spawn helper (used for initial spawn AND retry) ──────────────────
     const spawnSession = useCallback(async () => {
@@ -283,7 +297,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           }).catch(() => {});
         }
       } catch (err: any) {
-        const msg = typeof err === 'string' ? err : err?.message ?? 'Unknown error';
+        const msg = typeof err === 'string' ? err : (err?.message ?? 'Unknown error');
         setSpawnState('error');
         setErrorMsg(msg);
         term.write(`\r\n\x1b[31m[Error] Failed to spawn shell: ${msg}\x1b[0m\r\n`);
@@ -299,7 +313,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       if (effectActiveRef.current) return;
       effectActiveRef.current = true;
 
-
       // ─ xterm instance ────────────────────────────────────────────────
       const term = new Terminal({
         cursorBlink: terminalConfig.cursorBlink,
@@ -311,7 +324,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         fontFamily: terminalConfig.fontFamily,
         fontSize: terminalConfig.fontSize,
         lineHeight: terminalConfig.lineHeight,
-        letterSpacing: Number.isFinite(terminalConfig.letterSpacing) ? terminalConfig.letterSpacing : 0,
+        letterSpacing: Number.isFinite(terminalConfig.letterSpacing)
+          ? terminalConfig.letterSpacing
+          : 0,
         allowProposedApi: true,
       });
 
@@ -356,7 +371,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         if (!effectActiveRef.current) return;
         (term as any)._core?._charSizeService?.measure();
         safeFit(fitAddon);
-        try { webglAddonRef.current?.clearTextureAtlas(); } catch { /* ignore */ }
+        try {
+          webglAddonRef.current?.clearTextureAtlas();
+        } catch {
+          /* ignore */
+        }
         term.refresh(0, term.rows - 1);
       });
 
@@ -377,9 +396,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           if (selection) {
             term.paste(selection);
           } else {
-            readText().then(text => {
-              if (text) term.paste(text);
-            }).catch(() => {});
+            readText()
+              .then((text) => {
+                if (text) term.paste(text);
+              })
+              .catch(() => {});
           }
         }
       };
@@ -415,11 +436,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       const dataDispose = term.onData((data) => {
         if (data.length > 80) {
           writePtyChunked(sessionId, data).catch((err) =>
-            console.error('[TerminalTab] writePtyChunked failed:', err),
+            console.error('[TerminalTab] writePtyChunked failed:', err)
           );
         } else {
           invoke('write_pty', { sessionId, data }).catch((err) =>
-            console.error('[TerminalTab] write_pty failed:', err),
+            console.error('[TerminalTab] write_pty failed:', err)
           );
         }
       });
@@ -465,7 +486,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           setSearchVisible(true);
           // Focus search input after state update - use requestAnimationFrame for proper timing
           requestAnimationFrame(() => {
-            const searchInput = document.querySelector(`[data-search-input="true"]`) as HTMLInputElement;
+            const searchInput = document.querySelector(
+              `[data-search-input="true"]`
+            ) as HTMLInputElement;
             searchInput?.focus();
           });
           return false;
@@ -478,13 +501,19 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         }
 
         const binding = resolveTerminalKey(buildCombo(e), keybindingsRef.current);
-        
+
         // If there's an explicit binding, handle it according to its action.
         if (binding && binding.action !== 'passthrough') {
           switch (binding.action) {
-            case 'clear':         term.clear(); break;
-            case 'scroll-top':    term.scrollToTop(); break;
-            case 'scroll-bottom': term.scrollToBottom(); break;
+            case 'clear':
+              term.clear();
+              break;
+            case 'scroll-top':
+              term.scrollToTop();
+              break;
+            case 'scroll-bottom':
+              term.scrollToBottom();
+              break;
             case 'send-text':
               invoke('write_pty', { sessionId, data: binding.text ?? '' }).catch(() => {});
               break;
@@ -561,16 +590,14 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
             unlisten = fn;
           }
         })
-        .catch((err) =>
-          console.error('[TerminalTab] Failed to listen:', err),
-        );
+        .catch((err) => console.error('[TerminalTab] Failed to listen:', err));
 
       let unlistenExit: UnlistenFn | null = null;
       listen(`pty-exit-${sessionId}`, () => {
         term.write('\r\n\x1b[31m[Process Exited]\x1b[0m\r\n');
         kitty.reset(); // PTY child gone — drop any leftover kitty flags
         onExitRef.current?.();
-      }).then(fn => {
+      }).then((fn) => {
         if (cancelled) fn();
         else unlistenExit = fn;
       });
@@ -582,15 +609,15 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       let resizeRaf: number;
       const resizeObserver = new ResizeObserver(() => {
         cancelAnimationFrame(resizeRaf);
-        
+
         // Use a single requestAnimationFrame to throttle resizes to the display refresh rate.
-        // This prevents 'ResizeObserver loop limit exceeded' errors and keeps window 
+        // This prevents 'ResizeObserver loop limit exceeded' errors and keeps window
         // dragging smooth, while avoiding the 100ms lag of the old setTimeout.
         resizeRaf = requestAnimationFrame(() => {
           if (!fitAddonRef.current || !termRef.current) return;
           (termRef.current as any)._core?._charSizeService?.measure();
           safeFit(fitAddonRef.current);
-          
+
           // A second pass to catch flexbox settling (e.g. scrollbars appearing/disappearing)
           requestAnimationFrame(() => {
             if (fitAddonRef.current) safeFit(fitAddonRef.current);
@@ -639,7 +666,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
             console.warn('[TerminalTab] Container size timeout, using default 80x24');
             // Force-fit to default size will happen in spawnSession
           }
-          spawnSession();  // reads fitted dims, spawns PTY, then sets isSpawnedRef=true
+          spawnSession(); // reads fitted dims, spawns PTY, then sets isSpawnedRef=true
         });
       };
       rafId = requestAnimationFrame(trySpawn);
@@ -667,19 +694,25 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         // core RenderService is torn down throws inside term.dispose, and an
         // unmount-time throw with no error boundary tears down the whole React
         // root → blank/frozen app. Guard both for safety.
-        try { webglAddonRef.current?.dispose(); } catch { /* already disposed */ }
+        try {
+          webglAddonRef.current?.dispose();
+        } catch {
+          /* already disposed */
+        }
         webglAddonRef.current = null;
-        try { term.dispose(); } catch (err) {
+        try {
+          term.dispose();
+        } catch (err) {
           console.error('[TerminalTab] term.dispose failed:', err);
         }
         termRef.current = null;
         fitAddonRef.current = null;
 
         invoke('kill_pty', { sessionId }).catch((err) =>
-          console.error('[TerminalTab] kill_pty failed:', err),
+          console.error('[TerminalTab] kill_pty failed:', err)
         );
       };
-      }, [sessionId, workspacePath, shell, shellArgs]);
+    }, [sessionId, workspacePath, shell, shellArgs]);
 
     // ── GPU renderer lifecycle — attach/detach with visibility ───────────
     // Far faster than xterm's default DOM renderer for heavy TUI output
@@ -708,7 +741,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         addon.onContextLoss(() => {
           // Dispose once and forget it — re-disposing (here or via term.dispose)
           // hits an already-torn-down RenderService and throws.
-          try { addon?.dispose(); } catch { /* already gone */ }
+          try {
+            addon?.dispose();
+          } catch {
+            /* already gone */
+          }
           if (webglAddonRef.current === addon) webglAddonRef.current = null;
         });
         term.loadAddon(addon);
@@ -722,7 +759,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
       return () => {
         if (addon) {
-          try { addon.dispose(); } catch { /* already gone (context loss, or term.dispose() beat us to it) */ }
+          try {
+            addon.dispose();
+          } catch {
+            /* already gone (context loss, or term.dispose() beat us to it) */
+          }
         }
         if (webglAddonRef.current === addon) webglAddonRef.current = null;
       };
@@ -734,17 +775,17 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       if (!term) return;
 
       // Non-layout options — safe to apply synchronously.
-      term.options.theme           = terminalConfig.theme;
-      term.options.cursorStyle     = terminalConfig.cursorStyle;
-      term.options.cursorBlink     = terminalConfig.cursorBlink;
-      term.options.scrollback      = terminalConfig.scrollback;
+      term.options.theme = terminalConfig.theme;
+      term.options.cursorStyle = terminalConfig.cursorStyle;
+      term.options.cursorBlink = terminalConfig.cursorBlink;
+      term.options.scrollback = terminalConfig.scrollback;
       term.options.macOptionIsMeta = terminalConfig.macOptionIsMeta;
 
       // Font options change cell metrics — clamp to valid range so intermediate
       // typed values (e.g. typing "14" passes through "1") never corrupt layout.
-      term.options.fontSize     = Math.max(8, Math.min(32, terminalConfig.fontSize));
-      term.options.fontFamily   = terminalConfig.fontFamily;
-      term.options.lineHeight   = Math.max(0.8, Math.min(2.0, terminalConfig.lineHeight));
+      term.options.fontSize = Math.max(8, Math.min(32, terminalConfig.fontSize));
+      term.options.fontFamily = terminalConfig.fontFamily;
+      term.options.lineHeight = Math.max(0.8, Math.min(2.0, terminalConfig.lineHeight));
       const ls = terminalConfig.letterSpacing;
       term.options.letterSpacing = Math.max(-2, Math.min(10, Number.isFinite(ls) ? ls : 0));
 
@@ -765,7 +806,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           }
         });
       });
-      return () => { cancelAnimationFrame(id1); cancelAnimationFrame(id2); };
+      return () => {
+        cancelAnimationFrame(id1);
+        cancelAnimationFrame(id2);
+      };
     }, [terminalConfig]);
 
     // xterm only paints the cols×rows cell grid; the few px of leftover space
@@ -776,14 +820,17 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     return (
       <div className={styles.wrapper} style={{ backgroundColor: themeBg }}>
         {/* Terminal canvas */}
-        <div ref={containerRef} className={styles.terminalContainer} style={{ backgroundColor: themeBg }} />
+        <div
+          ref={containerRef}
+          className={styles.terminalContainer}
+          style={{ backgroundColor: themeBg }}
+        />
 
         <QuickActionsBar onRunAction={handleRunAction} />
 
-
         {/* Floating Copy Button */}
         {hasSelection && (
-          <button 
+          <button
             className={styles.floatingCopyBtn}
             title="Copy selection"
             onClick={() => {
@@ -796,7 +843,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
               }
             }}
           >
-            {hasCopied ? <Check size={14} /> : <Copy size={14} />} <span>{hasCopied ? 'Copied' : 'Copy'}</span>
+            {hasCopied ? <Check size={14} /> : <Copy size={14} />}{' '}
+            <span>{hasCopied ? 'Copied' : 'Copy'}</span>
           </button>
         )}
 
@@ -909,9 +957,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
               onClick={() => {
                 const term = termRef.current;
                 if (term) {
-                  readText().then(text => {
-                    if (text) term.paste(text);
-                  }).catch(() => {});
+                  readText()
+                    .then((text) => {
+                      if (text) term.paste(text);
+                    })
+                    .catch(() => {});
                 }
                 setContextMenu(null);
               }}
@@ -947,14 +997,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
         {/* Click outside to close context menu */}
         {contextMenu && (
-          <div
-            className={styles.contextMenuBackdrop}
-            onClick={() => setContextMenu(null)}
-          />
+          <div className={styles.contextMenuBackdrop} onClick={() => setContextMenu(null)} />
         )}
       </div>
     );
-  },
+  }
 );
 
 TerminalTab.displayName = 'TerminalTab';
@@ -1106,8 +1153,12 @@ const styles = {
     pointer-events: none;
     animation: bell-flash 0.2s ease-out;
     @keyframes bell-flash {
-      0% { opacity: 0.3; }
-      100% { opacity: 0; }
+      0% {
+        opacity: 0.3;
+      }
+      100% {
+        opacity: 0;
+      }
     }
   `,
   // Context Menu styles

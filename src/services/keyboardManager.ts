@@ -34,9 +34,9 @@ const registry: Shortcut[] = [];
 function matches(s: Shortcut, e: KeyboardEvent): boolean {
   return (
     s.key.toLowerCase() === e.key.toLowerCase() &&
-    !!s.ctrl  === (e.ctrlKey || e.metaKey) &&
+    !!s.ctrl === (e.ctrlKey || e.metaKey) &&
     !!s.shift === e.shiftKey &&
-    !!s.alt   === e.altKey
+    !!s.alt === e.altKey
   );
 }
 
@@ -46,7 +46,7 @@ document.addEventListener(
     const termFocused = isTerminalFocused();
 
     for (const s of registry) {
-      if (s.context === 'non-terminal'  && termFocused)  continue;
+      if (s.context === 'non-terminal' && termFocused) continue;
       if (s.context === 'terminal-only' && !termFocused) continue;
       if (!matches(s, e)) continue;
       // Fully consume the key: preventDefault blocks the browser/WebView default
@@ -60,7 +60,7 @@ document.addEventListener(
       s.handler(e);
     }
   },
-  { capture: true },
+  { capture: true }
 );
 
 /**

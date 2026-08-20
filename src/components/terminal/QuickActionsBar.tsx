@@ -15,9 +15,10 @@ interface QuickActionsBarProps {
 export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({ onRunAction }) => {
   const { settings } = useDashboard();
   const navigate = useNavigate();
-  const actions = settings.quickActions && settings.quickActions.length > 0 
-    ? settings.quickActions 
-    : DEFAULT_QUICK_ACTIONS;
+  const actions =
+    settings.quickActions && settings.quickActions.length > 0
+      ? settings.quickActions
+      : DEFAULT_QUICK_ACTIONS;
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [showScrollIndicator, setShowScrollIndicator] = React.useState(false);
@@ -53,7 +54,7 @@ export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({ onRunAction })
 
     const onWheel = (e: WheelEvent) => {
       if (e.deltaY === 0) return;
-      
+
       const canScroll = el.scrollWidth > el.clientWidth + 2;
       if (canScroll) {
         e.preventDefault();
@@ -62,12 +63,12 @@ export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({ onRunAction })
     };
 
     el.addEventListener('wheel', onWheel, { passive: false });
-    
+
     const resizeObserver = new ResizeObserver(() => {
       updateScrollIndicator();
     });
     resizeObserver.observe(el);
-    
+
     return () => {
       el.removeEventListener('wheel', onWheel);
       resizeObserver.disconnect();
@@ -82,34 +83,37 @@ export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({ onRunAction })
   return (
     <div className={styles.container}>
       <div className={styles.bar}>
-        <div 
-          className={styles.actionsGroup} 
-          ref={scrollRef}
-          onScroll={updateScrollIndicator}
-        >
+        <div className={styles.actionsGroup} ref={scrollRef} onScroll={updateScrollIndicator}>
           {actions.map((action) => {
-            const IconComponent = (action.iconName && (LucideIcons as any)[action.iconName]) || LucideIcons.Terminal;
-            const titleTooltip = action.autoExecute ? `Run: ${action.command}` : `Paste: ${action.command}`;
+            const IconComponent =
+              (action.iconName && (LucideIcons as any)[action.iconName]) || LucideIcons.Terminal;
+            const titleTooltip = action.autoExecute
+              ? `Run: ${action.command}`
+              : `Paste: ${action.command}`;
 
             return (
-            <button
-              key={action.id}
-              className={styles.actionBtn}
-              onClick={() => onRunAction(action)}
-              title={titleTooltip}
-              style={action.color ? { '--action-color': action.color } as React.CSSProperties : undefined}
-            >
-              <IconComponent size={14} />
-              <span>{action.label}</span>
-            </button>
+              <button
+                key={action.id}
+                className={styles.actionBtn}
+                onClick={() => onRunAction(action)}
+                title={titleTooltip}
+                style={
+                  action.color
+                    ? ({ '--action-color': action.color } as React.CSSProperties)
+                    : undefined
+                }
+              >
+                <IconComponent size={14} />
+                <span>{action.label}</span>
+              </button>
             );
           })}
         </div>
-        
+
         <div className={styles.divider} />
-        
-        <button 
-          className={cx(styles.actionBtn, styles.iconOnlyBtn)} 
+
+        <button
+          className={cx(styles.actionBtn, styles.iconOnlyBtn)}
           title="Configure Quick Actions"
           onClick={() => navigate('/settings#terminal')}
         >
@@ -119,11 +123,11 @@ export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({ onRunAction })
 
       {showScrollIndicator && (
         <div className={styles.scrollTrack}>
-          <div 
+          <div
             className={styles.scrollThumb}
             style={{
               width: `${thumbWidthPercent}%`,
-              transform: `translateX(${thumbOffsetPx}px)`
+              transform: `translateX(${thumbOffsetPx}px)`,
             }}
           />
         </div>
@@ -143,13 +147,19 @@ const styles = {
     box-sizing: border-box;
     z-index: 20;
     flex-shrink: 0;
-    
+
     /* Animation for initial mount */
     animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    
+
     @keyframes slideUp {
-      from { opacity: 0; transform: translateY(16px); }
-      to { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(16px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
   `,
   bar: css`
@@ -163,7 +173,9 @@ const styles = {
     border: 1px solid rgba(255, 255, 255, 0.08);
     padding: 6px;
     border-radius: 14px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    box-shadow:
+      0 12px 32px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     opacity: 0.6; /* Semi-transparent when not focused */
     max-width: 100%;
@@ -174,7 +186,9 @@ const styles = {
       background: rgba(15, 25, 38, 0.85);
       border-color: rgba(255, 255, 255, 0.15);
       transform: translateY(-2px);
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      box-shadow:
+        0 16px 40px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
     }
   `,
   actionsGroup: css`
@@ -227,7 +241,7 @@ const styles = {
       color: inherit;
       transition: transform 0.2s ease;
     }
-    
+
     &:hover svg {
       transform: scale(1.1);
     }
@@ -260,8 +274,14 @@ const styles = {
     animation: fadeIn 0.25s ease-out;
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(-3px); }
-      to { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(-3px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
   `,
   scrollThumb: css`
@@ -271,4 +291,3 @@ const styles = {
     transition: transform 0.05s ease-out;
   `,
 };
-

@@ -35,11 +35,7 @@ describe('buildCheckpointNarrativePrompt', () => {
   });
 
   it('includes goal hint when provided', () => {
-    const { userContent } = buildCheckpointNarrativePrompt(
-      'output',
-      'Claude',
-      'Build auth'
-    );
+    const { userContent } = buildCheckpointNarrativePrompt('output', 'Claude', 'Build auth');
     expect(userContent).toContain('Build auth');
   });
 

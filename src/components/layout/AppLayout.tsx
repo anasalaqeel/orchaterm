@@ -26,10 +26,14 @@ function Loader() {
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
       >
         <div className={s.loaderLogo}>
-          <img src={theme === 'dark' ? logoDark : logoLight} className={s.loaderLogoImg} alt="Orchaterm" />
+          <img
+            src={theme === 'dark' ? logoDark : logoLight}
+            className={s.loaderLogoImg}
+            alt="Orchaterm"
+          />
         </div>
         <div className={s.loaderDots}>
-          {[0, 1, 2].map(i => (
+          {[0, 1, 2].map((i) => (
             <motion.span
               key={i}
               className={s.loaderDot}
@@ -64,12 +68,13 @@ export function AppLayout() {
     setActiveSpaceId,
     setViewMode,
   } = useDashboard();
-  const onDashboard  = useMatch('/');
+  const onDashboard = useMatch('/');
 
   // Ctrl+H / Cmd+H — open help (skipped when terminal has focus)
   useEffect(() => {
     return registerShortcut({
-      key: 'h', ctrl: true,
+      key: 'h',
+      ctrl: true,
       context: 'non-terminal',
       handler: () => {
         setHelpModalOpen(true);
@@ -141,7 +146,8 @@ export function AppLayout() {
 const s = {
   app: css`
     display: flex;
-    height: 100vh; width: 100vw;
+    height: 100vh;
+    width: 100vw;
     overflow: hidden;
     background: var(--bg-canvas);
     color: var(--text-primary);
@@ -149,31 +155,54 @@ const s = {
   `,
   main: css`
     flex: 1;
-    display: flex; flex-direction: column;
-    min-width: 0; overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
   `,
   visible: css`
-    display: flex; flex-direction: column;
-    flex: 1; min-width: 0; height: 100%; overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
   `,
-  hidden: css`display: none;`,
+  hidden: css`
+    display: none;
+  `,
   loaderWrapper: css`
-    width: 100vw; height: 100vh;
-    display: flex; align-items: center; justify-content: center;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: var(--bg-canvas);
   `,
   loaderContent: css`
-    display: flex; flex-direction: column; align-items: center; gap: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
   `,
   loaderLogo: css`
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   `,
-  loaderLogoImg: css`width: 52px; height: 52px; object-fit: contain;`,
+  loaderLogoImg: css`
+    width: 52px;
+    height: 52px;
+    object-fit: contain;
+  `,
   loaderDots: css`
-    display: flex; align-items: center; gap: 7px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
   `,
   loaderDot: css`
-    width: 7px; height: 7px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     background: var(--color-brand);
     display: inline-block;

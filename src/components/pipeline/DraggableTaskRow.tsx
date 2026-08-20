@@ -37,7 +37,7 @@ export const DraggableTaskRow: React.FC<DraggableTaskRowProps> = ({
         isDragging && styles.rowDragging,
         isOverTop && styles.rowDragTop,
         isOverBottom && styles.rowDragBottom,
-        className,
+        className
       )}
       draggable={!disabled}
       onDragStart={(e) => {
@@ -72,7 +72,9 @@ export const DraggableTaskRow: React.FC<DraggableTaskRowProps> = ({
         handleDrop(index, pos);
       }}
     >
-      <span className={styles.taskGrip} title="Drag to reorder">⋮⋮</span>
+      <span className={styles.taskGrip} title="Drag to reorder">
+        ⋮⋮
+      </span>
       <span className={styles.taskNum}>{index + 1}.</span>
       <div className={styles.content}>{children}</div>
       <button
@@ -91,54 +93,94 @@ export const DraggableTaskRow: React.FC<DraggableTaskRowProps> = ({
 const styles = {
   row: css`
     position: relative;
-    display: flex; align-items: center; gap: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     padding: 6px 8px;
     background: var(--bg-tertiary);
     border-radius: var(--border-radius-sm);
     border: 1px solid var(--border-color);
   `,
   rowDragging: css`
-    opacity: 0.45; border-style: dashed;
+    opacity: 0.45;
+    border-style: dashed;
   `,
   rowDragTop: css`
     &::before {
-      content: ''; position: absolute;
-      top: -3px; left: 0; right: 0;
-      height: 3px; background: var(--color-brand);
+      content: '';
+      position: absolute;
+      top: -3px;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--color-brand);
       border-radius: 3px;
       box-shadow: 0 0 6px rgba(var(--color-brand-rgb), 0.6);
-      pointer-events: none; z-index: 10;
+      pointer-events: none;
+      z-index: 10;
     }
   `,
   rowDragBottom: css`
     &::after {
-      content: ''; position: absolute;
-      bottom: -3px; left: 0; right: 0;
-      height: 3px; background: var(--color-brand);
+      content: '';
+      position: absolute;
+      bottom: -3px;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--color-brand);
       border-radius: 3px;
       box-shadow: 0 0 6px rgba(var(--color-brand-rgb), 0.6);
-      pointer-events: none; z-index: 10;
+      pointer-events: none;
+      z-index: 10;
     }
   `,
   taskGrip: css`
-    font-size: 10px; line-height: 1; letter-spacing: -1px;
-    color: var(--text-tertiary); cursor: grab; flex-shrink: 0;
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: -1px;
+    color: var(--text-tertiary);
+    cursor: grab;
+    flex-shrink: 0;
     user-select: none;
-    &:hover { color: var(--text-secondary); }
+    &:hover {
+      color: var(--text-secondary);
+    }
   `,
   taskNum: css`
-    font-size: 11px; font-weight: 700; color: var(--text-tertiary);
-    width: 20px; text-align: right; flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    width: 20px;
+    text-align: right;
+    flex-shrink: 0;
   `,
   content: css`
-    display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
   `,
   removeBtn: css`
-    background: transparent; border: 1px solid var(--border-color);
-    color: var(--text-tertiary); cursor: pointer;
-    width: 24px; height: 24px; border-radius: 4px; flex-shrink: 0;
-    display: inline-flex; align-items: center; justify-content: center;
-    &:hover:not(:disabled) { color: var(--color-error); border-color: var(--color-error); }
-    &:disabled { opacity: 0.35; cursor: default; }
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-tertiary);
+    cursor: pointer;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    &:hover:not(:disabled) {
+      color: var(--color-error);
+      border-color: var(--color-error);
+    }
+    &:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
   `,
 };

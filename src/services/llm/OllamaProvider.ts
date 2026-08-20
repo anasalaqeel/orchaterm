@@ -59,10 +59,16 @@ export class OllamaProvider implements LLMProvider {
           signal: controller.signal,
           body: JSON.stringify({ model: this.model, messages: allMessages, stream: true }),
         });
-        if (!res.ok) { onError(`Ollama error ${res.status}: ${res.statusText}`); return; }
+        if (!res.ok) {
+          onError(`Ollama error ${res.status}: ${res.statusText}`);
+          return;
+        }
 
         const reader = res.body?.getReader();
-        if (!reader) { onError('No response body'); return; }
+        if (!reader) {
+          onError('No response body');
+          return;
+        }
         const decoder = new TextDecoder();
         let buf = '';
 
@@ -80,8 +86,13 @@ export class OllamaProvider implements LLMProvider {
             try {
               const obj = JSON.parse(t);
               if (obj.message?.content) onToken(obj.message.content);
-              if (obj.done) { onDone(); return; }
-            } catch { /* skip malformed */ }
+              if (obj.done) {
+                onDone();
+                return;
+              }
+            } catch {
+              /* skip malformed */
+            }
           }
         }
         onDone();
@@ -101,8 +112,11 @@ export class OllamaProvider implements LLMProvider {
       if (!res.ok) return [];
       const data = await res.json();
       return (data.models ?? []).map((m: { name: string }) => m.name);
-    } catch { return []; }
-    finally { clearTimeout(timer); }
+    } catch {
+      return [];
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async checkOnline(): Promise<boolean> {
@@ -111,7 +125,10 @@ export class OllamaProvider implements LLMProvider {
     try {
       const res = await fetch(`${this.baseUrl}/api/tags`, { signal: controller.signal });
       return res.ok;
-    } catch { return false; }
-    finally { clearTimeout(timer); }
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

@@ -58,8 +58,9 @@ async function renderVault() {
 }
 
 function pinButton(): HTMLButtonElement {
-  const btn = Array.from(container.querySelectorAll('button'))
-    .find(b => b.textContent?.includes('Pin to Actions') || b.textContent?.includes('Pinned'));
+  const btn = Array.from(container.querySelectorAll('button')).find(
+    (b) => b.textContent?.includes('Pin to Actions') || b.textContent?.includes('Pinned')
+  );
   expect(btn, 'pin button should be rendered').toBeTruthy();
   return btn!;
 }
@@ -72,18 +73,23 @@ describe('Prompt Vault → Quick Actions pinning', () => {
   });
 
   afterEach(async () => {
-    if (root) await act(async () => { root!.unmount(); });
+    if (root)
+      await act(async () => {
+        root!.unmount();
+      });
     container.remove();
     root = null;
   });
 
   it('pins a prompt as a plain paste action with no modal-era fields', async () => {
     await renderVault();
-    await act(async () => { pinButton().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); });
+    await act(async () => {
+      pinButton().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
 
     expect(updateSettings).toHaveBeenCalledTimes(1);
     const [settingsArg] = updateSettings.mock.calls[0] as [{ quickActions: QuickAction[] }];
-    const action = settingsArg.quickActions.find(a => a.promptVaultId === 'p1');
+    const action = settingsArg.quickActions.find((a) => a.promptVaultId === 'p1');
     expect(action).toBeDefined();
     // The old AI-modal routing fields must NOT come back.
     expect(Object.keys(action!)).not.toContain('type');
@@ -95,20 +101,24 @@ describe('Prompt Vault → Quick Actions pinning', () => {
 
   it('reflects the pinned state and unpins on second click', async () => {
     mockDashboard.settings = {
-      quickActions: [{
-        id: 'qa-prompt-p1',
-        label: 'Explain build failure',
-        iconName: 'Sparkles',
-        command: PROMPT.content,
-        autoExecute: false,
-        color: '#a855f7',
-        promptVaultId: 'p1',
-      }],
+      quickActions: [
+        {
+          id: 'qa-prompt-p1',
+          label: 'Explain build failure',
+          iconName: 'Sparkles',
+          command: PROMPT.content,
+          autoExecute: false,
+          color: '#a855f7',
+          promptVaultId: 'p1',
+        },
+      ],
     };
     await renderVault();
     expect(pinButton().textContent).toContain('Pinned');
 
-    await act(async () => { pinButton().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); });
+    await act(async () => {
+      pinButton().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
     const [settingsArg] = updateSettings.mock.calls[0] as [{ quickActions: QuickAction[] }];
     expect(settingsArg.quickActions).toHaveLength(0); // action removed
   });

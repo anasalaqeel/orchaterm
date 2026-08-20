@@ -7,17 +7,19 @@
  */
 import React, { useMemo, useState } from 'react';
 import { css, cx, keyframes } from '@emotion/css';
-import {
-  Plus, Edit2, Trash2, Search, X, Tag, Play, Workflow,
-} from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X, Tag, Play, Workflow } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
 import { ConfirmDialog, Input, Select } from '../ui';
 import { useDragReorder } from '../../hooks';
 import { ExecutionModeToggle, ExecutionModeBadge, DraggableTaskRow, TaskRow } from './index';
 import { orchestratorEngine } from '../../services/orchestratorEngine';
 import type {
-  OrchestratorPlan, PipelineTemplate, PipelineTemplateTask,
-  Workspace, Space, TerminalSession,
+  OrchestratorPlan,
+  PipelineTemplate,
+  PipelineTemplateTask,
+  Workspace,
+  Space,
+  TerminalSession,
 } from '../../types';
 
 interface PipelineTemplatesProps {
@@ -26,12 +28,21 @@ interface PipelineTemplatesProps {
 
 export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceId }) => {
   const {
-    pipelineTemplates, addPipelineTemplate, updatePipelineTemplate, deletePipelineTemplate,
-    workspaces, spaces, terminalSessions, showToast, incrementTemplateUse,
-    settings, llmProviders, addPlan,
+    pipelineTemplates,
+    addPipelineTemplate,
+    updatePipelineTemplate,
+    deletePipelineTemplate,
+    workspaces,
+    spaces,
+    terminalSessions,
+    showToast,
+    incrementTemplateUse,
+    settings,
+    llmProviders,
+    addPlan,
   } = useDashboard();
 
-  const [search, setSearch]   = useState('');
+  const [search, setSearch] = useState('');
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [editing, setEditing] = useState<PipelineTemplate | null>(null);
   const [creating, setCreating] = useState(false);
@@ -40,58 +51,69 @@ export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceI
   const [runTarget, setRunTarget] = useState<PipelineTemplate | null>(null);
 
   const allTags = useMemo(
-    () => Array.from(new Set(pipelineTemplates.flatMap(t => t.tags))).filter(Boolean),
-    [pipelineTemplates],
+    () => Array.from(new Set(pipelineTemplates.flatMap((t) => t.tags))).filter(Boolean),
+    [pipelineTemplates]
   );
 
   const filtered = useMemo(() => {
-    const terms = search.toLowerCase().split(/[\s,]+/).map(t => t.trim()).filter(Boolean);
+    const terms = search
+      .toLowerCase()
+      .split(/[\s,]+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
     return pipelineTemplates
-      .filter(t => tagFilter.every(tag => t.tags.includes(tag)))
-      .filter(t => terms.length === 0 || terms.every(term =>
-        t.title.toLowerCase().includes(term) ||
-        t.description.toLowerCase().includes(term) ||
-        t.tasks.some(task => task.title.toLowerCase().includes(term)) ||
-        t.tags.some(tag => tag.toLowerCase().includes(term)),
-      ))
+      .filter((t) => tagFilter.every((tag) => t.tags.includes(tag)))
+      .filter(
+        (t) =>
+          terms.length === 0 ||
+          terms.every(
+            (term) =>
+              t.title.toLowerCase().includes(term) ||
+              t.description.toLowerCase().includes(term) ||
+              t.tasks.some((task) => task.title.toLowerCase().includes(term)) ||
+              t.tags.some((tag) => tag.toLowerCase().includes(term))
+          )
+      )
       .sort((a, b) => (b.usedAt ?? '').localeCompare(a.usedAt ?? ''));
   }, [pipelineTemplates, search, tagFilter]);
 
   const toggleTag = (tag: string) => {
-    setTagFilter(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+    setTagFilter((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
   };
 
   const handleRun = (
     template: PipelineTemplate,
     targetWorkspaceId: string,
     spaceId: string | null,
-    agentByTaskId: Record<string, { id: string; title: string }>,
+    agentByTaskId: Record<string, { id: string; title: string }>
   ) => {
-    const workspace = workspaces.find(w => w.id === targetWorkspaceId);
+    const workspace = workspaces.find((w) => w.id === targetWorkspaceId);
     if (!workspace) {
       showToast('Pick a workspace first', 'error');
       return;
     }
     const sessionsInScope = spaceId
-      ? terminalSessions.filter(s => spaces.find(sp => sp.id === spaceId)?.sessionIds.includes(s.id) ?? false)
-      : terminalSessions.filter(s => s.workspaceId === targetWorkspaceId);
+      ? terminalSessions.filter(
+          (s) => spaces.find((sp) => sp.id === spaceId)?.sessionIds.includes(s.id) ?? false
+        )
+      : terminalSessions.filter((s) => s.workspaceId === targetWorkspaceId);
 
     const idMap = new Map<string, string>();
-    template.tasks.forEach(t => idMap.set(t.id, crypto.randomUUID()));
+    template.tasks.forEach((t) => idMap.set(t.id, crypto.randomUUID()));
 
-    const tasks = template.tasks.map(tt => {
+    const tasks = template.tasks.map((tt) => {
       const assignment = agentByTaskId[tt.id];
       const session = assignment
-        ? sessionsInScope.find(s => s.id === assignment.id) ?? sessionsInScope[0]
+        ? (sessionsInScope.find((s) => s.id === assignment.id) ?? sessionsInScope[0])
         : sessionsInScope[0];
       return {
-        id:                   idMap.get(tt.id)!,
-        title:                tt.title,
-        description:          tt.description,
-        assignedSessionId:    session?.id ?? '',
+        id: idMap.get(tt.id)!,
+        title: tt.title,
+        description: tt.description,
+        assignedSessionId: session?.id ?? '',
         assignedSessionTitle: session?.title ?? tt.agentHint ?? '(unassigned)',
-        dependsOn:            tt.dependsOnIndices.map(i => idMap.get(template.tasks[i].id)!).filter(Boolean),
-        status:               'pending' as const,
+        dependsOn: tt.dependsOnIndices.map((i) => idMap.get(template.tasks[i].id)!).filter(Boolean),
+        status: 'pending' as const,
       };
     });
 
@@ -107,12 +129,12 @@ export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceI
     };
 
     orchestratorEngine.updateConfig({
-      relayProvider:      llmProviders.relay,
-      planGenProvider:    llmProviders.planGen,
+      relayProvider: llmProviders.relay,
+      planGenProvider: llmProviders.planGen,
       autoAnswerProvider: llmProviders.autoAnswer,
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
-      interactionMode:    settings.conductorInteractionMode,
-      sessionTitles:      new Map(sessionsInScope.map(s => [s.id, s.title])),
+      interactionMode: settings.conductorInteractionMode,
+      sessionTitles: new Map(sessionsInScope.map((s) => [s.id, s.title])),
     });
 
     orchestratorEngine.start(plan);
@@ -120,14 +142,21 @@ export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceI
     void incrementTemplateUse(template.id);
     showToast(`Pipeline started in "${workspace.name}"`, 'success');
     setRunTarget(null);
-    window.dispatchEvent(new CustomEvent('orchaterm:open-workspace', { detail: { workspaceId: targetWorkspaceId, spaceId } }));
+    window.dispatchEvent(
+      new CustomEvent('orchaterm:open-workspace', {
+        detail: { workspaceId: targetWorkspaceId, spaceId },
+      })
+    );
   };
 
   return (
     <div className={styles.container}>
       <div className={styles.header}>
         <button
-          onClick={() => { setEditing(null); setCreating(true); }}
+          onClick={() => {
+            setEditing(null);
+            setCreating(true);
+          }}
           className={styles.primaryBtn}
         >
           <Plus size={12} />
@@ -143,7 +172,7 @@ export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceI
             type="text"
             placeholder="Search templates…"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             className={styles.searchInput}
           />
           {search && (
@@ -154,7 +183,7 @@ export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceI
         </div>
         {allTags.length > 0 && (
           <div className={styles.tagRow}>
-            {allTags.map(tag => (
+            {allTags.map((tag) => (
               <button
                 key={tag}
                 onClick={() => toggleTag(tag)}
@@ -182,15 +211,25 @@ export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceI
         </div>
       ) : (
         <div className={styles.cardsList}>
-          {filtered.map(tpl => (
+          {filtered.map((tpl) => (
             <TemplateCard
               key={tpl.id}
               template={tpl}
-              onEdit={() => { setEditing(tpl); setCreating(false); }}
-              onDelete={() => { setPendingDeleteId(tpl.id); setConfirmOpen(true); }}
-              onRun={() => { setRunTarget(tpl); }}
+              onEdit={() => {
+                setEditing(tpl);
+                setCreating(false);
+              }}
+              onDelete={() => {
+                setPendingDeleteId(tpl.id);
+                setConfirmOpen(true);
+              }}
+              onRun={() => {
+                setRunTarget(tpl);
+              }}
               onLoadIntoBuilder={() => {
-                window.dispatchEvent(new CustomEvent('orchaterm:load-template', { detail: { templateId: tpl.id } }));
+                window.dispatchEvent(
+                  new CustomEvent('orchaterm:load-template', { detail: { templateId: tpl.id } })
+                );
               }}
             />
           ))}
@@ -201,7 +240,10 @@ export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceI
       {(creating || editing) && (
         <TemplateEditor
           template={editing}
-          onCancel={() => { setCreating(false); setEditing(null); }}
+          onCancel={() => {
+            setCreating(false);
+            setEditing(null);
+          }}
           onSave={(data) => {
             if (editing) {
               updatePipelineTemplate(editing.id, data);
@@ -219,7 +261,7 @@ export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceI
       {/* Delete confirm */}
       <ConfirmDialog
         isOpen={confirmOpen}
-        message={`Delete template "${pipelineTemplates.find(t => t.id === pendingDeleteId)?.title ?? ''}"?`}
+        message={`Delete template "${pipelineTemplates.find((t) => t.id === pendingDeleteId)?.title ?? ''}"?`}
         onConfirm={() => {
           if (pendingDeleteId) {
             deletePipelineTemplate(pendingDeleteId);
@@ -228,7 +270,10 @@ export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceI
           setConfirmOpen(false);
           setPendingDeleteId(null);
         }}
-        onCancel={() => { setConfirmOpen(false); setPendingDeleteId(null); }}
+        onCancel={() => {
+          setConfirmOpen(false);
+          setPendingDeleteId(null);
+        }}
       />
 
       {/* Run modal */}
@@ -265,13 +310,13 @@ const TemplateCard: React.FC<{
             <h4 className={styles.cardTitle}>{template.title}</h4>
             <ExecutionModeBadge mode={template.executionMode} size={9} short />
           </div>
-          {template.description && (
-            <p className={styles.cardDesc}>{template.description}</p>
-          )}
+          {template.description && <p className={styles.cardDesc}>{template.description}</p>}
           {template.tags.length > 0 && (
             <div className={styles.tagsList}>
-              {template.tags.map(tag => (
-                <span key={tag} className={styles.tagItem}><Tag size={8} /> {tag}</span>
+              {template.tags.map((tag) => (
+                <span key={tag} className={styles.tagItem}>
+                  <Tag size={8} /> {tag}
+                </span>
               ))}
             </div>
           )}
@@ -280,8 +325,16 @@ const TemplateCard: React.FC<{
           <button onClick={onRun} className={styles.runBtn} title="Run against a workspace">
             <Play size={11} /> Run
           </button>
-          <button onClick={onEdit} className={styles.iconBtn} title="Edit"><Edit2 size={11} /></button>
-          <button onClick={onDelete} className={cx(styles.iconBtn, styles.iconBtnDanger)} title="Delete"><Trash2 size={11} /></button>
+          <button onClick={onEdit} className={styles.iconBtn} title="Edit">
+            <Edit2 size={11} />
+          </button>
+          <button
+            onClick={onDelete}
+            className={cx(styles.iconBtn, styles.iconBtnDanger)}
+            title="Delete"
+          >
+            <Trash2 size={11} />
+          </button>
         </div>
       </div>
       <div className={styles.taskList}>
@@ -291,14 +344,24 @@ const TemplateCard: React.FC<{
             index={i + 1}
             title={task.title}
             agentHint={task.agentHint}
-            dependsOn={task.dependsOnIndices.length > 0 ? `after #${task.dependsOnIndices.map(j => j + 1).join(', #')}` : undefined}
+            dependsOn={
+              task.dependsOnIndices.length > 0
+                ? `after #${task.dependsOnIndices.map((j) => j + 1).join(', #')}`
+                : undefined
+            }
           />
         ))}
       </div>
       <div className={styles.cardFooter}>
-        <span className={styles.footerMeta}>{template.tasks.length} task{template.tasks.length !== 1 ? 's' : ''}</span>
+        <span className={styles.footerMeta}>
+          {template.tasks.length} task{template.tasks.length !== 1 ? 's' : ''}
+        </span>
         <span className={styles.footerMeta}>Used {template.useCount}×</span>
-        <button onClick={onLoadIntoBuilder} className={styles.loadBtn} title="Load into current workspace Builder">
+        <button
+          onClick={onLoadIntoBuilder}
+          className={styles.loadBtn}
+          title="Load into current workspace Builder"
+        >
           Load in Builder
         </button>
       </div>
@@ -313,34 +376,55 @@ const TemplateEditor: React.FC<{
   onCancel: () => void;
   onSave: (data: Omit<PipelineTemplate, 'id' | 'createdAt' | 'usedAt' | 'useCount'>) => void;
 }> = ({ template, onCancel, onSave }) => {
-  const [title, setTitle]       = useState(template?.title ?? '');
-  const [description, setDesc]  = useState(template?.description ?? '');
+  const [title, setTitle] = useState(template?.title ?? '');
+  const [description, setDesc] = useState(template?.description ?? '');
   const [tagsText, setTagsText] = useState((template?.tags ?? []).join(', '));
-  const [mode, setMode]         = useState<'sequential' | 'parallel'>(template?.executionMode ?? 'sequential');
-  const [tasks, setTasks]       = useState<PipelineTemplateTask[]>(
-    template?.tasks ?? [{ id: crypto.randomUUID(), title: '', description: '', dependsOnIndices: [] }],
+  const [mode, setMode] = useState<'sequential' | 'parallel'>(
+    template?.executionMode ?? 'sequential'
   );
-  const { draggedIdx, setDraggedIdx, dragOver, setDragOver, handleDrop } = useDragReorder(tasks, setTasks);
+  const [tasks, setTasks] = useState<PipelineTemplateTask[]>(
+    template?.tasks ?? [
+      { id: crypto.randomUUID(), title: '', description: '', dependsOnIndices: [] },
+    ]
+  );
+  const { draggedIdx, setDraggedIdx, dragOver, setDragOver, handleDrop } = useDragReorder(
+    tasks,
+    setTasks
+  );
 
   const updateTask = (id: string, updates: Partial<PipelineTemplateTask>) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
   };
-  const removeTask = (id: string) => setTasks(prev => prev.filter(t => t.id !== id));
-  const addTask = () => setTasks(prev => [...prev, { id: crypto.randomUUID(), title: '', description: '', dependsOnIndices: prev.length > 0 ? [prev.length - 1] : [] }]);
-
-
+  const removeTask = (id: string) => setTasks((prev) => prev.filter((t) => t.id !== id));
+  const addTask = () =>
+    setTasks((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        title: '',
+        description: '',
+        dependsOnIndices: prev.length > 0 ? [prev.length - 1] : [],
+      },
+    ]);
 
   const submit = () => {
-    if (!title.trim()) { return; }
+    if (!title.trim()) {
+      return;
+    }
     onSave({
       title: title.trim(),
       description: description.trim(),
-      tags: tagsText.split(',').map(t => t.trim()).filter(Boolean),
+      tags: tagsText
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean),
       executionMode: mode,
-      tasks: tasks.filter(t => t.title.trim()).map(t => ({
-        ...t,
-        dependsOnIndices: t.dependsOnIndices.filter(i => i < tasks.length),
-      })),
+      tasks: tasks
+        .filter((t) => t.title.trim())
+        .map((t) => ({
+          ...t,
+          dependsOnIndices: t.dependsOnIndices.filter((i) => i < tasks.length),
+        })),
     });
   };
 
@@ -349,7 +433,9 @@ const TemplateEditor: React.FC<{
       <div className={styles.modalLarge}>
         <div className={styles.modalHeader}>
           <h3>{template ? 'Edit Template' : 'New Template'}</h3>
-          <button onClick={onCancel} className={styles.closeBtn}><X size={16} /></button>
+          <button onClick={onCancel} className={styles.closeBtn}>
+            <X size={16} />
+          </button>
         </div>
         <div className={styles.modalBody}>
           <div className={styles.formRow}>
@@ -357,7 +443,7 @@ const TemplateEditor: React.FC<{
             <Input
               type="text"
               value={title}
-              onChange={e => setTitle(e.target.value)}
+              onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Bug-fix pipeline"
               className={styles.input}
             />
@@ -367,7 +453,7 @@ const TemplateEditor: React.FC<{
             <Input
               type="text"
               value={description}
-              onChange={e => setDesc(e.target.value)}
+              onChange={(e) => setDesc(e.target.value)}
               placeholder="What is this pipeline for?"
               className={styles.input}
             />
@@ -378,7 +464,7 @@ const TemplateEditor: React.FC<{
               <Input
                 type="text"
                 value={tagsText}
-                onChange={e => setTagsText(e.target.value)}
+                onChange={(e) => setTagsText(e.target.value)}
                 placeholder="bugfix, refactor, …"
                 className={styles.input}
               />
@@ -406,24 +492,28 @@ const TemplateEditor: React.FC<{
                 <Input
                   type="text"
                   value={task.title}
-                  onChange={e => updateTask(task.id, { title: e.target.value })}
+                  onChange={(e) => updateTask(task.id, { title: e.target.value })}
                   placeholder="Task title…"
                   className={styles.input}
                 />
                 <Input
                   type="text"
                   value={task.agentHint ?? ''}
-                  onChange={e => updateTask(task.id, { agentHint: e.target.value })}
+                  onChange={(e) => updateTask(task.id, { agentHint: e.target.value })}
                   placeholder="agent hint"
                   className={styles.input}
                 />
                 <Input
                   type="text"
-                  value={task.dependsOnIndices.map(j => j + 1).join(',')}
-                  onChange={e => updateTask(task.id, {
-                    dependsOnIndices: e.target.value
-                      .split(',').map(v => parseInt(v.trim(), 10) - 1).filter(v => !isNaN(v) && v >= 0 && v < tasks.length),
-                  })}
+                  value={task.dependsOnIndices.map((j) => j + 1).join(',')}
+                  onChange={(e) =>
+                    updateTask(task.id, {
+                      dependsOnIndices: e.target.value
+                        .split(',')
+                        .map((v) => parseInt(v.trim(), 10) - 1)
+                        .filter((v) => !isNaN(v) && v >= 0 && v < tasks.length),
+                    })
+                  }
                   placeholder="deps"
                   className={cx(styles.input, styles.depsInput)}
                 />
@@ -435,11 +525,13 @@ const TemplateEditor: React.FC<{
           </div>
         </div>
         <div className={styles.modalFooter}>
-          <button onClick={onCancel} className={styles.cancelBtn}>Cancel</button>
+          <button onClick={onCancel} className={styles.cancelBtn}>
+            Cancel
+          </button>
           <button
             onClick={submit}
             className={styles.primaryBtnSmall}
-            disabled={!title.trim() || tasks.filter(t => t.title.trim()).length === 0}
+            disabled={!title.trim() || tasks.filter((t) => t.title.trim()).length === 0}
           >
             {template ? 'Save Changes' : 'Create Template'}
           </button>
@@ -462,45 +554,53 @@ const RunTemplateModal: React.FC<{
     template: PipelineTemplate,
     workspaceId: string,
     spaceId: string | null,
-    agentByTaskId: Record<string, { id: string; title: string }>,
+    agentByTaskId: Record<string, { id: string; title: string }>
   ) => void;
 }> = ({ template, currentWorkspaceId, workspaces, spaces, terminalSessions, onCancel, onRun }) => {
   const [workspaceId, setWorkspaceId] = useState(currentWorkspaceId || workspaces[0]?.id || '');
   const [spaceId, setSpaceId] = useState<string | null>(
-    spaces.find(sp => sp.workspaceId === (currentWorkspaceId || workspaces[0]?.id))?.id ?? null,
+    spaces.find((sp) => sp.workspaceId === (currentWorkspaceId || workspaces[0]?.id))?.id ?? null
   );
   const [assignments, setAssignments] = useState<Record<string, string>>({});
 
   const scopeSessions = useMemo(() => {
     if (spaceId) {
-      const sp = spaces.find(s => s.id === spaceId);
-      return terminalSessions.filter(s => sp?.sessionIds.includes(s.id) ?? false);
+      const sp = spaces.find((s) => s.id === spaceId);
+      return terminalSessions.filter((s) => sp?.sessionIds.includes(s.id) ?? false);
     }
-    return terminalSessions.filter(s => s.workspaceId === workspaceId);
+    return terminalSessions.filter((s) => s.workspaceId === workspaceId);
   }, [spaceId, workspaceId, spaces, terminalSessions]);
 
   const matchByHint = (hint?: string): string => {
     if (!hint) return scopeSessions[0]?.id ?? '';
     const lc = hint.toLowerCase();
-    return scopeSessions.find(s => s.title.toLowerCase().includes(lc))?.id ?? scopeSessions[0]?.id ?? '';
+    return (
+      scopeSessions.find((s) => s.title.toLowerCase().includes(lc))?.id ??
+      scopeSessions[0]?.id ??
+      ''
+    );
   };
 
   // Pre-fill assignments from agentHint whenever the workspace/space changes.
   React.useEffect(() => {
     const next: Record<string, string> = {};
-    template.tasks.forEach(t => { next[t.id] = matchByHint(t.agentHint); });
+    template.tasks.forEach((t) => {
+      next[t.id] = matchByHint(t.agentHint);
+    });
     setAssignments(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, spaceId]);
 
-  const ready = template.tasks.every(t => assignments[t.id]);
+  const ready = template.tasks.every((t) => assignments[t.id]);
 
   return (
     <div className={styles.modalOverlay}>
       <div className={styles.modalLarge}>
         <div className={styles.modalHeader}>
           <h3>Run "{template.title}"</h3>
-          <button onClick={onCancel} className={styles.closeBtn}><X size={16} /></button>
+          <button onClick={onCancel} className={styles.closeBtn}>
+            <X size={16} />
+          </button>
         </div>
         <div className={styles.modalBody}>
           <div className={styles.formGrid2}>
@@ -509,9 +609,9 @@ const RunTemplateModal: React.FC<{
               value={workspaceId}
               onChange={(value) => {
                 setWorkspaceId(value);
-                setSpaceId(spaces.find(sp => sp.workspaceId === value)?.id ?? null);
+                setSpaceId(spaces.find((sp) => sp.workspaceId === value)?.id ?? null);
               }}
-              options={workspaces.map(w => ({ value: w.id, name: w.name }))}
+              options={workspaces.map((w) => ({ value: w.id, name: w.name }))}
             />
             <Select
               label="Space (optional)"
@@ -519,14 +619,17 @@ const RunTemplateModal: React.FC<{
               onChange={(value) => setSpaceId(value || null)}
               options={[
                 { value: '', name: '— No space —' },
-                ...spaces.filter(sp => sp.workspaceId === workspaceId).map(sp => ({ value: sp.id, name: sp.name })),
+                ...spaces
+                  .filter((sp) => sp.workspaceId === workspaceId)
+                  .map((sp) => ({ value: sp.id, name: sp.name })),
               ]}
             />
           </div>
 
           {scopeSessions.length === 0 && (
             <div className={styles.warningBanner}>
-              No terminal sessions in this scope. Open at least one terminal tab in the workspace first.
+              No terminal sessions in this scope. Open at least one terminal tab in the workspace
+              first.
             </div>
           )}
 
@@ -534,7 +637,7 @@ const RunTemplateModal: React.FC<{
             <div className={styles.sectionHead}>
               <span className={styles.sectionLabel}>Assign agents to tasks</span>
             </div>
-            {template.tasks.map(task => (
+            {template.tasks.map((task) => (
               <div key={task.id} className={styles.editTaskRow}>
                 <span className={styles.taskNum}>{template.tasks.indexOf(task) + 1}</span>
                 <span className={styles.taskTitle}>{task.title}</span>
@@ -542,10 +645,10 @@ const RunTemplateModal: React.FC<{
                   <Select
                     compact
                     value={assignments[task.id] ?? ''}
-                    onChange={(value) => setAssignments(prev => ({ ...prev, [task.id]: value }))}
+                    onChange={(value) => setAssignments((prev) => ({ ...prev, [task.id]: value }))}
                     options={[
                       { value: '', name: '— Assign —', disabled: true },
-                      ...scopeSessions.map(s => ({ value: s.id, name: s.title })),
+                      ...scopeSessions.map((s) => ({ value: s.id, name: s.title })),
                     ]}
                   />
                 </div>
@@ -554,7 +657,9 @@ const RunTemplateModal: React.FC<{
           </div>
         </div>
         <div className={styles.modalFooter}>
-          <button onClick={onCancel} className={styles.cancelBtn}>Cancel</button>
+          <button onClick={onCancel} className={styles.cancelBtn}>
+            Cancel
+          </button>
           <button
             className={styles.primaryBtnSmall}
             disabled={!ready || scopeSessions.length === 0}
@@ -562,7 +667,7 @@ const RunTemplateModal: React.FC<{
               const agentByTaskId: Record<string, { id: string; title: string }> = {};
               for (const t of template.tasks) {
                 const sid = assignments[t.id];
-                const session = scopeSessions.find(s => s.id === sid);
+                const session = scopeSessions.find((s) => s.id === sid);
                 if (session) agentByTaskId[t.id] = { id: session.id, title: session.title };
               }
               onRun(template, workspaceId, spaceId, agentByTaskId);
@@ -583,71 +688,131 @@ const slideUp = keyframes`from { transform: translateY(10px); opacity: 0; } to {
 
 const styles = {
   container: css`
-    flex: 1; min-height: 0; overflow-y: auto;
-    display: flex; flex-direction: column; gap: 12px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     padding: 12px;
-    &::-webkit-scrollbar { width: 4px; }
-    &::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+    &::-webkit-scrollbar {
+      width: 4px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: var(--border-color);
+      border-radius: 2px;
+    }
   `,
   header: css`
-    display: flex; align-items: center; justify-content: flex-end; gap: var(--spacing-sm);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
   `,
   primaryBtn: css`
-    display: inline-flex; align-items: center; gap: 6px;
-    background: var(--gradient-brand); color: #fff;
-    padding: 6px 12px; border: none; border-radius: var(--border-radius-md);
-    font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold);
-    cursor: pointer; transition: filter 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--gradient-brand);
+    color: #fff;
+    padding: 6px 12px;
+    border: none;
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    cursor: pointer;
+    transition: filter 0.15s;
     box-shadow: 0 2px 6px rgba(123, 104, 238, 0.25);
-    &:hover { filter: brightness(1.06); }
+    &:hover {
+      filter: brightness(1.06);
+    }
   `,
   primaryBtnSmall: css`
-    background: var(--gradient-brand); color: #fff;
-    padding: 7px 14px; border: none; border-radius: var(--border-radius-md);
-    font-size: var(--font-size-xs); font-weight: var(--font-weight-bold);
-    cursor: pointer; transition: filter 0.15s;
-    display: inline-flex; align-items: center; gap: 5px;
-    &:hover:not(:disabled) { filter: brightness(1.06); }
-    &:disabled { opacity: 0.4; cursor: default; }
+    background: var(--gradient-brand);
+    color: #fff;
+    padding: 7px 14px;
+    border: none;
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-bold);
+    cursor: pointer;
+    transition: filter 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    &:hover:not(:disabled) {
+      filter: brightness(1.06);
+    }
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
   `,
   filtersArea: css`
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-md);
     padding: var(--spacing-sm);
-    display: flex; flex-direction: column; gap: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   `,
   searchRow: css`
-    display: flex; align-items: center; gap: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);
     padding: 4px 8px;
   `,
-  searchIcon: css`color: var(--text-tertiary); flex-shrink: 0;`,
+  searchIcon: css`
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+  `,
   searchInput: css`
-    flex: 1; background: transparent; border: none; outline: none;
-    font-size: var(--font-size-xs); color: var(--text-primary);
-    &::placeholder { color: var(--text-tertiary); }
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: var(--font-size-xs);
+    color: var(--text-primary);
+    &::placeholder {
+      color: var(--text-tertiary);
+    }
   `,
   clearBtn: css`
-    background: transparent; border: none; cursor: pointer;
-    color: var(--text-tertiary); padding: 1px;
-    &:hover { color: var(--text-primary); }
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-tertiary);
+    padding: 1px;
+    &:hover {
+      color: var(--text-primary);
+    }
   `,
   tagRow: css`
-    display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
   `,
   tagChip: css`
-    display: inline-flex; align-items: center; gap: 3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
     padding: 2px 8px;
     background-color: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: 99px;
-    font-size: 10px; color: var(--text-secondary);
+    font-size: 10px;
+    color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.15s;
-    &:hover { color: var(--text-primary); border-color: var(--border-color-hover); }
+    &:hover {
+      color: var(--text-primary);
+      border-color: var(--border-color-hover);
+    }
   `,
   tagChipActive: css`
     background: rgba(var(--color-brand-rgb), 0.15);
@@ -655,9 +820,15 @@ const styles = {
     color: var(--color-brand);
   `,
   clearTagsBtn: css`
-    background: transparent; border: none; cursor: pointer;
-    font-size: 10px; color: var(--text-tertiary); font-weight: 600;
-    &:hover { color: var(--color-error); }
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    font-weight: 600;
+    &:hover {
+      color: var(--color-error);
+    }
   `,
   emptyState: css`
     padding: var(--spacing-xl);
@@ -665,13 +836,29 @@ const styles = {
     border: 1px dashed var(--border-color);
     border-radius: var(--border-radius-md);
     background-color: var(--bg-secondary);
-    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
   `,
-  emptyIcon: css`color: var(--border-color-hover);`,
-  emptyTitle: css`color: var(--text-secondary); margin: 0; font-size: var(--font-size-sm); font-weight: 600;`,
-  emptySubtitle: css`font-size: 10px; color: var(--text-tertiary); margin: 0;`,
+  emptyIcon: css`
+    color: var(--border-color-hover);
+  `,
+  emptyTitle: css`
+    color: var(--text-secondary);
+    margin: 0;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+  `,
+  emptySubtitle: css`
+    font-size: 10px;
+    color: var(--text-tertiary);
+    margin: 0;
+  `,
   cardsList: css`
-    display: flex; flex-direction: column; gap: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   `,
   card: css`
     border-radius: var(--border-radius-md);
@@ -679,196 +866,341 @@ const styles = {
     background-color: var(--bg-secondary);
     overflow: hidden;
     transition: border-color 0.15s;
-    &:hover { border-color: var(--border-color-hover); }
+    &:hover {
+      border-color: var(--border-color-hover);
+    }
   `,
   cardHeader: css`
     padding: 10px 12px;
-    display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
   `,
   cardInfo: css`
-    display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
   `,
   cardTitleRow: css`
-    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
   `,
-  cardIcon: css`color: var(--color-brand); flex-shrink: 0;`,
+  cardIcon: css`
+    color: var(--color-brand);
+    flex-shrink: 0;
+  `,
   cardTitle: css`
-    font-weight: var(--font-weight-bold); color: var(--text-primary);
-    font-size: var(--font-size-sm); margin: 0;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     max-width: 150px;
   `,
 
   cardDesc: css`
-    font-size: 10px; color: var(--text-secondary); margin: 0; line-height: 1.4;
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin: 0;
+    line-height: 1.4;
   `,
   tagsList: css`
-    display: flex; flex-wrap: wrap; gap: 3px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
   `,
   tagItem: css`
-    display: inline-flex; align-items: center; gap: 2px;
-    font-size: 9px; padding: 1px 5px; border-radius: 99px;
-    background: var(--bg-tertiary); color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 99px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
     border: 1px solid var(--border-color);
   `,
   cardActions: css`
-    display: flex; gap: 4px; flex-shrink: 0;
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
   `,
   runBtn: css`
-    display: inline-flex; align-items: center; gap: 4px;
-    background: var(--color-brand); color: #fff;
-    padding: 4px 8px; border: none; border-radius: var(--border-radius-sm);
-    font-size: 10px; font-weight: 700; cursor: pointer;
-    &:hover { filter: brightness(1.08); }
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--color-brand);
+    color: #fff;
+    padding: 4px 8px;
+    border: none;
+    border-radius: var(--border-radius-sm);
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    &:hover {
+      filter: brightness(1.08);
+    }
   `,
   iconBtn: css`
-    width: 24px; height: 24px;
+    width: 24px;
+    height: 24px;
     background: transparent;
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);
-    color: var(--text-tertiary); cursor: pointer;
-    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     transition: all 0.15s;
-    &:hover { color: var(--text-primary); border-color: var(--border-color-hover); }
+    &:hover {
+      color: var(--text-primary);
+      border-color: var(--border-color-hover);
+    }
   `,
   iconBtnDanger: css`
-    &:hover { color: var(--color-error); border-color: var(--color-error); background: rgba(var(--color-error-rgb), 0.1); }
+    &:hover {
+      color: var(--color-error);
+      border-color: var(--color-error);
+      background: rgba(var(--color-error-rgb), 0.1);
+    }
   `,
   taskList: css`
     padding: 0 12px 10px;
-    display: flex; flex-direction: column; gap: 3px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
   `,
 
   cardFooter: css`
     padding: 6px 12px;
-    display: flex; align-items: center; gap: var(--spacing-sm);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
     border-top: 1px solid var(--border-color);
     background: var(--bg-canvas);
   `,
   footerMeta: css`
-    font-size: 9px; color: var(--text-tertiary); font-weight: 600;
+    font-size: 9px;
+    color: var(--text-tertiary);
+    font-weight: 600;
   `,
   loadBtn: css`
     margin-left: auto;
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    padding: 3px 8px; border-radius: var(--border-radius-sm);
-    font-size: 10px; font-weight: 600; cursor: pointer;
-    &:hover { color: var(--color-brand); border-color: var(--color-brand); }
+    padding: 3px 8px;
+    border-radius: var(--border-radius-sm);
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    &:hover {
+      color: var(--color-brand);
+      border-color: var(--color-brand);
+    }
   `,
 
   modalOverlay: css`
-    position: fixed; inset: 0; z-index: 80;
-    display: flex; align-items: center; justify-content: center;
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: var(--spacing-md);
-    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
     animation: ${fadeIn} 0.2s ease-out;
   `,
   modalLarge: css`
-    width: 100%; max-width: 720px; max-height: 88vh;
+    width: 100%;
+    max-width: 720px;
+    max-height: 88vh;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-lg);
     box-shadow: var(--shadow-lg);
-    display: flex; flex-direction: column;
+    display: flex;
+    flex-direction: column;
     animation: ${slideUp} 0.22s ease-out;
   `,
   modalHeader: css`
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: var(--spacing-md) var(--spacing-lg);
     border-bottom: 1px solid var(--border-color);
-    h3 { font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); margin: 0; color: var(--text-primary); }
+    h3 {
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-bold);
+      margin: 0;
+      color: var(--text-primary);
+    }
   `,
   closeBtn: css`
-    background: transparent; border: none; cursor: pointer;
-    color: var(--text-tertiary); padding: 4px; border-radius: 4px;
-    &:hover { color: var(--text-primary); background: var(--bg-hover); }
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-tertiary);
+    padding: 4px;
+    border-radius: 4px;
+    &:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
   `,
   modalBody: css`
     padding: var(--spacing-lg);
     overflow-y: auto;
-    display: flex; flex-direction: column; gap: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
   `,
   modalFooter: css`
     padding: var(--spacing-md) var(--spacing-lg);
     border-top: 1px solid var(--border-color);
-    display: flex; justify-content: flex-end; gap: 8px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
   `,
   cancelBtn: css`
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    padding: 7px 14px; border-radius: var(--border-radius-md);
-    font-size: var(--font-size-xs); font-weight: 600;
+    padding: 7px 14px;
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
     cursor: pointer;
-    &:hover { color: var(--text-primary); border-color: var(--border-color-hover); }
+    &:hover {
+      color: var(--text-primary);
+      border-color: var(--border-color-hover);
+    }
   `,
   formRow: css`
-    display: flex; flex-direction: column; gap: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   `,
   formGrid2: css`
-    display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md);
-    @media (max-width: 640px) { grid-template-columns: 1fr; }
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-md);
+    @media (max-width: 640px) {
+      grid-template-columns: 1fr;
+    }
   `,
   fieldLabel: css`
-    font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
   `,
   input: css`
     width: 100%;
-    background: var(--bg-input); border: 1px solid var(--border-color);
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);
     padding: 6px 10px;
-    font-size: var(--font-size-sm); color: var(--text-primary);
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
     outline: none;
-    &:focus { border-color: var(--color-brand); }
-    &::placeholder { color: var(--text-tertiary); }
+    &:focus {
+      border-color: var(--color-brand);
+    }
+    &::placeholder {
+      color: var(--text-tertiary);
+    }
   `,
   tasksSection: css`
-    display: flex; flex-direction: column; gap: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   `,
   sectionHead: css`
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   `,
   sectionLabel: css`
-    font-size: 11px; font-weight: 700; color: var(--text-tertiary);
-    text-transform: uppercase; letter-spacing: 0.06em;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
   `,
   addTaskBtn: css`
-    display: inline-flex; align-items: center; gap: 4px;
-    background: transparent; border: 1px solid var(--border-color);
-    color: var(--text-secondary); font-size: 11px; font-weight: 600;
-    padding: 4px 8px; border-radius: var(--border-radius-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: var(--border-radius-sm);
     cursor: pointer;
-    &:hover { color: var(--color-brand); border-color: var(--color-brand); }
+    &:hover {
+      color: var(--color-brand);
+      border-color: var(--color-brand);
+    }
   `,
   editTaskRow: css`
     position: relative;
-    display: flex; align-items: center; gap: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     padding: 6px 8px;
     background: var(--bg-tertiary);
     border-radius: var(--border-radius-sm);
     border: 1px solid var(--border-color);
   `,
   taskNum: css`
-    font-size: 10px; font-weight: 700; color: var(--text-tertiary);
-    width: 16px; text-align: right; flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    width: 16px;
+    text-align: right;
+    flex-shrink: 0;
   `,
   taskTitle: css`
-    flex: 1; min-width: 0; font-size: 11px;
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
     color: var(--text-primary);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   `,
   depsInput: css`
-    width: 80px; flex: none;
+    width: 80px;
+    flex: none;
   `,
-  agentSelect: css`flex: 1; min-width: 0;`,
-  emptyHint: css`font-size: 11px; color: var(--text-tertiary); font-style: italic; text-align: center; padding: 8px 0;`,
+  agentSelect: css`
+    flex: 1;
+    min-width: 0;
+  `,
+  emptyHint: css`
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-style: italic;
+    text-align: center;
+    padding: 8px 0;
+  `,
   warningBanner: css`
     background: rgba(var(--color-warning-rgb), 0.08);
     border: 1px solid rgba(var(--color-warning-rgb), 0.3);
     color: var(--color-warning);
-    padding: 8px 12px; border-radius: var(--border-radius-sm);
+    padding: 8px 12px;
+    border-radius: var(--border-radius-sm);
     font-size: 11px;
   `,
 };

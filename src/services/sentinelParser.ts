@@ -25,15 +25,15 @@ import { OrchestratorTaskOutput, AgentNeedsRequest } from '../types';
 
 // ── Sentinel markers ────────────────────────────────────────────────────────────
 export const SENTINEL_START = '###ORCHATERM_DONE###';
-export const SENTINEL_END   = '###ORCHATERM_END###';
+export const SENTINEL_END = '###ORCHATERM_END###';
 
 // ── Plan markers ────────────────────────────────────────────────────────────────
 export const PLAN_START = '###ORCHATERM_PLAN_START###';
-export const PLAN_END   = '###ORCHATERM_PLAN_END###';
+export const PLAN_END = '###ORCHATERM_PLAN_END###';
 
 // ── Needs markers ────────────────────────────────────────────────────────────────
 export const NEEDS_START = '###ORCHATERM_NEEDS###';
-export const NEEDS_END   = '###ORCHATERM_NEEDS_END###';
+export const NEEDS_END = '###ORCHATERM_NEEDS_END###';
 
 // ── ANSI stripping ──────────────────────────────────────────────────────────────
 
@@ -43,18 +43,20 @@ export const NEEDS_END   = '###ORCHATERM_NEEDS_END###';
  * ANSI formatting that must be removed before Ollama processes the text.
  */
 export function stripAnsiCodes(text: string): string {
-  return text
-    // CSI sequences: ESC [ ... letter  (colours, cursor movement, etc.)
-    // Extended form also allows intermediate bytes (0x20-0x2F) before the final byte.
-    .replace(/\x1b\[[0-9;?]*[ -/]*[A-Za-z@-~]/g, '')
-    // OSC sequences: ESC ] ... BEL  (window title, hyperlinks, etc.)
-    .replace(/\x1b\][^\x07]*\x07/g, '')
-    // OSC sequences terminated by ST (ESC \)
-    .replace(/\x1b\][^\x1b]*\x1b\\/g, '')
-    // Remaining lone ESC followed by a single character
-    .replace(/\x1b./g, '')
-    // Non-printable control chars except \n, \r, \t
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  return (
+    text
+      // CSI sequences: ESC [ ... letter  (colours, cursor movement, etc.)
+      // Extended form also allows intermediate bytes (0x20-0x2F) before the final byte.
+      .replace(/\x1b\[[0-9;?]*[ -/]*[A-Za-z@-~]/g, '')
+      // OSC sequences: ESC ] ... BEL  (window title, hyperlinks, etc.)
+      .replace(/\x1b\][^\x07]*\x07/g, '')
+      // OSC sequences terminated by ST (ESC \)
+      .replace(/\x1b\][^\x1b]*\x1b\\/g, '')
+      // Remaining lone ESC followed by a single character
+      .replace(/\x1b./g, '')
+      // Non-printable control chars except \n, \r, \t
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+  );
 }
 
 // ── Field extraction ────────────────────────────────────────────────────────────
@@ -119,16 +121,20 @@ export function parseSentinel(rawBuffer: string): OrchestratorTaskOutput | null 
   if (startIdx === -1) return null;
 
   const block = buffer.slice(startIdx + SENTINEL_START.length, endIdx).trim();
-  const raw   = buffer.slice(0, startIdx).trim();
+  const raw = buffer.slice(0, startIdx).trim();
 
-  const taskId       = extractField(block, 'task_id');
-  const summary      = extractField(block, 'summary');
-  const filesRaw     = extractField(block, 'files_modified');
-  const needs        = extractField(block, 'needs');
+  const taskId = extractField(block, 'task_id');
+  const summary = extractField(block, 'summary');
+  const filesRaw = extractField(block, 'files_modified');
+  const needs = extractField(block, 'needs');
 
-  const filesModified = filesRaw.toLowerCase() === 'none' || filesRaw === ''
-    ? []
-    : filesRaw.split(',').map(f => f.trim()).filter(Boolean);
+  const filesModified =
+    filesRaw.toLowerCase() === 'none' || filesRaw === ''
+      ? []
+      : filesRaw
+          .split(',')
+          .map((f) => f.trim())
+          .filter(Boolean);
 
   // Reject echoed dispatch template — placeholder fields start with '<'.
   // PTY line-wrapping can split '<2-3 sentences' across lines so we guard on
@@ -166,7 +172,10 @@ export function parsePlanBlock(buffer: string): string | null {
   const raw = clean.slice(startIdx + PLAN_START.length, endIdx).trim();
 
   // Strip markdown code fences if present
-  let json = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  let json = raw
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
 
   // Bracket-match backward from the last ] to find the last outermost array.
   // Using indexOf+lastIndexOf fails when the agent outputs two arrays (e.g. due
@@ -174,11 +183,17 @@ export function parsePlanBlock(buffer: string): string | null {
   // Scanning backward gives us only the last complete top-level array.
   const lastClose = json.lastIndexOf(']');
   if (lastClose !== -1) {
-    let depth     = 0;
+    let depth = 0;
     let outerOpen = -1;
     for (let i = lastClose; i >= 0; i--) {
-      if      (json[i] === ']') depth++;
-      else if (json[i] === '[') { depth--; if (depth === 0) { outerOpen = i; break; } }
+      if (json[i] === ']') depth++;
+      else if (json[i] === '[') {
+        depth--;
+        if (depth === 0) {
+          outerOpen = i;
+          break;
+        }
+      }
     }
     if (outerOpen !== -1) {
       json = json.slice(outerOpen, lastClose + 1);
@@ -187,7 +202,7 @@ export function parsePlanBlock(buffer: string): string | null {
       // (e.g. the [ in \x1b[9m[ was treated as the CSI introducer, stripped,
       // leaving only "9 {…}"). Reconstruct by wrapping first…last object in [].
       const firstBrace = json.indexOf('{');
-      const lastBrace  = json.lastIndexOf('}');
+      const lastBrace = json.lastIndexOf('}');
       if (firstBrace !== -1 && lastBrace >= firstBrace) {
         json = '[' + json.slice(firstBrace, lastBrace + 1) + ']';
       }
@@ -220,8 +235,8 @@ export function parseNeedsBlock(buffer: string): AgentNeedsRequest | null {
   const startIdx = clean.lastIndexOf(NEEDS_START, endIdx);
   if (startIdx === -1) return null;
 
-  const block   = clean.slice(startIdx + NEEDS_START.length, endIdx).trim();
-  const ask     = extractField(block, 'ask');
+  const block = clean.slice(startIdx + NEEDS_START.length, endIdx).trim();
+  const ask = extractField(block, 'ask');
   const context = extractField(block, 'context');
 
   if (!ask) return null;
@@ -258,7 +273,7 @@ export function validatePlanJSON(rawJson: string): Array<{
   // reconstruct by wrapping from the first { to the last }.
   if (!sanitised.trimStart().startsWith('[')) {
     const firstBrace = sanitised.indexOf('{');
-    const lastBrace  = sanitised.lastIndexOf('}');
+    const lastBrace = sanitised.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace >= firstBrace) {
       sanitised = '[' + sanitised.slice(firstBrace, lastBrace + 1) + ']';
     }
@@ -278,31 +293,36 @@ export function validatePlanJSON(rawJson: string): Array<{
   if (!Array.isArray(parsed)) throw new Error('Plan JSON must be an array');
 
   return parsed.map((item: any, i: number) => {
-    if (typeof item.id          !== 'string') throw new Error(`Task ${i}: missing id`);
-    if (typeof item.title       !== 'string') throw new Error(`Task ${i}: missing title`);
+    if (typeof item.id !== 'string') throw new Error(`Task ${i}: missing id`);
+    if (typeof item.title !== 'string') throw new Error(`Task ${i}: missing title`);
     if (typeof item.description !== 'string') throw new Error(`Task ${i}: missing description`);
-    if (typeof item.assignedSessionId !== 'string') throw new Error(`Task ${i}: missing assignedSessionId`);
+    if (typeof item.assignedSessionId !== 'string')
+      throw new Error(`Task ${i}: missing assignedSessionId`);
 
     // dependsOn: normalize defensively — PTY artifacts can corrupt the key name
     // (e.g. "ependsOn", "d ependsOn") or the agent may output a string instead
     // of an array ("none", "[]", "task-1, task-2"). Default to [] when unresolvable.
     const rawDep =
-      item.dependsOn    ??  // correct key
-      item.ependsOn     ??  // PTY drop of first char: "dependsOn" → "ependsOn"
+      item.dependsOn ?? // correct key
+      item.ependsOn ?? // PTY drop of first char: "dependsOn" → "ependsOn"
       item['d ependsOn'] ?? // PTY mid-token space: "d\r\nependsOn" → "d ependsOn"
       [];
     const dependsOn: string[] = Array.isArray(rawDep)
       ? rawDep.map(String)
       : typeof rawDep === 'string'
-        ? (rawDep.toLowerCase() === 'none' || rawDep === ''
-            ? []
-            : rawDep.replace(/[\[\]"]/g, '').split(',').map((s: string) => s.trim()).filter(Boolean))
+        ? rawDep.toLowerCase() === 'none' || rawDep === ''
+          ? []
+          : rawDep
+              .replace(/[\[\]"]/g, '')
+              .split(',')
+              .map((s: string) => s.trim())
+              .filter(Boolean)
         : [];
 
     return {
-      id:                item.id,
-      title:             item.title,
-      description:       item.description,
+      id: item.id,
+      title: item.title,
+      description: item.description,
       assignedSessionId: item.assignedSessionId,
       dependsOn,
     };

@@ -3,7 +3,9 @@ import { Eye, EyeOff } from 'lucide-react';
 import { css, cx } from '@emotion/css';
 
 const inputBaseStyle = css`
-  &:focus-visible { outline: none; }
+  &:focus-visible {
+    outline: none;
+  }
 `;
 
 const revealWrapperStyle = css`
@@ -22,7 +24,9 @@ const revealButtonStyle = css`
   display: flex;
   color: inherit;
   opacity: 0.5;
-  &:hover { opacity: 0.8; }
+  &:hover {
+    opacity: 0.8;
+  }
 `;
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -47,7 +51,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <button
             type="button"
             tabIndex={-1}
-            onClick={() => setShowPassword(v => !v)}
+            onClick={() => setShowPassword((v) => !v)}
             className={revealButtonStyle}
           >
             {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -65,7 +69,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {...props}
       />
     );
-  },
+  }
 );
 
 Input.displayName = 'Input';

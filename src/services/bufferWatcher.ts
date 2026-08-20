@@ -17,7 +17,13 @@
 
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { OrchestratorTaskOutput, SessionBuffer, BufferWatchMode } from '../types';
-import { parseSentinel, parsePlanBlock, validatePlanJSON, parseNeedsBlock, stripAnsiCodes } from './sentinelParser';
+import {
+  parseSentinel,
+  parsePlanBlock,
+  validatePlanJSON,
+  parseNeedsBlock,
+  stripAnsiCodes,
+} from './sentinelParser';
 
 // ── Shell "back-to-prompt" detection regex ────────────────────────────────────
 // Fires after 2s idle when a terminal session returns to a shell prompt.
@@ -28,43 +34,46 @@ const SHELL_PROMPT_REGEX = /[$%#>❯]\s*$/;
 
 // ── Interactive prompt detection regex ─────────────────────────────────────────
 // Compiled once at module load — used by checkInteractivePrompt on every idle tick.
-const INTERACTIVE_PROMPT_REGEX = new RegExp([
-  // y/n bracket markers — any casing
-  String.raw`\[y\/n\]|\(y\/n\)|\[Y\/n\]|\(Y\/n\)|\[n\/Y\]|\(n\/Y\)`,
-  // Claude Code TUI navigation footer — always present for selection prompts
-  String.raw`↑\s*\/\s*↓`,
-  // "esc to cancel" footer (appears in all Claude Code interactive dialogs)
-  String.raw`esc\s+to\s+cancel`,
-  // Numbered option with leading cursor marker: "> 1." or "• 1."
-  String.raw`^[>•]\s*\d+\.`,
-  // Numbered option list: standalone "1." / "2." lines (option menus)
-  String.raw`^\s*\d+\.\s+\S`,
-  // Claude Code permission header
-  String.raw`Requesting permission for:`,
-  // Generic proceed / confirm / allow / deny patterns
-  String.raw`Do you want|Press Enter to|Proceed\?|Are you sure|Overwrite\?|Allow\?|Deny\?`,
-  String.raw`Select an option|Type a number|Choose an option`,
-  // Bare question at end of a line (agent asking something directly)
-  String.raw`\?\s*$`,
-].join('|'), 'im');
+const INTERACTIVE_PROMPT_REGEX = new RegExp(
+  [
+    // y/n bracket markers — any casing
+    String.raw`\[y\/n\]|\(y\/n\)|\[Y\/n\]|\(Y\/n\)|\[n\/Y\]|\(n\/Y\)`,
+    // Claude Code TUI navigation footer — always present for selection prompts
+    String.raw`↑\s*\/\s*↓`,
+    // "esc to cancel" footer (appears in all Claude Code interactive dialogs)
+    String.raw`esc\s+to\s+cancel`,
+    // Numbered option with leading cursor marker: "> 1." or "• 1."
+    String.raw`^[>•]\s*\d+\.`,
+    // Numbered option list: standalone "1." / "2." lines (option menus)
+    String.raw`^\s*\d+\.\s+\S`,
+    // Claude Code permission header
+    String.raw`Requesting permission for:`,
+    // Generic proceed / confirm / allow / deny patterns
+    String.raw`Do you want|Press Enter to|Proceed\?|Are you sure|Overwrite\?|Allow\?|Deny\?`,
+    String.raw`Select an option|Type a number|Choose an option`,
+    // Bare question at end of a line (agent asking something directly)
+    String.raw`\?\s*$`,
+  ].join('|'),
+  'im'
+);
 
 // ── Buffer bounds ───────────────────────────────────────────────────────────────
 // Cap retained per-session output so a long-running agent (e.g. Claude Code
 // emitting megabytes of ANSI) can't grow an unbounded JS string (memory) and so
 // the marker scans below stay cheap regardless of total output (CPU). Detection
 // always works on the most-recent tail, so trimming older output is safe.
-const MAX_BUFFER_CHARS    = 256 * 1024;
-const NEEDS_SCAN_TAIL     =   8 * 1024; // runs on EVERY chunk — keep small
-const SENTINEL_SCAN_TAIL  =  32 * 1024;
-const PLAN_SCAN_TAIL      =  96 * 1024; // plan JSON arrays can be large
+const MAX_BUFFER_CHARS = 256 * 1024;
+const NEEDS_SCAN_TAIL = 8 * 1024; // runs on EVERY chunk — keep small
+const SENTINEL_SCAN_TAIL = 32 * 1024;
+const PLAN_SCAN_TAIL = 96 * 1024; // plan JSON arrays can be large
 
 // ── Scan throttle windows ────────────────────────────────────────────────────────
 // Caps how often each mode's (bounded but non-trivial) ANSI-strip + marker scan
 // re-runs during a burst of chunks. All well under the 400-500ms echo-suppress
 // windows below, so they add no perceptible detection latency.
-const NEEDS_SCAN_THROTTLE_MS    = 30;
+const NEEDS_SCAN_THROTTLE_MS = 30;
 const SENTINEL_SCAN_THROTTLE_MS = 40;
-const PLAN_SCAN_THROTTLE_MS     = 60;
+const PLAN_SCAN_THROTTLE_MS = 60;
 
 // ── Internal entry ─────────────────────────────────────────────────────────────
 
@@ -181,10 +190,17 @@ class BufferWatcher {
     }
 
     switch (entry.buffer.mode) {
-      case 'sentinel': this.checkSentinel(entry); break;
-      case 'plan':     this.checkPlan(entry); break;
-      case 'summary':  this.checkSummary(entry); break;
-      case 'idle': break;
+      case 'sentinel':
+        this.checkSentinel(entry);
+        break;
+      case 'plan':
+        this.checkPlan(entry);
+        break;
+      case 'summary':
+        this.checkSummary(entry);
+        break;
+      case 'idle':
+        break;
     }
 
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
@@ -305,9 +321,9 @@ class BufferWatcher {
     const rawJson = parsePlanBlock(entry.buffer.buffer.slice(-PLAN_SCAN_TAIL));
     if (rawJson === null) return;
 
-    const onPlan  = entry.onPlan;
+    const onPlan = entry.onPlan;
     const onError = entry.onPlanError;
-    entry.onPlan      = undefined;
+    entry.onPlan = undefined;
     entry.onPlanError = undefined;
     entry.buffer.mode = 'idle';
     entry.buffer.buffer = '';
@@ -328,11 +344,11 @@ class BufferWatcher {
     // Tuned to limit LLM call volume on summary subscribers (live feed,
     // auto-relay, continuation detection): coalesce more output per call.
     const MIN_NEW_CHARS = 120;
-    const DEBOUNCE_MS   = 1200;
+    const DEBOUNCE_MS = 1200;
 
     const currentLength = entry.buffer.buffer.length;
-    const lastLength    = entry.summaryLastLength ?? 0;
-    const newChars      = currentLength - lastLength;
+    const lastLength = entry.summaryLastLength ?? 0;
+    const newChars = currentLength - lastLength;
 
     if (newChars < MIN_NEW_CHARS) return;
 
@@ -387,7 +403,7 @@ class BufferWatcher {
     sessionId: string,
     onSentinel: (output: OrchestratorTaskOutput) => void,
     onInteractivePrompt?: (text: string) => void,
-    echoSuppressMs = 500,
+    echoSuppressMs = 500
   ): Promise<void> {
     const entry = await this.ensureListening(sessionId);
     entry.buffer.buffer = '';
@@ -418,7 +434,7 @@ class BufferWatcher {
     sessionId: string,
     onPlan: (rawJson: string) => void,
     onPlanError: (err: string) => void,
-    echoSuppressMs = 400,
+    echoSuppressMs = 400
   ): Promise<void> {
     const entry = await this.ensureListening(sessionId);
     entry.buffer.buffer = '';
@@ -440,14 +456,11 @@ class BufferWatcher {
    * Returns an unsubscribe function. Call it to remove this specific subscriber.
    * When the last subscriber is removed, the session returns to idle.
    */
-  async watchForSummary(
-    sessionId: string,
-    onChunk: (chunk: string) => void,
-  ): Promise<() => void> {
+  async watchForSummary(sessionId: string, onChunk: (chunk: string) => void): Promise<() => void> {
     const entry = await this.ensureListening(sessionId);
     entry.buffer.mode = 'summary';
-    entry.onSentinel  = undefined;
-    entry.onPlan      = undefined;
+    entry.onSentinel = undefined;
+    entry.onPlan = undefined;
     entry.onPlanError = undefined;
     if (!entry.summarySubscribers.includes(onChunk)) {
       entry.summarySubscribers.push(onChunk);
@@ -457,7 +470,7 @@ class BufferWatcher {
 
     // Return an unsubscribe function for this specific subscriber
     return () => {
-      entry.summarySubscribers = entry.summarySubscribers.filter(cb => cb !== onChunk);
+      entry.summarySubscribers = entry.summarySubscribers.filter((cb) => cb !== onChunk);
       if (entry.summarySubscribers.length === 0) {
         if (entry.summaryDebounceTimer) clearTimeout(entry.summaryDebounceTimer);
         entry.buffer.mode = 'idle';
@@ -473,9 +486,9 @@ class BufferWatcher {
     const entry = this.entries.get(sessionId);
     if (!entry) return;
     if (entry.summaryDebounceTimer) clearTimeout(entry.summaryDebounceTimer);
-    entry.summarySubscribers   = [];
+    entry.summarySubscribers = [];
     entry.summaryDebounceTimer = undefined;
-    entry.summaryLastLength    = undefined;
+    entry.summaryLastLength = undefined;
     if (entry.buffer.mode === 'summary') entry.buffer.mode = 'idle';
   }
 
@@ -487,10 +500,7 @@ class BufferWatcher {
    * Skipped automatically for sessions in sentinel / plan mode so Conductor-
    * managed tasks do not generate spurious "done" notifications.
    */
-  async watchForIdle(
-    sessionId: string,
-    onIdle: () => void,
-  ): Promise<() => void> {
+  async watchForIdle(sessionId: string, onIdle: () => void): Promise<() => void> {
     const entry = await this.ensureListening(sessionId);
     entry.onIdleShell = onIdle;
     entry._lastIdleShellAt = undefined; // reset cooldown on (re-)subscribe
@@ -509,7 +519,7 @@ class BufferWatcher {
    */
   async watchForNeeds(
     sessionId: string,
-    onNeedsRequest: (request: import('../types').AgentNeedsRequest) => void,
+    onNeedsRequest: (request: import('../types').AgentNeedsRequest) => void
   ): Promise<() => void> {
     const entry = await this.ensureListening(sessionId);
     entry.onNeedsRequest = onNeedsRequest;

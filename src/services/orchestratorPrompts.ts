@@ -9,7 +9,7 @@
  */
 
 import { OrchestratorTaskOutput } from '../types';
-export type { ChatMessage } from './llm/types';  // re-export for backward compat
+export type { ChatMessage } from './llm/types'; // re-export for backward compat
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -94,11 +94,12 @@ export function buildRelayPrompt(
   goal: string,
   completedTask: CompletedTaskContext,
   nextTaskDescription: string,
-  nextAgentName: string,
+  nextAgentName: string
 ): { system: string; userContent: string } {
-  const needsNote = !completedTask.output.needs || completedTask.output.needs.toLowerCase() === 'none'
-    ? 'No specific technical prerequisites were requested by the previous agent.'
-    : completedTask.output.needs;
+  const needsNote =
+    !completedTask.output.needs || completedTask.output.needs.toLowerCase() === 'none'
+      ? 'No specific technical prerequisites were requested by the previous agent.'
+      : completedTask.output.needs;
 
   return {
     system: RELAY_SYSTEM_PROMPT,
@@ -123,20 +124,23 @@ export function buildMergeRelayPrompt(
   goal: string,
   completedTasks: CompletedTaskContext[],
   nextTaskDescription: string,
-  nextAgentName: string,
+  nextAgentName: string
 ): { system: string; userContent: string } {
-  const blocks = completedTasks.map((t, i) => {
-    const needsNote = !t.output.needs || t.output.needs.toLowerCase() === 'none'
-      ? 'No specific technical prerequisites requested.'
-      : t.output.needs;
-    return `
+  const blocks = completedTasks
+    .map((t, i) => {
+      const needsNote =
+        !t.output.needs || t.output.needs.toLowerCase() === 'none'
+          ? 'No specific technical prerequisites requested.'
+          : t.output.needs;
+      return `
 --- Completed Work ${i + 1} ---
 Task: ${t.taskTitle}
 Done by: ${t.agentName}
 Summary: ${t.output.summary}
 Files modified: ${t.output.filesModified.join(', ') || 'none'}
 What is needed next: ${needsNote}`;
-  }).join('\n');
+    })
+    .join('\n');
 
   return {
     system: RELAY_SYSTEM_PROMPT,
@@ -155,7 +159,8 @@ Synthesize all completed work into a single unified brief for the next agent wit
 
 export function buildAutoAnswerPrompt(promptText: string): { system: string; userContent: string } {
   return {
-    system: "You are an automated terminal responder for an AI coding agent. Output ONLY the answer token. Never explain.",
+    system:
+      'You are an automated terminal responder for an AI coding agent. Output ONLY the answer token. Never explain.',
     userContent: `Below is the last ~3000 characters of a terminal session running an AI coding agent.
 
 Terminal tail:
@@ -193,14 +198,15 @@ Examples:
 export function buildRoutingPrompt(
   fromTitle: string,
   recentChunk: string,
-  siblings: Array<{ title: string; recentOutput: string }>,
+  siblings: Array<{ title: string; recentOutput: string }>
 ): { system: string; userContent: string } {
   const siblingsDesc = siblings
-    .map(s => `• ${s.title}:\n${s.recentOutput.slice(-300) || '(no recent output)'}`)
+    .map((s) => `• ${s.title}:\n${s.recentOutput.slice(-300) || '(no recent output)'}`)
     .join('\n\n');
 
   return {
-    system: 'You are a routing agent for a multi-agent coding team. Be decisive. Output exactly one line.',
+    system:
+      'You are a routing agent for a multi-agent coding team. Be decisive. Output exactly one line.',
     userContent: `You are monitoring a team of AI coding agents.
 
 Agent "${fromTitle}" just produced this output:
@@ -222,7 +228,10 @@ If relaying, output exactly one line: INJECT → <exact-terminal-title>: <messag
   };
 }
 
-export function buildSummarisePrompt(chunk: string, tabTitle: string): { system: string; userContent: string } {
+export function buildSummarisePrompt(
+  chunk: string,
+  tabTitle: string
+): { system: string; userContent: string } {
   return {
     system: `You are a terminal output summariser. Summarise the following terminal output from agent "${tabTitle}" in 1–2 concise sentences. Be direct and factual — no filler, no suggestions. Output only the summary text, nothing else.`,
     userContent: chunk.length > 2000 ? chunk.slice(-2000) : chunk,
@@ -231,14 +240,14 @@ export function buildSummarisePrompt(chunk: string, tabTitle: string): { system:
 
 export function buildPlanGenPrompt(
   goal: string,
-  availableSessions: Array<{ title: string }>,
+  availableSessions: Array<{ title: string }>
 ): { system: string; userContent: string } {
   return {
     system: PLAN_GEN_SYSTEM_PROMPT,
     userContent: `Goal: ${goal}
 
 Available agents:
-${availableSessions.map(s => `• ${s.title}`).join('\n')}
+${availableSessions.map((s) => `• ${s.title}`).join('\n')}
 
 Generate the task plan as a JSON array:`,
   };
@@ -248,12 +257,14 @@ export function buildNeedsPrompt(
   ask: string,
   context: string,
   requestingAgent: string,
-  peerContext: Array<{ title: string; recentOutput: string }>,
+  peerContext: Array<{ title: string; recentOutput: string }>
 ): { system: string; userContent: string } {
-  const peerBlocks = peerContext.length > 0
-    ? peerContext.map(p => `=== ${p.title} ===\n${p.recentOutput || '(no recent output)'}`)
-        .join('\n\n')
-    : '(no peer agents have recent output)';
+  const peerBlocks =
+    peerContext.length > 0
+      ? peerContext
+          .map((p) => `=== ${p.title} ===\n${p.recentOutput || '(no recent output)'}`)
+          .join('\n\n')
+      : '(no peer agents have recent output)';
 
   return {
     system: 'You are a helpful synthesiser. Output only a direct answer under 150 words.',
@@ -272,7 +283,10 @@ Do NOT add suggestions beyond what was asked.`,
   };
 }
 
-export function buildIntentClassifyPrompt(message: string): { system: string; userContent: string } {
+export function buildIntentClassifyPrompt(message: string): {
+  system: string;
+  userContent: string;
+} {
   return {
     system: "You are a strict classifier. Output exactly one word: 'chat' or 'plan'.",
     userContent: `You are an intent classifier for a developer orchestration tool.
@@ -292,11 +306,14 @@ Message: "${message}"`,
 
 export function buildPassThroughBrief(
   completedTasks: CompletedTaskContext[],
-  nextTaskDescription: string,
+  nextTaskDescription: string
 ): string {
-  const contextLines = completedTasks.map(t =>
-    `[Context from: ${t.taskTitle}]\nSummary: ${t.output.summary}\nWhat you need: ${t.output.needs}`
-  ).join('\n\n');
+  const contextLines = completedTasks
+    .map(
+      (t) =>
+        `[Context from: ${t.taskTitle}]\nSummary: ${t.output.summary}\nWhat you need: ${t.output.needs}`
+    )
+    .join('\n\n');
   return `${contextLines}\n\nYour task: ${nextTaskDescription}`;
 }
 
@@ -315,13 +332,16 @@ export function parsePlanGenResponse(response: string, fallbackGoal: string): Pl
       const parsed = JSON.parse(objMatch[0]) as Record<string, unknown>;
       if (Array.isArray(parsed.tasks) && parsed.tasks.length > 0) {
         return {
-          goal: typeof parsed.goal === 'string' && parsed.goal.trim()
-            ? parsed.goal.trim()
-            : fallbackGoal,
+          goal:
+            typeof parsed.goal === 'string' && parsed.goal.trim()
+              ? parsed.goal.trim()
+              : fallbackGoal,
           tasks: parsed.tasks as RawPlanTask[],
         };
       }
-    } catch { /* fall through to array format */ }
+    } catch {
+      /* fall through to array format */
+    }
   }
 
   // Fallback: legacy plain array format

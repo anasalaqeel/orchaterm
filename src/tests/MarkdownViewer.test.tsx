@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MarkdownViewer } from '../components/ui/MarkdownViewer';
 
-
 describe('MarkdownViewer', () => {
   it('renders null when content is empty', () => {
     const html = renderToStaticMarkup(<MarkdownViewer content="" />);
@@ -46,5 +45,4 @@ describe('MarkdownViewer', () => {
     expect(html).toContain('Status');
     expect(html).toContain('Active');
   });
-
 });

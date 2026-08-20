@@ -17,7 +17,7 @@ import {
   Sparkles,
   Eye,
   Edit3,
-  Code
+  Code,
 } from 'lucide-react';
 import { css, cx, keyframes } from '@emotion/css';
 
@@ -31,9 +31,8 @@ export const PromptVaultView: React.FC = () => {
     updateSavedPrompt,
     deleteSavedPrompt,
     copyPromptToClipboard,
-    showToast
+    showToast,
   } = useDashboard();
-
 
   // Filter states
   const [search, setSearch] = useState('');
@@ -44,14 +43,14 @@ export const PromptVaultView: React.FC = () => {
   const allTags = Array.from(
     new Set(
       savedPrompts
-        .filter(p => filterWorkspace === 'all' || p.workspaceId === filterWorkspace)
-        .flatMap(p => p.tags)
+        .filter((p) => filterWorkspace === 'all' || p.workspaceId === filterWorkspace)
+        .flatMap((p) => p.tags)
     )
   ).filter(Boolean);
 
   const toggleTag = (tag: string) => {
-    setSelectedTags(prev =>
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
   };
 
@@ -87,17 +86,17 @@ export const PromptVaultView: React.FC = () => {
   const currentQuickActions = settings.quickActions ?? DEFAULT_QUICK_ACTIONS;
   const isPromptPinned = (promptId: string) => {
     return currentQuickActions.some(
-      qa => qa.promptVaultId === promptId || qa.id === `qa-prompt-${promptId}`
+      (qa) => qa.promptVaultId === promptId || qa.id === `qa-prompt-${promptId}`
     );
   };
 
   const handleTogglePin = (prompt: SavedPrompt, e: React.MouseEvent) => {
     e.stopPropagation();
     const existing = currentQuickActions.find(
-      qa => qa.promptVaultId === prompt.id || qa.id === `qa-prompt-${prompt.id}`
+      (qa) => qa.promptVaultId === prompt.id || qa.id === `qa-prompt-${prompt.id}`
     );
     if (existing) {
-      const updated = currentQuickActions.filter(qa => qa.id !== existing.id);
+      const updated = currentQuickActions.filter((qa) => qa.id !== existing.id);
       updateSettings({ quickActions: updated });
       showToast(`Unpinned "${prompt.title}" from Quick Actions`, 'info');
     } else {
@@ -117,9 +116,9 @@ export const PromptVaultView: React.FC = () => {
   };
 
   const toggleExpand = (id: string) => {
-    setExpandedIds(prev => ({
+    setExpandedIds((prev) => ({
       ...prev,
-      [id]: !prev[id]
+      [id]: !prev[id],
     }));
   };
 
@@ -140,15 +139,15 @@ export const PromptVaultView: React.FC = () => {
 
     const tags = tagInput
       .split(',')
-      .map(t => t.trim())
-      .filter(t => t.length > 0);
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
 
     addSavedPrompt({
       title,
       content,
       workspaceId: promptWorkspaceId,
       spaceId: null,
-      tags
+      tags,
     });
 
     resetForm();
@@ -175,14 +174,14 @@ export const PromptVaultView: React.FC = () => {
 
     const tags = tagInput
       .split(',')
-      .map(t => t.trim())
-      .filter(t => t.length > 0);
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
 
     updateSavedPrompt(editingPrompt.id, {
       title,
       content,
       workspaceId: promptWorkspaceId,
-      tags
+      tags,
     });
 
     setEditingPrompt(null);
@@ -204,30 +203,30 @@ export const PromptVaultView: React.FC = () => {
   };
 
   // Filter calculations
-  const filteredPrompts = savedPrompts.filter(p => {
+  const filteredPrompts = savedPrompts.filter((p) => {
     const matchesWorkspace = filterWorkspace === 'all' || p.workspaceId === filterWorkspace;
-    
+
     // Tag Chips Filter (AND matching: prompt must contain all selected tags)
-    const matchesSelectedTags = selectedTags.every(t => p.tags.includes(t));
-    
+    const matchesSelectedTags = selectedTags.every((t) => p.tags.includes(t));
+
     if (!matchesWorkspace || !matchesSelectedTags) return false;
-    
+
     if (!search.trim()) return true;
 
     // Split search input by spaces and commas into individual terms
     const terms = search
       .toLowerCase()
       .split(/[\s,]+/)
-      .map(t => t.trim())
+      .map((t) => t.trim())
       .filter(Boolean);
 
     if (terms.length === 0) return true;
 
     // Check if the prompt matches ALL of the terms (AND logic)
-    const matchesSearch = terms.every(term => {
+    const matchesSearch = terms.every((term) => {
       const inTitle = p.title.toLowerCase().includes(term);
       const inContent = p.content.toLowerCase().includes(term);
-      const inTags = p.tags.some(tag => tag.toLowerCase().includes(term));
+      const inTags = p.tags.some((tag) => tag.toLowerCase().includes(term));
       return inTitle || inContent || inTags;
     });
 
@@ -238,7 +237,11 @@ export const PromptVaultView: React.FC = () => {
     if (!isoString) return 'Never';
     try {
       const date = new Date(isoString);
-      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return (
+        date.toLocaleDateString() +
+        ' ' +
+        date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      );
     } catch {
       return 'Unknown';
     }
@@ -246,14 +249,15 @@ export const PromptVaultView: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      
       {/* Header section */}
       <div className={styles.header}>
         <div>
           <h2 className={styles.title}>Prompt Vault</h2>
-          <p className={styles.description}>Store and query context instructions, system parameters, or custom developer templates.</p>
+          <p className={styles.description}>
+            Store and query context instructions, system parameters, or custom developer templates.
+          </p>
         </div>
-        
+
         <button
           onClick={() => {
             resetForm();
@@ -269,16 +273,15 @@ export const PromptVaultView: React.FC = () => {
 
       {/* Filters Area */}
       <div className={styles.filtersArea}>
-        
         {/* Workspace Filter */}
         <div className={styles.filterGroup}>
           <Select
-            label='Filter Workspace'
+            label="Filter Workspace"
             value={filterWorkspace}
             onChange={setFilterWorkspace}
             options={[
               { value: 'all', name: 'All Workspaces' },
-              ...workspaces.map(w => ({ value: w.id, name: w.name })),
+              ...workspaces.map((w) => ({ value: w.id, name: w.name })),
             ]}
           />
         </div>
@@ -294,15 +297,22 @@ export const PromptVaultView: React.FC = () => {
                   <ul className={styles.tooltipList}>
                     <li>
                       <strong>AND Search:</strong> Requires all typed terms to match.
-                      <div className={styles.tooltipExample}>e.g. <code>git config</code> matches prompts containing both words.</div>
+                      <div className={styles.tooltipExample}>
+                        e.g. <code>git config</code> matches prompts containing both words.
+                      </div>
                     </li>
                     <li>
-                      <strong>Cross-Field Match:</strong> Terms can match across title, tags, or prompt text.
-                      <div className={styles.tooltipExample}>e.g. <code>react test</code> matches tag "react" & prompt body "test".</div>
+                      <strong>Cross-Field Match:</strong> Terms can match across title, tags, or
+                      prompt text.
+                      <div className={styles.tooltipExample}>
+                        e.g. <code>react test</code> matches tag "react" & prompt body "test".
+                      </div>
                     </li>
                     <li>
                       <strong>Multi-Tag Filter:</strong> Target multiple categories at once.
-                      <div className={styles.tooltipExample}>e.g. <code>api mock</code> matches prompts tagged with both tags.</div>
+                      <div className={styles.tooltipExample}>
+                        e.g. <code>api mock</code> matches prompts tagged with both tags.
+                      </div>
                     </li>
                   </ul>
                 </div>
@@ -331,7 +341,7 @@ export const PromptVaultView: React.FC = () => {
           <div className={styles.tagChipsContainer}>
             <span className={styles.tagChipsLabel}>Filter by Tags:</span>
             <div className={styles.tagChipsList}>
-              {allTags.map(tag => {
+              {allTags.map((tag) => {
                 const isActive = selectedTags.includes(tag);
                 return (
                   <button
@@ -357,37 +367,33 @@ export const PromptVaultView: React.FC = () => {
             </div>
           </div>
         )}
-
       </div>
 
       {/* Prompts Cards List */}
       {filteredPrompts.length === 0 ? (
         <div className={styles.emptyState}>
           <p className={styles.emptyStateTitle}>No prompts stored yet.</p>
-          <p className={styles.emptyStateSubtitle}>Save critical instructions or system boundaries above.</p>
+          <p className={styles.emptyStateSubtitle}>
+            Save critical instructions or system boundaries above.
+          </p>
         </div>
       ) : (
         <div className={styles.cardsList}>
           {filteredPrompts.map((prompt) => {
             const isExpanded = !!expandedIds[prompt.id];
-            const workspaceObj = workspaces.find(w => w.id === prompt.workspaceId);
+            const workspaceObj = workspaces.find((w) => w.id === prompt.workspaceId);
 
             return (
               <div
                 key={prompt.id}
                 onClick={() => toggleExpand(prompt.id)}
-                className={cx(
-                  styles.card,
-                  isExpanded ? styles.cardExpanded : styles.cardCollapsed
-                )}
+                className={cx(styles.card, isExpanded ? styles.cardExpanded : styles.cardCollapsed)}
               >
                 {/* Header Summary Strip */}
                 <div className={styles.cardHeader}>
                   <div className={styles.cardInfo}>
                     <div className={styles.cardTitleRow}>
-                      <h4 className={styles.cardTitle}>
-                        {prompt.title}
-                      </h4>
+                      <h4 className={styles.cardTitle}>{prompt.title}</h4>
                       {/* Workspace indicator badge */}
                       {workspaceObj && (
                         <span
@@ -414,7 +420,11 @@ export const PromptVaultView: React.FC = () => {
                     <button
                       onClick={(e) => handleTogglePin(prompt, e)}
                       className={cx(styles.pinBtn, isPromptPinned(prompt.id) && styles.pinnedBtn)}
-                      title={isPromptPinned(prompt.id) ? "Pinned to Quick Actions (Click to unpin)" : "Pin to Terminal Quick Actions"}
+                      title={
+                        isPromptPinned(prompt.id)
+                          ? 'Pinned to Quick Actions (Click to unpin)'
+                          : 'Pin to Terminal Quick Actions'
+                      }
                       type="button"
                     >
                       <Sparkles className={styles.iconXs} />
@@ -429,7 +439,7 @@ export const PromptVaultView: React.FC = () => {
                       <Copy className={styles.iconXs} />
                       <span>Copy</span>
                     </button>
-                    
+
                     <button
                       onClick={(e) => handleEditClick(prompt, e)}
                       className={styles.actionBtn}
@@ -437,7 +447,7 @@ export const PromptVaultView: React.FC = () => {
                     >
                       <Edit2 className={styles.iconXs} />
                     </button>
-                    
+
                     <button
                       onClick={(e) => handleDeleteClick(prompt.id, prompt.title, e)}
                       className={styles.deleteBtn}
@@ -447,7 +457,11 @@ export const PromptVaultView: React.FC = () => {
                     </button>
 
                     <div className={styles.chevronWrapper}>
-                      {isExpanded ? <ChevronUp className={styles.iconSm} /> : <ChevronDown className={styles.iconSm} />}
+                      {isExpanded ? (
+                        <ChevronUp className={styles.iconSm} />
+                      ) : (
+                        <ChevronDown className={styles.iconSm} />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -463,11 +477,12 @@ export const PromptVaultView: React.FC = () => {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setCardViewModes(prev => ({ ...prev, [prompt.id]: 'markdown' }));
+                              setCardViewModes((prev) => ({ ...prev, [prompt.id]: 'markdown' }));
                             }}
                             className={cx(
                               styles.viewModeTab,
-                              (cardViewModes[prompt.id] ?? 'markdown') === 'markdown' && styles.viewModeTabActive
+                              (cardViewModes[prompt.id] ?? 'markdown') === 'markdown' &&
+                                styles.viewModeTabActive
                             )}
                           >
                             <Eye className={styles.iconMin} />
@@ -477,7 +492,7 @@ export const PromptVaultView: React.FC = () => {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setCardViewModes(prev => ({ ...prev, [prompt.id]: 'raw' }));
+                              setCardViewModes((prev) => ({ ...prev, [prompt.id]: 'raw' }));
                             }}
                             className={cx(
                               styles.viewModeTab,
@@ -496,9 +511,7 @@ export const PromptVaultView: React.FC = () => {
                         </div>
                       ) : (
                         <div className={styles.preWrapper}>
-                          <pre className={styles.preContent}>
-                            {prompt.content}
-                          </pre>
+                          <pre className={styles.preContent}>{prompt.content}</pre>
                           <button
                             onClick={(e) => handleCopyClick(prompt.id, e)}
                             className={styles.inlineCopyBtn}
@@ -546,12 +559,12 @@ export const PromptVaultView: React.FC = () => {
 
               <div>
                 <Select
-                  label='Associate Workspace'
+                  label="Associate Workspace"
                   value={promptWorkspaceId}
                   onChange={setPromptWorkspaceId}
                   options={[
                     { value: '', name: '— Select Workspace —' },
-                    ...workspaces.map(w => ({ value: w.id, name: w.name })),
+                    ...workspaces.map((w) => ({ value: w.id, name: w.name })),
                   ]}
                 />
               </div>
@@ -574,7 +587,10 @@ export const PromptVaultView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setModalViewMode('edit')}
-                      className={cx(styles.modalTabBtn, modalViewMode === 'edit' && styles.modalTabActive)}
+                      className={cx(
+                        styles.modalTabBtn,
+                        modalViewMode === 'edit' && styles.modalTabActive
+                      )}
                     >
                       <Edit3 size={11} />
                       <span>Edit</span>
@@ -582,7 +598,10 @@ export const PromptVaultView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setModalViewMode('preview')}
-                      className={cx(styles.modalTabBtn, modalViewMode === 'preview' && styles.modalTabActive)}
+                      className={cx(
+                        styles.modalTabBtn,
+                        modalViewMode === 'preview' && styles.modalTabActive
+                      )}
                     >
                       <Eye size={11} />
                       <span>Preview</span>
@@ -605,7 +624,11 @@ export const PromptVaultView: React.FC = () => {
                   />
                 )}
                 <div className={styles.hintLine}>
-                  <span>Variables expand when the prompt is injected into a terminal: <code>{`{{selection}}`}</code>, <code>{`{{terminal_output}}`}</code>, <code>{`{{workspace_name}}`}</code></span>
+                  <span>
+                    Variables expand when the prompt is injected into a terminal:{' '}
+                    <code>{`{{selection}}`}</code>, <code>{`{{terminal_output}}`}</code>,{' '}
+                    <code>{`{{workspace_name}}`}</code>
+                  </span>
                 </div>
               </div>
 
@@ -617,10 +640,7 @@ export const PromptVaultView: React.FC = () => {
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className={styles.submitBtn}
-                >
+                <button type="submit" className={styles.submitBtn}>
                   Save Prompt
                 </button>
               </div>
@@ -664,12 +684,12 @@ export const PromptVaultView: React.FC = () => {
 
               <div>
                 <Select
-                  label='Associate Workspace'
+                  label="Associate Workspace"
                   value={promptWorkspaceId}
                   onChange={setPromptWorkspaceId}
                   options={[
                     { value: '', name: '— Select Workspace —' },
-                    ...workspaces.map(w => ({ value: w.id, name: w.name })),
+                    ...workspaces.map((w) => ({ value: w.id, name: w.name })),
                   ]}
                 />
               </div>
@@ -692,7 +712,10 @@ export const PromptVaultView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setModalViewMode('edit')}
-                      className={cx(styles.modalTabBtn, modalViewMode === 'edit' && styles.modalTabActive)}
+                      className={cx(
+                        styles.modalTabBtn,
+                        modalViewMode === 'edit' && styles.modalTabActive
+                      )}
                     >
                       <Edit3 size={11} />
                       <span>Edit</span>
@@ -700,7 +723,10 @@ export const PromptVaultView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setModalViewMode('preview')}
-                      className={cx(styles.modalTabBtn, modalViewMode === 'preview' && styles.modalTabActive)}
+                      className={cx(
+                        styles.modalTabBtn,
+                        modalViewMode === 'preview' && styles.modalTabActive
+                      )}
                     >
                       <Eye size={11} />
                       <span>Preview</span>
@@ -722,7 +748,11 @@ export const PromptVaultView: React.FC = () => {
                   />
                 )}
                 <div className={styles.hintLine}>
-                  <span>Variables expand when the prompt is injected into a terminal: <code>{`{{selection}}`}</code>, <code>{`{{terminal_output}}`}</code>, <code>{`{{workspace_name}}`}</code></span>
+                  <span>
+                    Variables expand when the prompt is injected into a terminal:{' '}
+                    <code>{`{{selection}}`}</code>, <code>{`{{terminal_output}}`}</code>,{' '}
+                    <code>{`{{workspace_name}}`}</code>
+                  </span>
                 </div>
               </div>
 
@@ -737,10 +767,7 @@ export const PromptVaultView: React.FC = () => {
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className={styles.submitBtn}
-                >
+                <button type="submit" className={styles.submitBtn}>
                   Update Settings
                 </button>
               </div>
@@ -748,8 +775,6 @@ export const PromptVaultView: React.FC = () => {
           </div>
         </div>
       )}
-
-
     </div>
   );
 };
@@ -844,7 +869,7 @@ const styles = {
     flex-direction: column;
     gap: 8px;
     margin-top: var(--spacing-xs, 4px);
-    
+
     @media (min-width: 768px) {
       grid-column: span 4 / span 4;
     }
@@ -880,7 +905,7 @@ const styles = {
       border-color: var(--border-color-hover);
       color: var(--text-primary);
     }
-    
+
     svg {
       color: var(--text-tertiary);
     }
@@ -890,11 +915,11 @@ const styles = {
     border-color: var(--color-brand, #3b82f6);
     color: var(--color-brand, #3b82f6);
     font-weight: var(--font-weight-semibold);
-    
+
     svg {
       color: var(--color-brand, #3b82f6);
     }
-    
+
     &:hover {
       background-color: rgba(59, 130, 246, 0.2);
       border-color: var(--color-brand, #3b82f6);
@@ -955,7 +980,7 @@ const styles = {
     margin-top: 2px;
     margin-bottom: 4px;
     font-style: italic;
-    
+
     code {
       background-color: var(--bg-primary, #1e293b);
       padding: 1px 4px;
@@ -1204,7 +1229,7 @@ const styles = {
   `,
   preWrapper: css`
     position: relative;
-    
+
     &:hover button {
       opacity: 1;
     }
@@ -1312,7 +1337,9 @@ const styles = {
     font-size: var(--font-size-sm);
     color: var(--text-primary);
     outline: none;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
 
     &:focus {
       border-color: var(--color-brand);
@@ -1494,4 +1521,3 @@ const styles = {
     }
   `,
 };
-

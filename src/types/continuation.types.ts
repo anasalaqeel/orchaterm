@@ -1,9 +1,4 @@
-export type DetectionLabel =
-  | 'PROGRESS'
-  | 'STALLED'
-  | 'LIMIT_HIT'
-  | 'STOPPED'
-  | 'TASK_COMPLETE';
+export type DetectionLabel = 'PROGRESS' | 'STALLED' | 'LIMIT_HIT' | 'STOPPED' | 'TASK_COMPLETE';
 
 export type ContinuationMode = 'auto' | 'semi' | 'file-only';
 

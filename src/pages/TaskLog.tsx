@@ -4,27 +4,12 @@ import { TaskLog } from '../types';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Select } from '../components/ui/Select';
 import { Input } from '../components/ui';
-import {
-  History,
-  Search,
-  Trash2,
-  Plus,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  X
-} from 'lucide-react';
+import { History, Search, Trash2, Plus, AlertTriangle, CheckCircle, Clock, X } from 'lucide-react';
 import { css, cx } from '@emotion/css';
 
 export const TaskLogView: React.FC = () => {
-  const {
-    taskLogs,
-    workspaces,
-    addTaskLog,
-    updateTaskLog,
-    deleteTaskLog,
-    showToast
-  } = useDashboard();
+  const { taskLogs, workspaces, addTaskLog, updateTaskLog, deleteTaskLog, showToast } =
+    useDashboard();
 
   // Filters state
   const [filterWorkspace, setFilterWorkspace] = useState<string>('all');
@@ -38,12 +23,15 @@ export const TaskLogView: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newLogWorkspace, setNewLogWorkspace] = useState('');
   const [newLogSummary, setNewLogSummary] = useState('');
-  const [newLogStatus, setNewLogStatus] = useState<'in-progress' | 'done' | 'blocked'>('in-progress');
+  const [newLogStatus, setNewLogStatus] = useState<'in-progress' | 'done' | 'blocked'>(
+    'in-progress'
+  );
 
   // Filter logs
-  const filteredLogs = taskLogs.filter(log => {
+  const filteredLogs = taskLogs.filter((log) => {
     const matchesWorkspace = filterWorkspace === 'all' || log.workspaceId === filterWorkspace;
-    const matchesQuery = searchQuery === '' || log.summary.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesQuery =
+      searchQuery === '' || log.summary.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesWorkspace && matchesQuery;
   });
 
@@ -51,8 +39,8 @@ export const TaskLogView: React.FC = () => {
     // Cycle status: in-progress -> done -> blocked -> in-progress
     const statusCycle: Record<TaskLog['status'], TaskLog['status']> = {
       'in-progress': 'done',
-      'done': 'blocked',
-      'blocked': 'in-progress'
+      done: 'blocked',
+      blocked: 'in-progress',
     };
     const nextStatus = statusCycle[currentStatus];
     updateTaskLog(id, { status: nextStatus });
@@ -74,7 +62,7 @@ export const TaskLogView: React.FC = () => {
       workspaceId: newLogWorkspace,
       spaceId: null,
       summary: newLogSummary,
-      status: newLogStatus
+      status: newLogStatus,
     });
 
     setNewLogWorkspace('');
@@ -87,8 +75,11 @@ export const TaskLogView: React.FC = () => {
   const formatTime = (isoString: string) => {
     try {
       const date = new Date(isoString);
-      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + 
-             date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      return (
+        date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+        ' ' +
+        date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+      );
     } catch {
       return isoString;
     }
@@ -96,14 +87,15 @@ export const TaskLogView: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      
       {/* Header section */}
       <div className={styles.header}>
         <div>
           <h2 className={styles.headerTitle}>Handoff & Task Logs</h2>
-          <p className={styles.headerSubtitle}>Track milestones, logs, and obstacles across agent processes.</p>
+          <p className={styles.headerSubtitle}>
+            Track milestones, logs, and obstacles across agent processes.
+          </p>
         </div>
-        
+
         <button
           onClick={() => {
             if (workspaces.length > 0) {
@@ -120,16 +112,15 @@ export const TaskLogView: React.FC = () => {
 
       {/* Filters Bar */}
       <div className={styles.filtersBar}>
-        
         {/* Workspace Selector */}
         <div className={styles.filterWrapper}>
           <Select
-            label='Filter Workspace'
+            label="Filter Workspace"
             value={filterWorkspace}
             onChange={setFilterWorkspace}
             options={[
               { value: 'all', name: 'All Workspaces' },
-              ...workspaces.map(w => ({ value: w.id, name: w.name })),
+              ...workspaces.map((w) => ({ value: w.id, name: w.name })),
             ]}
           />
         </div>
@@ -153,7 +144,6 @@ export const TaskLogView: React.FC = () => {
             )}
           </div>
         </div>
-
       </div>
 
       {/* Logs Table Area */}
@@ -175,22 +165,19 @@ export const TaskLogView: React.FC = () => {
                   <td colSpan={5} className={styles.noEntriesCell}>
                     <History className={styles.historyIcon} />
                     <p className={styles.noEntriesTitle}>No log entries found</p>
-                    <p className={styles.noEntriesSubtitle}>Try resetting the workspace / agent filters or create a new entry.</p>
+                    <p className={styles.noEntriesSubtitle}>
+                      Try resetting the workspace / agent filters or create a new entry.
+                    </p>
                   </td>
                 </tr>
               ) : (
                 filteredLogs.map((log) => {
-                  const workspaceObj = workspaces.find(w => w.id === log.workspaceId);
+                  const workspaceObj = workspaces.find((w) => w.id === log.workspaceId);
 
                   return (
-                    <tr
-                      key={log.id}
-                      className={styles.tableRow}
-                    >
+                    <tr key={log.id} className={styles.tableRow}>
                       {/* Timestamp */}
-                      <td className={styles.tdTimeVal}>
-                        {formatTime(log.timestamp)}
-                      </td>
+                      <td className={styles.tdTimeVal}>{formatTime(log.timestamp)}</td>
 
                       {/* Workspace Name */}
                       <td className={styles.tdWorkspace}>
@@ -208,9 +195,7 @@ export const TaskLogView: React.FC = () => {
                       </td>
 
                       {/* Summary text */}
-                      <td className={styles.tdSummary}>
-                        {log.summary}
-                      </td>
+                      <td className={styles.tdSummary}>{log.summary}</td>
 
                       {/* Status Toggle Button */}
                       <td className={styles.tdStatusVal}>
@@ -279,25 +264,25 @@ export const TaskLogView: React.FC = () => {
             <form onSubmit={handleManualAdd} className={styles.modalForm}>
               <div>
                 <Select
-                  label='Select Workspace'
+                  label="Select Workspace"
                   value={newLogWorkspace}
                   onChange={setNewLogWorkspace}
                   options={[
                     { value: '', name: '— Select Workspace —' },
-                    ...workspaces.map(w => ({ value: w.id, name: w.name })),
+                    ...workspaces.map((w) => ({ value: w.id, name: w.name })),
                   ]}
                 />
               </div>
 
               <div>
                 <Select
-                  label='Status'
+                  label="Status"
                   value={newLogStatus}
-                  onChange={v => setNewLogStatus(v as TaskLog['status'])}
+                  onChange={(v) => setNewLogStatus(v as TaskLog['status'])}
                   options={[
                     { value: 'in-progress', name: 'In Progress' },
-                    { value: 'done',        name: 'Completed'   },
-                    { value: 'blocked',     name: 'Blocked'     },
+                    { value: 'done', name: 'Completed' },
+                    { value: 'blocked', name: 'Blocked' },
                   ]}
                 />
               </div>
@@ -322,10 +307,7 @@ export const TaskLogView: React.FC = () => {
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className={styles.modalSubmitBtn}
-                >
+                <button type="submit" className={styles.modalSubmitBtn}>
                   Save Log
                 </button>
               </div>
@@ -333,7 +315,6 @@ export const TaskLogView: React.FC = () => {
           </div>
         </div>
       )}
-
     </div>
   );
 };
@@ -422,7 +403,6 @@ const styles = {
     letter-spacing: 0.05em;
     display: block;
   `,
-
 
   searchCol: css`
     @media (min-width: 768px) {
@@ -686,11 +666,12 @@ const styles = {
     animation: status-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 
     @keyframes status-pulse {
-      0%, 100% {
+      0%,
+      100% {
         opacity: 1;
       }
       50% {
-        opacity: .5;
+        opacity: 0.5;
       }
     }
   `,
@@ -768,8 +749,12 @@ const styles = {
     animation: fade-in 0.2s ease-out forwards;
 
     @keyframes fade-in {
-      from { opacity: 0; }
-      to { opacity: 1; }
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
     }
   `,
 
@@ -784,8 +769,14 @@ const styles = {
     animation: slide-up 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 
     @keyframes slide-up {
-      from { transform: translateY(16px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
+      from {
+        transform: translateY(16px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
     }
   `,
 
@@ -810,7 +801,6 @@ const styles = {
     margin-bottom: 4px;
   `,
 
-
   modalTextarea: css`
     width: 100%;
     background-color: var(--bg-primary);
@@ -821,7 +811,9 @@ const styles = {
     color: var(--text-primary);
     outline: none;
     resize: vertical;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
 
     &:focus {
       border-color: var(--color-brand);
@@ -868,5 +860,5 @@ const styles = {
     &:hover {
       filter: brightness(1.06);
     }
-  `
+  `,
 };
