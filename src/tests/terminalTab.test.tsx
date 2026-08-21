@@ -71,6 +71,10 @@ vi.mock('@xterm/addon-webgl', () => ({
   },
 }));
 vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
+  writeText: (...args: any[]) => clipboardStub.writeText(...args),
+  readText: (...args: any[]) => clipboardStub.readText(...args),
+}));
 
 import { TerminalTab } from '../components/terminal/TerminalTab';
 import { DEFAULT_TERMINAL_CONFIG } from '../utils/terminalThemes';
@@ -275,11 +279,13 @@ describe('TerminalTab PTY lifecycle', () => {
     await renderTerminalTab(); // spawns at 80x24
     await act(async () => {
       getLastTerminal().fireResize(120, 40);
+      await new Promise(r => setTimeout(r, 120));
     });
     expect(commandsCalled('resize_pty')).toEqual([{ sessionId: 's1', cols: 120, rows: 40 }]);
 
     await act(async () => {
       getLastTerminal().fireResize(120, 40);
+      await new Promise(r => setTimeout(r, 120));
     }); // same size → suppressed
     expect(commandsCalled('resize_pty')).toHaveLength(1);
   });

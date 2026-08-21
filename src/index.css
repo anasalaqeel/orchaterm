@@ -201,10 +201,14 @@ body {
 
 /* ── xterm overrides ────────────────────────────────────────────────────────── */
 .xterm {
-  padding: 8px;
+  padding: 4px 6px;
+  box-sizing: border-box;
+  height: 100%;
 }
 .xterm-viewport {
   background-color: transparent !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
 }
 .xterm-screen {
   background-color: transparent !important;

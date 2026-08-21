@@ -64,15 +64,24 @@ type SpawnState = 'idle' | 'spawning' | 'running' | 'error';
 // Fetched once per app session (same OS build for every session/tab) and
 // shared across all TerminalTab instances. Resolves to null on non-Windows
 // hosts, where xterm's windowsPty compat mode simply stays unset.
+let cachedWindowsPty: IWindowsPty | null = null;
 let windowsPtyInfoPromise: Promise<IWindowsPty | null> | null = null;
 function getWindowsPtyInfo(): Promise<IWindowsPty | null> {
+  if (cachedWindowsPty) return Promise.resolve(cachedWindowsPty);
   if (!windowsPtyInfoPromise) {
     windowsPtyInfoPromise = invoke<number | null>('windows_build_number')
-      .then((buildNumber) => (buildNumber ? { backend: 'conpty' as const, buildNumber } : null))
+      .then((buildNumber) => {
+        const info = buildNumber ? { backend: 'conpty' as const, buildNumber } : null;
+        cachedWindowsPty = info;
+        return info;
+      })
       .catch(() => null);
   }
   return windowsPtyInfoPromise;
 }
+
+// Prefetch immediately so it's ready when the first tab mounts
+getWindowsPtyInfo();
 
 // ── Safe fit helper ────────────────────────────────────────────────────────────
 // Always probe proposeDimensions() before calling fit(). If the container has
@@ -328,6 +337,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           ? terminalConfig.letterSpacing
           : 0,
         allowProposedApi: true,
+        rescaleOverlappingGlyphs: true,
+        scrollOnEraseInDisplay: true,
+        windowsPty: cachedWindowsPty ?? (typeof navigator !== 'undefined' && navigator.userAgent.includes('Windows') ? { backend: 'conpty', buildNumber: 22621 } : undefined),
       });
 
       const fitAddon = new FitAddon();
@@ -543,18 +555,49 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         return false;
       });
 
-      // ─ xterm.js → PTY size sync (primary resize mechanism) ──────────
-      // term.onResize fires whenever xterm.js cols/rows actually change —
-      // whether from fit() after a container resize or from switchTab.
-      // We guard on isSpawnedRef so we never call resize_pty before the
-      // PTY process exists, and check lastPtyColsRowsRef so we only emit
-      // resize_pty when grid dimensions actually differ from current PTY state.
+      // ─ DA1 Conformance Response (Primary Device Attributes) ─────────
+      // ConPTY 1.22+ and shells query terminal capabilities via DA1 (\x1b[c) and stall
+      // or glitch until receiving the response. Responding with VT220 conformance (\x1b[?61;4c)
+      // prevents ConPTY sync delays and reflow freezes, identical to VS Code's terminal.
+      term.parser.registerCsiHandler({ final: 'c' }, params => {
+        if (params.length === 0 || (params.length === 1 && params[0] === 0)) {
+          invoke('write_pty', { sessionId, data: '\x1b[?61;4c' }).catch(() => {});
+          return true;
+        }
+        return false;
+      });
+
+      // ─ VS Code-style Asymmetric Resize Debouncing ────────────────────
+      // Vertical resize (rows) is cheap and doesn't cause line reflow or prompt duplication.
+      // Horizontal resize (cols) is expensive because ConPTY reflows lines and shells (bash)
+      // re-evaluate PS1 on SIGWINCH, causing duplicate prompts if triggered mid-drag.
+      // We update rows immediately if cols didn't change, and debounce cols changes by 100ms.
+      let ptyResizeTimer: ReturnType<typeof setTimeout> | null = null;
       const resizeDispose = term.onResize(({ cols, rows }) => {
         if (!isSpawnedRef.current) return;
         const last = lastPtyColsRowsRef.current;
         if (last && last.cols === cols && last.rows === rows) return;
-        lastPtyColsRowsRef.current = { cols, rows };
-        invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
+
+        // If only rows changed (vertical resize), apply immediately like VS Code:
+        if (last && last.cols === cols && last.rows !== rows) {
+          if (ptyResizeTimer) {
+            clearTimeout(ptyResizeTimer);
+            ptyResizeTimer = null;
+          }
+          lastPtyColsRowsRef.current = { cols, rows };
+          invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
+          return;
+        }
+
+        // Horizontal change (or both changed): debounce by 100ms
+        if (ptyResizeTimer) clearTimeout(ptyResizeTimer);
+        ptyResizeTimer = setTimeout(() => {
+          if (!isSpawnedRef.current) return;
+          const currentLast = lastPtyColsRowsRef.current;
+          if (currentLast && currentLast.cols === cols && currentLast.rows === rows) return;
+          lastPtyColsRowsRef.current = { cols, rows };
+          invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
+        }, 100);
       });
 
       // ─ Listen to session-scoped event from Rust ──────────────────────
@@ -629,21 +672,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         resizeObserver.observe(containerRef.current);
       }
 
-      // NOTE: OS file drag-drop (insert dropped paths) is intentionally NOT
-      // wired here. The window sets `dragDropEnabled: false` (required so the
-      // HTML5 tab drag-and-drop / split system works on Windows), which means
-      // Tauri never emits onDragDropEvent — the old handler here was dead code
-      // that never fired. Reinstating file-drop requires a different approach
-      // that doesn't break tab DnD.
-
       // ─ Spawn the PTY process once dims are real and settled ────────────
-      // Deferring to rAF ensures CSS flex layout has resolved. But a new tab
-      // can mount before its container is laid out (size 0) — proposeDimensions
-      // then fails and the PTY would spawn at xterm's 80×24 default. When the
-      // tab later becomes visible the first real fit() resizes ConPTY, which
-      // reflows and leaves a stray blank line at the top. So we POLL until
-      // safeFit yields valid dimensions, then spawn at the correct size — the
-      // later show-fit is a no-op (same cols/rows) and triggers no resize.
+      // Ensure fonts are loaded and CSS flex layout has resolved before measuring.
+      // Starting PTY after font readiness prevents initial dimension mismatch and
+      // avoids immediate post-spawn ConPTY reflows that corrupt the prompt.
       let rafId = 0;
       let spawnAttempts = 0;
       const trySpawn = () => {
@@ -664,12 +696,18 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           // This ensures terminal always starts even in edge cases
           if (!dims && spawnAttempts >= 60) {
             console.warn('[TerminalTab] Container size timeout, using default 80x24');
-            // Force-fit to default size will happen in spawnSession
           }
           spawnSession(); // reads fitted dims, spawns PTY, then sets isSpawnedRef=true
         });
       };
-      rafId = requestAnimationFrame(trySpawn);
+
+      // Gated on document.fonts.ready so glyph measurements use the real monospace font
+      document.fonts.ready.then(() => {
+        if (!effectActiveRef.current) return;
+        (term as any)._core?._charSizeService?.measure();
+        safeFit(fitAddon);
+        rafId = requestAnimationFrame(trySpawn);
+      });
 
       // ─ Cleanup ───────────────────────────────────────────────────────
       return () => {
@@ -678,6 +716,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         isSpawnedRef.current = false;
         lastPtyColsRowsRef.current = null;
         cancelled = true;
+        if (ptyResizeTimer) clearTimeout(ptyResizeTimer);
         cancelAnimationFrame(rafId);
         cancelAnimationFrame(resizeRaf);
         resizeObserver.disconnect();
