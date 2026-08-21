@@ -67,6 +67,49 @@ interface TerminalTabProps {
 
 type SpawnState = 'idle' | 'spawning' | 'running' | 'error';
 
+// ── Clipboard helpers with multi-tier fallback (Tauri plugin -> navigator.clipboard -> execCommand) ──
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (!text) return false;
+  try {
+    await writeText(text);
+    return true;
+  } catch {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        return true;
+      } catch {}
+    }
+  }
+  return false;
+}
+
+async function pasteFromClipboard(): Promise<string> {
+  try {
+    const text = await readText();
+    if (text) return text;
+  } catch {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+        return await navigator.clipboard.readText();
+      }
+    } catch {}
+  }
+  return '';
+}
+
 // ── Propose safe dimensions helper ──────────────────────────────────────────
 // Always probe proposeDimensions() before resizing. If the container has
 // zero size, proposeDimensions() returns undefined.
@@ -150,6 +193,21 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     searchVisibleRef.current = searchVisible;
     const contextMenuRef = useRef(contextMenu);
     contextMenuRef.current = contextMenu;
+
+    // ── Deduplicated paste helper to prevent duplicate pasting ─────────────
+    const lastPasteTimeRef = useRef(0);
+    const lastPasteTextRef = useRef('');
+    const safePaste = useCallback((text: string) => {
+      const term = termRef.current;
+      if (!term || !text) return;
+      const now = Date.now();
+      if (text === lastPasteTextRef.current && now - lastPasteTimeRef.current < 250) {
+        return; // Suppress duplicate paste fired in same burst
+      }
+      lastPasteTimeRef.current = now;
+      lastPasteTextRef.current = text;
+      term.paste(text);
+    }, []);
 
     // ── High-throughput data bufferer (VS Code TerminalDataBufferer pattern) ──
     // Batches rapid incoming PTY chunks to prevent UI thread micro-stutters.
@@ -364,11 +422,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           e.preventDefault();
           const selection = term.getSelection();
           if (selection) {
-            term.paste(selection);
+            safePaste(selection);
           } else {
-            readText()
+            pasteFromClipboard()
               .then((text) => {
-                if (text) term.paste(text);
+                if (text) safePaste(text);
               })
               .catch(() => {});
           }
@@ -451,6 +509,83 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           return false;
         }
 
+        // macOS Cmd+C for copy / Cmd+V for paste
+        const isMac =
+          typeof navigator !== 'undefined' &&
+          /(Macintosh|MacIntel|MacPPC|Mac68K|iPad|iPhone|iPod)/i.test(navigator.userAgent || '');
+        if (isMac && e.metaKey && !e.ctrlKey && !e.altKey) {
+          if (e.key.toLowerCase() === 'c' && !e.shiftKey) {
+            e.preventDefault?.();
+            if (term.hasSelection()) {
+              copyToClipboard(term.getSelection());
+            }
+            return false;
+          }
+          if (e.key.toLowerCase() === 'v' && !e.shiftKey) {
+            e.preventDefault?.();
+            pasteFromClipboard().then((text) => {
+              if (text) safePaste(text);
+            });
+            return false;
+          }
+        }
+
+        // Standard terminal Ctrl+Shift+C / Ctrl+Insert for copy
+        if (
+          (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'c') ||
+          (e.ctrlKey && e.key === 'Insert')
+        ) {
+          e.preventDefault?.();
+          if (term.hasSelection()) {
+            copyToClipboard(term.getSelection());
+          }
+          return false;
+        }
+
+        // Standard terminal Ctrl+Shift+V / Shift+Insert for paste
+        if (
+          (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'v') ||
+          (e.shiftKey && e.key === 'Insert')
+        ) {
+          e.preventDefault?.();
+          pasteFromClipboard().then((text) => {
+            if (text) safePaste(text);
+          });
+          return false;
+        }
+
+        // Cross-platform Page / Scroll navigation (Shift+PageUp/Down, Shift+Home/End)
+        if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+          if (e.key === 'PageUp') {
+            term.scrollPages(-1);
+            return false;
+          }
+          if (e.key === 'PageDown') {
+            term.scrollPages(1);
+            return false;
+          }
+          if (e.key === 'Home') {
+            term.scrollToTop();
+            return false;
+          }
+          if (e.key === 'End') {
+            term.scrollToBottom();
+            return false;
+          }
+        }
+
+        // macOS standard shortcuts (Cmd+K to clear, Cmd+A to select all)
+        if (isMac && e.metaKey && !e.ctrlKey && !e.altKey) {
+          if (e.key.toLowerCase() === 'k') {
+            term.clear();
+            return false;
+          }
+          if (e.key.toLowerCase() === 'a') {
+            term.selectAll();
+            return false;
+          }
+        }
+
         // Check for custom keybindings
         const binding = resolveTerminalKey(buildCombo(e), keybindingsRef.current);
 
@@ -470,10 +605,13 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
               break;
             case 'copy':
               if (term.hasSelection()) {
-                writeText(term.getSelection()).catch(() => {});
+                copyToClipboard(term.getSelection()).catch(() => {});
               }
               break;
             case 'paste':
+              pasteFromClipboard().then((text) => {
+                if (text) safePaste(text);
+              });
               break;
           }
           return false;
@@ -848,7 +986,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
             onClick={() => {
               const term = termRef.current;
               if (term && term.hasSelection()) {
-                writeText(term.getSelection()).catch(() => {});
+                copyToClipboard(term.getSelection()).catch(() => {});
                 setHasCopied(true);
                 setTimeout(() => setHasCopied(false), 2000);
               }
@@ -1027,7 +1165,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
               onClick={() => {
                 const term = termRef.current;
                 if (term && term.hasSelection()) {
-                  writeText(term.getSelection()).catch(() => {});
+                  copyToClipboard(term.getSelection()).catch(() => {});
                 }
                 setContextMenu(null);
               }}
@@ -1039,9 +1177,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
               onClick={() => {
                 const term = termRef.current;
                 if (term) {
-                  readText()
+                  pasteFromClipboard()
                     .then((text) => {
-                      if (text) term.paste(text);
+                      if (text) safePaste(text);
                     })
                     .catch(() => {});
                 }

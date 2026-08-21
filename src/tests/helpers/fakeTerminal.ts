@@ -147,11 +147,17 @@ export class FakeTerminal {
   }
   scrollToTop() {}
   scrollToBottom() {}
+  scrollPages(_pages: number) {}
+  scrollLines(_lines: number) {}
   paste(text: string) {
     this.pasted.push(text);
   }
   selectAll() {
     this.selectAllCalled = true;
+  }
+  clearSelection() {
+    this.selectionText = '';
+    this.selectionHandler?.();
   }
   hasSelection() {
     return this.selectionText !== '';
@@ -177,7 +183,9 @@ export class FakeTerminal {
     this.titleHandler?.(title);
   }
   fireKey(e: Record<string, unknown>): boolean | undefined {
-    return this.keyHandler?.({ type: 'keydown', ...e }) as boolean | undefined;
+    return this.keyHandler?.({ type: 'keydown', preventDefault: () => {}, ...e }) as
+      | boolean
+      | undefined;
   }
   fireCsi(prefix: string, final: string, params: unknown[]) {
     this.csiHandlers
