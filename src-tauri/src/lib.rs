@@ -572,6 +572,8 @@ fn spawn_pty(
     if !workspace_path.trim().is_empty() {
         cmd.cwd(&workspace_path);
     }
+    cmd.env("TERM_PROGRAM", "orchaterm");
+    cmd.env("TERM_PROGRAM_VERSION", "0.1.0");
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
 
@@ -586,6 +588,8 @@ fn spawn_pty(
             if !workspace_path.trim().is_empty() {
                 fallback.cwd(&workspace_path);
             }
+            fallback.env("TERM_PROGRAM", "orchaterm");
+            fallback.env("TERM_PROGRAM_VERSION", "0.1.0");
             fallback.env("TERM", "xterm-256color");
             fallback.env("COLORTERM", "truecolor");
             pair.slave.spawn_command(fallback)
