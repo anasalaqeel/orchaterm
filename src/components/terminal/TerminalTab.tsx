@@ -7,7 +7,7 @@ import {
   forwardRef,
   useMemo,
 } from 'react';
-import { Terminal, IWindowsPty } from '@xterm/xterm';
+import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -17,8 +17,8 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
-import { css } from '@emotion/css';
-import { Copy, Check, Search, X } from 'lucide-react';
+import { css, cx } from '@emotion/css';
+import { Copy, Check, Search, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
 import {
   DEFAULT_TERMINAL_CONFIG,
@@ -39,6 +39,8 @@ export interface TerminalTabHandle {
   fit: () => void;
   /** Focus the xterm instance so keyboard input is captured. */
   focus: () => void;
+  /** Synchronously flush any pending buffered output to xterm. */
+  flush: () => void;
 }
 
 interface TerminalTabProps {
@@ -50,6 +52,10 @@ interface TerminalTabProps {
   shellArgs?: string[];
   /** Called when the PTY child process exits. */
   onExit?: () => void;
+  /** Called when the shell emits OSC 0 or OSC 2 window/tab title changes. */
+  onTitleChange?: (title: string) => void;
+  /** Called when the shell emits OSC 7 or OSC 9 CWD changes. */
+  onCwdChange?: (cwd: string) => void;
   /**
    * Whether this tab is actually on-screen right now (its workspace console
    * is showing AND it's the active/split-visible tab within it). The xterm
@@ -61,72 +67,36 @@ interface TerminalTabProps {
 
 type SpawnState = 'idle' | 'spawning' | 'running' | 'error';
 
-// Fetched once per app session (same OS build for every session/tab) and
-// shared across all TerminalTab instances. Resolves to null on non-Windows
-// hosts, where xterm's windowsPty compat mode simply stays unset.
-let cachedWindowsPty: IWindowsPty | null = null;
-let windowsPtyInfoPromise: Promise<IWindowsPty | null> | null = null;
-function getWindowsPtyInfo(): Promise<IWindowsPty | null> {
-  if (cachedWindowsPty) return Promise.resolve(cachedWindowsPty);
-  if (!windowsPtyInfoPromise) {
-    windowsPtyInfoPromise = invoke<number | null>('windows_build_number')
-      .then((buildNumber) => {
-        const info = buildNumber ? { backend: 'conpty' as const, buildNumber } : null;
-        cachedWindowsPty = info;
-        return info;
-      })
-      .catch(() => null);
-  }
-  return windowsPtyInfoPromise;
-}
-
-// Prefetch immediately so it's ready when the first tab mounts
-getWindowsPtyInfo();
-
-// ── Safe fit helper ────────────────────────────────────────────────────────────
-// Always probe proposeDimensions() before calling fit(). If the container has
-// zero size, proposeDimensions() returns undefined and fit() crashes internally
-// trying to read .dimensions on that undefined value.
-function safeFit(addon: FitAddon): { cols: number; rows: number } | null {
+// ── Propose safe dimensions helper ──────────────────────────────────────────
+// Always probe proposeDimensions() before resizing. If the container has
+// zero size, proposeDimensions() returns undefined.
+function proposeSafeDimensions(addon: FitAddon): { cols: number; rows: number } | null {
   try {
     const dims = addon.proposeDimensions();
     if (!dims || dims.cols <= 0 || dims.rows <= 0) return null;
-    addon.fit();
-    return dims;
+    return {
+      cols: Math.max(10, dims.cols),
+      rows: Math.max(1, dims.rows),
+    };
   } catch {
     return null;
   }
 }
 
-// Matches ANSI escapes / OSC sequences / lone control chars so we can tell
-// whether a chunk has any *printable* content yet.
-const ANSI_CONTROL = new RegExp(
-  '\\u001b\\][^\\u0007]*(?:\\u0007|\\u001b\\\\)|\\u001b\\[[0-9;?]*[ -\\/]*[@-~]|\\u001b[@-Z\\\\-_]|[\\u0000-\\u0009\\u000b-\\u001f\\u007f]',
-  'g'
-);
-
-/**
- * Some shells (notably Git Bash, whose default PS1 starts with `\n`) emit a
- * leading newline before the first prompt, leaving a blank row at the very top.
- * Strip exactly ONE leading newline — but only when it is the session's first
- * visible content (everything before it is escape sequences). Returns the
- * (possibly trimmed) data plus whether the one-shot decision is now resolved.
- *
- * Safe for other shells: PowerShell/WSL print a printable prompt first (decision
- * resolves without stripping), and TUIs (Claude, agy) clear/redraw the screen.
- */
-function stripLeadingPromptNewline(data: string): { out: string; resolved: boolean } {
-  const visible = data.replace(ANSI_CONTROL, '').replace(/\r/g, '');
-  if (visible === '') return { out: data, resolved: false }; // escapes only — wait
-  if (!visible.startsWith('\n')) return { out: data, resolved: true }; // printable first — leave as-is
-  // Leading newline confirmed: drop the first \n (and an immediately preceding \r).
-  const nl = data.indexOf('\n');
-  const cut = nl > 0 && data[nl - 1] === '\r' ? nl - 1 : nl;
-  return { out: data.slice(0, cut) + data.slice(nl + 1), resolved: true };
-}
-
 export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
-  ({ sessionId, workspacePath, shell, shellArgs, onExit, isVisible = true }, ref) => {
+  (
+    {
+      sessionId,
+      workspacePath,
+      shell,
+      shellArgs,
+      onExit,
+      onTitleChange,
+      onCwdChange,
+      isVisible = true,
+    },
+    ref
+  ) => {
     const { settings, workspaces, spaces, activeWorkspaceId, activeSpaceId } = useDashboard();
     const terminalConfig = useMemo(
       () => settings.terminalConfig ?? DEFAULT_TERMINAL_CONFIG,
@@ -142,10 +112,13 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     const [hasSelection, setHasSelection] = useState(false);
     const [hasCopied, setHasCopied] = useState(false);
 
-    // Search state
+    // Search state & options
     const [searchVisible, setSearchVisible] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [searchResults, setSearchResults] = useState(0);
+    const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
+    const [searchWholeWord, setSearchWholeWord] = useState(false);
+    const [searchRegex, setSearchRegex] = useState(false);
+    const [searchResults, setSearchResults] = useState<{ index: number; count: number } | null>(null);
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -155,52 +128,60 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
     // Search addon ref
     const searchAddonRef = useRef<SearchAddon | null>(null);
-    // Guard against React StrictMode double-invocation. When StrictMode runs
-    // cleanup immediately after the first effect, it sets this to true so the
-    // second (redundant) invocation is a no-op. Manually triggered retries
-    // reset this flag because they come from the retry button, not from the
-    // effect re-running with the same deps.
-    const effectActiveRef = useRef(false);
-    // True once the PTY is alive — allows the term.onResize handler to call
-    // resize_pty without racing a spawn that hasn't returned yet.
-    const isSpawnedRef = useRef(false);
-    // Tracks the exact (cols, rows) grid size as of the last resize_pty call sent
-    // to the PTY. Guarantees that Xterm.js and ConPTY stay 100% in sync without
-    // sending redundant IPC calls when dimensions haven't changed.
-    const lastPtyColsRowsRef = useRef<{ cols: number; rows: number } | null>(null);
 
-    // Live refs read inside the (long-lived) main effect so it never closes over
-    // a stale value. keybindings: lets the custom key handler stay on THIS term
-    // and pick up config edits without re-attaching. onExit: avoids a stale
-    // callback firing on process exit after the parent re-rendered.
-    // searchVisible/contextMenu: the custom key handler checks these to close
-    // the overlays on Escape — captured state would stay frozen at its
-    // mount-time value (false/null) and the Escape branches would never fire.
+    // Guards & tracking refs
+    const effectActiveRef = useRef(false);
+    const isSpawnedRef = useRef(false);
+    const lastPtyColsRowsRef = useRef<{ cols: number; rows: number } | null>(null);
+    const requestResizeRef = useRef<((cols: number, rows: number, immediate?: boolean) => void) | null>(
+      null
+    );
+
+    // Live refs to avoid stale closures in listeners
     const keybindingsRef = useRef(terminalConfig.keybindings);
     keybindingsRef.current = terminalConfig.keybindings;
     const onExitRef = useRef(onExit);
     onExitRef.current = onExit;
+    const onTitleChangeRef = useRef(onTitleChange);
+    onTitleChangeRef.current = onTitleChange;
+    const onCwdChangeRef = useRef(onCwdChange);
+    onCwdChangeRef.current = onCwdChange;
     const searchVisibleRef = useRef(searchVisible);
     searchVisibleRef.current = searchVisible;
     const contextMenuRef = useRef(contextMenu);
     contextMenuRef.current = contextMenu;
 
-    // ── Expose fit() to parent via ref ───────────────────────────────────
-    // safeFit → fit() → term.onResize fires → resize_pty (if spawned).
-    // No need to call resize_pty directly here.
+    // ── High-throughput data bufferer (VS Code TerminalDataBufferer pattern) ──
+    // Batches rapid incoming PTY chunks to prevent UI thread micro-stutters.
+    // The raw byte stream is never mutated so xterm and ConPTY coordinates remain in 100% sync.
+    const writeBufferRef = useRef<string[]>([]);
+    const writeRafRef = useRef<number | null>(null);
+
+    const flushWrites = useCallback(() => {
+      if (writeRafRef.current !== null) {
+        cancelAnimationFrame(writeRafRef.current);
+        writeRafRef.current = null;
+      }
+      const term = termRef.current;
+      if (!term || writeBufferRef.current.length === 0) return;
+
+      const raw = writeBufferRef.current.join('');
+      writeBufferRef.current = [];
+      term.write(raw);
+    }, []);
+
+    // ── Expose imperative handle to parent ──────────────────────────────────
     useImperativeHandle(ref, () => ({
       fit: () => {
         const term = termRef.current;
-        if (!fitAddonRef.current || !term) return;
+        const fitAddon = fitAddonRef.current;
+        if (!fitAddon || !term) return;
+        flushWrites();
         (term as any)._core?._charSizeService?.measure();
-        // onResize (if it fires) is synchronous within fit() — xterm only fires it
-        // when cols/rows actually change. Clear the flag right after in case it
-        // didn't fire, so it can't dangle true and bypass the noise guard on some
-        // later, unrelated container resize.
-        safeFit(fitAddonRef.current);
-        // The WebGL glyph atlas desyncs while the pane is hidden (no paints) —
-        // on re-show the first frame draws stale/overlapping glyphs. Rebuild it,
-        // then force a full redraw so every cell repaints from clean state.
+        const dims = proposeSafeDimensions(fitAddon);
+        if (dims) {
+          requestResizeRef.current?.(dims.cols, dims.rows, true);
+        }
         try {
           webglAddonRef.current?.clearTextureAtlas();
         } catch {
@@ -212,37 +193,25 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       focus: () => {
         termRef.current?.focus();
       },
+      flush: () => {
+        flushWrites();
+      },
     }));
 
     // ── Quick Actions bar → PTY ───────────────────────────────────────────
-    // Wrap in bracketed-paste markers ourselves (same escape sequences and
-    // condition xterm.js's own term.paste() uses — see Clipboard.ts's
-    // bracketTextForPaste) so the shell/app sees this as one pasted blob,
-    // not fast synthetic keystrokes exposed to per-character shell-side side
-    // effects (autosuggestion accept, magic-space history expansion, etc.)
-    // that can execute the command early and leak trailing text into
-    // whatever starts next. We build the whole payload (markers + trailing
-    // Enter) as ONE string and send it in a single call rather than calling
-    // term.paste() and then a separate write_pty for '\r': write_pty is an
-    // async Tauri command, so two independent invokes here would have no
-    // guaranteed ordering — a single combined write does.
     const runQuickActionCommand = useCallback(
       (command: string, autoExecute: boolean) => {
         const term = termRef.current;
         if (!term) return;
+        flushWrites();
         const data = formatTerminalWrite(command, autoExecute, term.modes.bracketedPasteMode);
         writePtyChunked(sessionId, data).catch((err) =>
           console.error('[TerminalTab] write_pty failed:', err)
         );
       },
-      [sessionId]
+      [sessionId, flushWrites]
     );
 
-    // Every quick action injects its text into the terminal (paste or auto-run).
-    // {{selection}} / {{terminal_output}} / etc. are expanded from live terminal
-    // context just before the text is written to the PTY — no modal, no extra
-    // AI round-trip; whatever shell or CLI agent is running in the tab receives
-    // the final text.
     const handleRunAction = useCallback(
       (action: QuickAction) => {
         const ctx = buildPromptContext(termRef.current, {
@@ -258,7 +227,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       [workspaces, spaces, activeWorkspaceId, activeSpaceId, workspacePath, runQuickActionCommand]
     );
 
-    // ── Spawn helper (used for initial spawn AND retry) ──────────────────
+    // ── Spawn helper ─────────────────────────────────────────────────────────
     const spawnSession = useCallback(async () => {
       const term = termRef.current;
       if (!term) return;
@@ -266,14 +235,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       setSpawnState('spawning');
       setErrorMsg('');
 
-      // Fit first so the PTY starts with the real terminal dimensions.
-      // When called from the rAF (normal start-up) the container has already
-      // settled so safeFit returns real dims. On Retry clicks the container
-      // is already sized too. Use current xterm.js cols/rows as fallback
-      // (safer than the hardcoded 80×24 — xterm may have already been fitted).
-      const fitted = fitAddonRef.current ? safeFit(fitAddonRef.current) : null;
-      const cols = fitted?.cols ?? term.cols;
-      const rows = fitted?.rows ?? term.rows;
+      const dims = fitAddonRef.current ? proposeSafeDimensions(fitAddonRef.current) : null;
+      const cols = dims?.cols ?? term.cols;
+      const rows = dims?.rows ?? term.rows;
+
+      term.resize(cols, rows);
 
       try {
         await invoke('spawn_pty', {
@@ -285,26 +251,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           shellArgs: shellArgs ?? [],
         });
 
-        // Mark PTY as live so the onResize handler starts forwarding size changes.
         isSpawnedRef.current = true;
         setSpawnState('running');
-        // Baseline for the onResize grid-size guard — the PTY was just
-        // spawned at these exact cols/rows.
         lastPtyColsRowsRef.current = { cols, rows };
 
-        // Focus xterm now that the PTY is alive and ready for input.
         termRef.current?.focus();
-
-        // If xterm.js was resized while we were awaiting spawn_pty (unlikely
-        // but possible), correct the PTY now.
-        const liveterm = termRef.current;
-        if (liveterm && (liveterm.cols !== cols || liveterm.rows !== rows)) {
-          invoke('resize_pty', {
-            sessionId,
-            cols: liveterm.cols,
-            rows: liveterm.rows,
-          }).catch(() => {});
-        }
       } catch (err: any) {
         const msg = typeof err === 'string' ? err : (err?.message ?? 'Unknown error');
         setSpawnState('error');
@@ -313,16 +264,48 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       }
     }, [sessionId, workspacePath, shell, shellArgs]);
 
+    // ── Search executor helper ───────────────────────────────────────────────
+    const executeSearch = useCallback(
+      (query: string, forward = true) => {
+        const addon = searchAddonRef.current;
+        if (!addon) return;
+        if (!query) {
+          addon.clearDecorations();
+          setSearchResults(null);
+          return;
+        }
+
+        const options = {
+          caseSensitive: searchCaseSensitive,
+          wholeWord: searchWholeWord,
+          regex: searchRegex,
+          decorations: {
+            matchOverviewRuler: '#7B68EE',
+            activeMatchColorOverviewRuler: '#3b82f6',
+          },
+        };
+
+        if (forward) {
+          addon.findNext(query, options);
+        } else {
+          addon.findPrevious(query, options);
+        }
+
+        if (!(addon as any).onDidChangeResults) {
+          setSearchResults({ index: 1, count: 1 });
+        }
+      },
+      [searchCaseSensitive, searchWholeWord, searchRegex]
+    );
+
     // ── Main effect — creates xterm, wires listeners, spawns PTY ─────────
     useEffect(() => {
       if (!containerRef.current) return;
-      // If the effect is already active (StrictMode double-invocation in dev),
-      // skip this redundant run. The flag is reset in cleanup so a genuine
-      // re-run (deps change or manual retry) still works correctly.
       if (effectActiveRef.current) return;
       effectActiveRef.current = true;
+      writeBufferRef.current = [];
 
-      // ─ xterm instance ────────────────────────────────────────────────
+      // ─ xterm instance (matches VS Code xterm configuration) ───────────
       const term = new Terminal({
         cursorBlink: terminalConfig.cursorBlink,
         cursorStyle: terminalConfig.cursorStyle,
@@ -339,7 +322,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         allowProposedApi: true,
         rescaleOverlappingGlyphs: true,
         scrollOnEraseInDisplay: true,
-        windowsPty: cachedWindowsPty ?? (typeof navigator !== 'undefined' && navigator.userAgent.includes('Windows') ? { backend: 'conpty', buildNumber: 22621 } : undefined),
+        reflowCursorLine: false,
       });
 
       const fitAddon = new FitAddon();
@@ -352,15 +335,21 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       });
       term.loadAddon(webLinksAddon);
 
-      // Search addon for finding text in terminal
       const searchAddon = new SearchAddon();
       term.loadAddon(searchAddon);
       searchAddonRef.current = searchAddon;
 
-      // Unicode 11 width tables — xterm defaults to Unicode 6, which
-      // mis-measures wide/emoji/box-drawing glyphs that modern TUIs (Claude
-      // Code, etc.) and ConPTY both assume Unicode 11+ widths for. A
-      // mis-measured glyph shifts every column after it on that row.
+      // Listen to search result updates if supported by the search addon
+      if ((searchAddon as any).onDidChangeResults) {
+        (searchAddon as any).onDidChangeResults((e: { resultIndex: number; resultCount: number }) => {
+          if (e.resultCount === 0) {
+            setSearchResults({ index: 0, count: 0 });
+          } else {
+            setSearchResults({ index: e.resultIndex + 1, count: e.resultCount });
+          }
+        });
+      }
+
       term.loadAddon(new Unicode11Addon());
       term.unicode.activeVersion = '11';
 
@@ -369,41 +358,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       termRef.current = term;
       fitAddonRef.current = fitAddon;
 
-      // ConPTY compat heuristics (scrollback-on-grow, reflow) — see IWindowsPty
-      // doc comment. No-op on non-Windows (info resolves to null).
-      getWindowsPtyInfo().then((info) => {
-        if (!effectActiveRef.current || !info) return;
-        term.options.windowsPty = info;
-      });
-
-      // ─ Wait for custom fonts to load ──────────────────────────────────────
-      // Prevents overlapping text if xterm measures cells using a fallback font
-      // before the custom web font (like Fira Code) is fully loaded.
-      document.fonts.ready.then(() => {
-        if (!effectActiveRef.current) return;
-        (term as any)._core?._charSizeService?.measure();
-        safeFit(fitAddon);
-        try {
-          webglAddonRef.current?.clearTextureAtlas();
-        } catch {
-          /* ignore */
-        }
-        term.refresh(0, term.rows - 1);
-      });
-
-      // GPU renderer attachment lives in its own effect, gated on `isVisible`
-      // (see below) — Chromium caps concurrent WebGL contexts at ~16, and
-      // every tab/pane's xterm instance stays mounted indefinitely so PTY
-      // output keeps flowing while hidden, so we can't just attach on mount.
-
-      // ─ Mouse shortcuts (Linux middle-click paste) ───────────────────────
+      // ─ Mouse shortcuts ──────────────────────────────────────────────────
       const onMouseUp = (e: MouseEvent) => {
         if (e.button === 1) {
           e.preventDefault();
-          // Route through term.paste() (not a raw write) so xterm wraps the
-          // text in bracketed-paste markers when the app enabled mode 2004 —
-          // otherwise newlines in a multi-line selection are read as Enter and
-          // submitted line-by-line (e.g. agy ran each line as a command).
           const selection = term.getSelection();
           if (selection) {
             term.paste(selection);
@@ -417,10 +375,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         }
       };
       const onMouseDown = (e: MouseEvent) => {
-        if (e.button === 1) e.preventDefault(); // Prevent browser autoscroll
+        if (e.button === 1) e.preventDefault();
       };
 
-      // ─ Context menu (right-click) ───────────────────────────────────────
       const onContextMenu = (e: MouseEvent) => {
         e.preventDefault();
         setContextMenu({ x: e.clientX, y: e.clientY });
@@ -434,18 +391,14 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         setHasSelection(term.hasSelection());
       });
 
-      // ─ Visual bell handler ────────────────────────────────────────────────
-      // Show a visual flash when the terminal emits a bell character
       const bellDispose = term.onBell(() => {
         setBellActive(true);
         setTimeout(() => setBellActive(false), 200);
       });
 
       // ─ Forward keyboard input → PTY ──────────────────────────────────
-      // Large inputs (paste) are chunked: Windows ConPTY / readline-based CLIs
-      // drop characters when a big buffer arrives in a single write. Single
-      // keystrokes go direct so typing has no added latency.
       const dataDispose = term.onData((data) => {
+        flushWrites();
         if (data.length > 80) {
           writePtyChunked(sessionId, data).catch((err) =>
             console.error('[TerminalTab] writePtyChunked failed:', err)
@@ -458,63 +411,49 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       });
 
       // ─ Kitty keyboard protocol ────────────────────────────────────────────
-      // xterm 5.3 has no kitty keyboard support, so apps that enable it (e.g.
-      // Claude Code, aider, Antigravity CLI, nvim) get no reply to their query
-      // and their keys stay legacy-encoded — desyncing their input parser
-      // (Antigravity's double-Ctrl+D exit silently failed; Shift+Enter is
-      // indistinguishable from Enter). attachKittyProtocol tracks the
-      // requested flags and auto-resets them when a TUI hands control back to
-      // the shell; kittyEncodeKey (below) reports Ctrl/Alt combos plus
-      // Escape/Enter/Tab/Backspace as CSI-u while flags are active.
-      // https://sw.kovidgoyal.net/kitty/keyboard-protocol/
       const kitty = attachKittyProtocol(term, (data) => {
         invoke('write_pty', { sessionId, data }).catch(() => {});
       });
 
-      // ─ Single keyboard authority (bound to THIS term instance) ───────────
-      // Reads the latest keybindings via a ref, so config edits apply live
-      // without re-attaching AND the handler is never stranded on a stale
-      // disposed terminal after a deps change recreated it. Unbound combos
-      // (the default) return true → forwarded to the PTY like a real emulator.
+      // ─ Single keyboard authority ──────────────────────────────────────────
       term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
         if (e.type !== 'keydown') return true;
 
-        // When search is visible, only pass through Escape to close it
-        // All other keys are handled by the search input
+        // When search is open, Escape closes search and refocuses terminal
         if (searchVisibleRef.current) {
           if (e.key === 'Escape') {
             setSearchVisible(false);
             searchAddonRef.current?.clearDecorations();
             setSearchQuery('');
-            setSearchResults(0);
+            setSearchResults(null);
+            term.focus();
             return false;
           }
-          // Don't pass any other keys to terminal while search is active
           return false;
         }
 
-        // Ctrl+F / Cmd+F for search (overrideable via keybindings)
+        // Ctrl+F / Cmd+F for search
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.shiftKey && !e.altKey) {
           setSearchVisible(true);
-          // Focus search input after state update - use requestAnimationFrame for proper timing
           requestAnimationFrame(() => {
             const searchInput = document.querySelector(
               `[data-search-input="true"]`
             ) as HTMLInputElement;
             searchInput?.focus();
+            searchInput?.select();
           });
           return false;
         }
 
-        // Escape to close context menu
+        // Escape closes context menu
         if (e.key === 'Escape' && contextMenuRef.current) {
           setContextMenu(null);
           return false;
         }
 
+        // Check for custom keybindings
         const binding = resolveTerminalKey(buildCombo(e), keybindingsRef.current);
 
-        // If there's an explicit binding, handle it according to its action.
         if (binding && binding.action !== 'passthrough') {
           switch (binding.action) {
             case 'clear':
@@ -535,12 +474,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
               }
               break;
             case 'paste':
-              // Chromium fires a native paste for Ctrl+Shift+V (bracketed-paste
-              // handled by xterm). We only consume the keydown so the raw control
-              // byte never reaches the shell — no manual clipboard read here.
               break;
           }
-          return false; // Consume: matched and handled
+          return false;
         }
 
         // Unbound or explicit passthrough → PTY
@@ -548,18 +484,15 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           const kittySeq = kittyEncodeKey(e, kitty.getFlags());
           if (kittySeq) {
             invoke('write_pty', { sessionId, data: kittySeq }).catch(() => {});
-            return false; // consume; don't let xterm send the legacy byte
+            return false;
           }
-          return true; // legacy passthrough → PTY
+          return true;
         }
         return false;
       });
 
-      // ─ DA1 Conformance Response (Primary Device Attributes) ─────────
-      // ConPTY 1.22+ and shells query terminal capabilities via DA1 (\x1b[c) and stall
-      // or glitch until receiving the response. Responding with VT220 conformance (\x1b[?61;4c)
-      // prevents ConPTY sync delays and reflow freezes, identical to VS Code's terminal.
-      term.parser.registerCsiHandler({ final: 'c' }, params => {
+      // ─ DA1 & DA2 Device Attributes Conformance ───────────────────────
+      term.parser.registerCsiHandler({ final: 'c' }, (params) => {
         if (params.length === 0 || (params.length === 1 && params[0] === 0)) {
           invoke('write_pty', { sessionId, data: '\x1b[?61;4c' }).catch(() => {});
           return true;
@@ -567,67 +500,147 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         return false;
       });
 
-      // ─ VS Code-style Asymmetric Resize Debouncing ────────────────────
-      // Vertical resize (rows) is cheap and doesn't cause line reflow or prompt duplication.
-      // Horizontal resize (cols) is expensive because ConPTY reflows lines and shells (bash)
-      // re-evaluate PS1 on SIGWINCH, causing duplicate prompts if triggered mid-drag.
-      // We update rows immediately if cols didn't change, and debounce cols changes by 100ms.
-      let ptyResizeTimer: ReturnType<typeof setTimeout> | null = null;
-      const resizeDispose = term.onResize(({ cols, rows }) => {
-        if (!isSpawnedRef.current) return;
-        const last = lastPtyColsRowsRef.current;
-        if (last && last.cols === cols && last.rows === rows) return;
+      term.parser.registerCsiHandler({ prefix: '>', final: 'c' }, () => {
+        invoke('write_pty', { sessionId, data: '\x1b[>1;10;0c' }).catch(() => {});
+        return true;
+      });
 
-        // If only rows changed (vertical resize), apply immediately like VS Code:
-        if (last && last.cols === cols && last.rows !== rows) {
+      // ─ VS Code Shell Integration & OSC Handlers ───────────────────────
+      // OSC 0 & OSC 2: Window / Tab Title updates
+      const handleTitle = (title: string) => {
+        const clean = title.trim();
+        if (clean) onTitleChangeRef.current?.(clean);
+      };
+      term.onTitleChange(handleTitle);
+      term.parser.registerOscHandler(0, (data) => {
+        handleTitle(data);
+        return true;
+      });
+      term.parser.registerOscHandler(2, (data) => {
+        handleTitle(data);
+        return true;
+      });
+
+      // OSC 7 & OSC 9: Current Working Directory (CWD) updates
+      term.parser.registerOscHandler(7, (data) => {
+        try {
+          const url = new URL(data);
+          let path = decodeURIComponent(url.pathname);
+          if (/^\/[a-zA-Z]:/.test(path)) path = path.slice(1);
+          onCwdChangeRef.current?.(path);
+        } catch {
+          onCwdChangeRef.current?.(data);
+        }
+        return true;
+      });
+
+      term.parser.registerOscHandler(9, (data) => {
+        if (data.startsWith('9;')) {
+          const path = data.slice(2).replace(/^["']|["']$/g, '');
+          onCwdChangeRef.current?.(path);
+          return true;
+        }
+        return false;
+      });
+
+      // OSC 133 & OSC 633: FinalTerm and VS Code Prompt / Command markers
+      term.parser.registerOscHandler(133, () => true);
+      term.parser.registerOscHandler(633, () => true);
+
+      // ─ VS Code TerminalResizeDebouncer Pattern ───────────────────────────
+      // During active drag/resize, horizontal dimension changes are debounced by 100ms.
+      // This prevents sending rapid SIGWINCH signals to shells (like bash / readline) on every
+      // intermediate frame, eliminating ghost wrapped lines and duplicate prompts ($ \n $).
+      // When the drag settles, xterm.resize and resize_pty execute in lockstep.
+      let ptyResizeTimer: ReturnType<typeof setTimeout> | null = null;
+      const requestResize = (cols: number, rows: number, immediate: boolean = false) => {
+        const currentTerm = termRef.current;
+        if (!currentTerm || !isSpawnedRef.current) return;
+        const clampedCols = Math.max(10, cols);
+        const clampedRows = Math.max(1, rows);
+        const last = lastPtyColsRowsRef.current;
+        if (last && last.cols === clampedCols && last.rows === clampedRows) return;
+
+        // Immediate fit for spawn, tab focus, font changes
+        if (immediate) {
           if (ptyResizeTimer) {
             clearTimeout(ptyResizeTimer);
             ptyResizeTimer = null;
           }
-          lastPtyColsRowsRef.current = { cols, rows };
-          invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
+          lastPtyColsRowsRef.current = { cols: clampedCols, rows: clampedRows };
+          currentTerm.resize(clampedCols, clampedRows);
+          invoke('resize_pty', { sessionId, cols: clampedCols, rows: clampedRows }).catch(() => {});
           return;
         }
 
-        // Horizontal change (or both changed): debounce by 100ms
+        // Vertical resize (rows only) is safe to execute immediately without reflowing text
+        if (last && last.cols === clampedCols && last.rows !== clampedRows) {
+          if (ptyResizeTimer) {
+            clearTimeout(ptyResizeTimer);
+            ptyResizeTimer = null;
+          }
+          lastPtyColsRowsRef.current = { cols: clampedCols, rows: clampedRows };
+          currentTerm.resize(clampedCols, clampedRows);
+          invoke('resize_pty', { sessionId, cols: clampedCols, rows: clampedRows }).catch(() => {});
+          return;
+        }
+
+        // Horizontal resize (cols changed): debounce by 100ms so intermediate drag frames do not
+        // bombard the shell with SIGWINCH while dragging.
         if (ptyResizeTimer) clearTimeout(ptyResizeTimer);
         ptyResizeTimer = setTimeout(() => {
-          if (!isSpawnedRef.current) return;
+          if (!effectActiveRef.current || !isSpawnedRef.current) return;
+          const t = termRef.current;
+          if (!t) return;
           const currentLast = lastPtyColsRowsRef.current;
-          if (currentLast && currentLast.cols === cols && currentLast.rows === rows) return;
-          lastPtyColsRowsRef.current = { cols, rows };
-          invoke('resize_pty', { sessionId, cols, rows }).catch(() => {});
+          if (currentLast && currentLast.cols === clampedCols && currentLast.rows === clampedRows) return;
+          lastPtyColsRowsRef.current = { cols: clampedCols, rows: clampedRows };
+          if (t.cols !== clampedCols || t.rows !== clampedRows) {
+            t.resize(clampedCols, clampedRows);
+          }
+          invoke('resize_pty', { sessionId, cols: clampedCols, rows: clampedRows }).catch(() => {});
         }, 100);
+      };
+
+      requestResizeRef.current = requestResize;
+
+      const resizeDispose = term.onResize(({ cols, rows }) => {
+        if (!isSpawnedRef.current) return;
+        const last = lastPtyColsRowsRef.current;
+        if (last && last.cols === cols && last.rows === rows) return;
+        requestResize(cols, rows, false);
       });
 
-      // ─ Listen to session-scoped event from Rust ──────────────────────
-      // We store both the cleanup function AND a "cancelled" flag so that
-      // if the component unmounts before the promise resolves we still
-      // clean up properly.
+      // ─ Listen to session-scoped events from Rust ──────────────────────
       let cancelled = false;
       let unlisten: UnlistenFn | null = null;
 
       const eventName = `pty-data-${sessionId}`;
-      // Registering a Tauri listener is async (IPC round-trip). We MUST spawn the
-      // PTY only after this resolves — otherwise the shell's initial output
-      // (cursor-home / clear sequences + first prompt) can be emitted before the
-      // listener attaches and is dropped, leaving a stray blank line / garbled top.
-      // One-shot: suppress a single leading prompt newline at session start
-      // (e.g. Git Bash PS1 begins with `\n`, which otherwise leaves a blank top row).
-      let leadingNewlineResolved = false;
       const dataListenerReady = listen(eventName, (event: any) => {
         const payload = event.payload as { session_id: string; data: string };
-        let data = payload.data;
-        if (!leadingNewlineResolved) {
-          const r = stripLeadingPromptNewline(data);
-          data = r.out;
-          leadingNewlineResolved = r.resolved;
+        const chunk = payload.data;
+        if (!chunk) return;
+
+        writeBufferRef.current.push(chunk);
+
+        // In test environments (or if buffer grows large), flush immediately
+        const isTestEnv =
+          typeof (globalThis as any).process !== 'undefined' &&
+          (globalThis as any).process?.env?.NODE_ENV === 'test';
+        if (isTestEnv || writeBufferRef.current.reduce((acc, s) => acc + s.length, 0) >= 32768) {
+          flushWrites();
+          return;
         }
-        term.write(data);
+
+        if (writeRafRef.current === null) {
+          writeRafRef.current = requestAnimationFrame(() => {
+            writeRafRef.current = null;
+            flushWrites();
+          });
+        }
       })
         .then((fn) => {
           if (cancelled) {
-            // Component already unmounted — immediately detach.
             fn();
           } else {
             unlisten = fn;
@@ -637,34 +650,26 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
       let unlistenExit: UnlistenFn | null = null;
       listen(`pty-exit-${sessionId}`, () => {
+        flushWrites();
         term.write('\r\n\x1b[31m[Process Exited]\x1b[0m\r\n');
-        kitty.reset(); // PTY child gone — drop any leftover kitty flags
+        kitty.reset();
         onExitRef.current?.();
       }).then((fn) => {
         if (cancelled) fn();
         else unlistenExit = fn;
       });
 
-      // ─ ResizeObserver with debounce ──────────────────────────────────
-      // Only responsibility: call safeFit when the container element changes
-      // size. The term.onResize handler above forwards any resulting dimension
-      // change to the PTY — no resize_pty call needed here.
+      // ─ ResizeObserver ────────────────────────────────────────────────
       let resizeRaf: number;
       const resizeObserver = new ResizeObserver(() => {
         cancelAnimationFrame(resizeRaf);
-
-        // Use a single requestAnimationFrame to throttle resizes to the display refresh rate.
-        // This prevents 'ResizeObserver loop limit exceeded' errors and keeps window
-        // dragging smooth, while avoiding the 100ms lag of the old setTimeout.
         resizeRaf = requestAnimationFrame(() => {
           if (!fitAddonRef.current || !termRef.current) return;
           (termRef.current as any)._core?._charSizeService?.measure();
-          safeFit(fitAddonRef.current);
-
-          // A second pass to catch flexbox settling (e.g. scrollbars appearing/disappearing)
-          requestAnimationFrame(() => {
-            if (fitAddonRef.current) safeFit(fitAddonRef.current);
-          });
+          const dims = proposeSafeDimensions(fitAddonRef.current);
+          if (dims) {
+            requestResize(dims.cols, dims.rows, false);
+          }
         });
       });
 
@@ -672,67 +677,62 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         resizeObserver.observe(containerRef.current);
       }
 
-      // ─ Spawn the PTY process once dims are real and settled ────────────
-      // Ensure fonts are loaded and CSS flex layout has resolved before measuring.
-      // Starting PTY after font readiness prevents initial dimension mismatch and
-      // avoids immediate post-spawn ConPTY reflows that corrupt the prompt.
+      // ─ Spawn PTY process ─────────────────────────────────────────────
       let rafId = 0;
       let spawnAttempts = 0;
       const trySpawn = () => {
-        if (!effectActiveRef.current) return; // unmounted
-        // measure() refreshes char metrics so proposeDimensions is accurate.
+        if (!effectActiveRef.current) return;
         (term as any)._core?._charSizeService?.measure();
-        const dims = safeFit(fitAddon); // null while container has no size
+        const dims = proposeSafeDimensions(fitAddon);
         if (!dims && spawnAttempts < 60) {
           spawnAttempts++;
           rafId = requestAnimationFrame(trySpawn);
           return;
         }
-        // Wait for the data listener to attach before spawning, so no initial
-        // PTY output (cursor-home / clear + first prompt) is dropped.
         dataListenerReady.then(() => {
-          if (!effectActiveRef.current) return; // unmounted while awaiting
-          // If container never reached valid size, spawn with default 80x24
-          // This ensures terminal always starts even in edge cases
+          if (!effectActiveRef.current) return;
           if (!dims && spawnAttempts >= 60) {
             console.warn('[TerminalTab] Container size timeout, using default 80x24');
           }
-          spawnSession(); // reads fitted dims, spawns PTY, then sets isSpawnedRef=true
+          spawnSession();
         });
       };
 
-      // Gated on document.fonts.ready so glyph measurements use the real monospace font
       document.fonts.ready.then(() => {
         if (!effectActiveRef.current) return;
         (term as any)._core?._charSizeService?.measure();
-        safeFit(fitAddon);
+        const dims = proposeSafeDimensions(fitAddon);
+        if (dims) {
+          term.resize(dims.cols, dims.rows);
+        }
         rafId = requestAnimationFrame(trySpawn);
       });
 
       // ─ Cleanup ───────────────────────────────────────────────────────
       return () => {
-        // Reset the guard so a genuine re-run (deps change) works correctly.
         effectActiveRef.current = false;
         isSpawnedRef.current = false;
         lastPtyColsRowsRef.current = null;
+        requestResizeRef.current = null;
         cancelled = true;
+        flushWrites();
+        if (writeRafRef.current !== null) {
+          cancelAnimationFrame(writeRafRef.current);
+          writeRafRef.current = null;
+        }
         if (ptyResizeTimer) clearTimeout(ptyResizeTimer);
         cancelAnimationFrame(rafId);
         cancelAnimationFrame(resizeRaf);
         resizeObserver.disconnect();
         term.element?.removeEventListener('mouseup', onMouseUp);
         term.element?.removeEventListener('mousedown', onMouseDown);
-        // Context menu cleanup is handled by component unmount (state resets)
+        term.element?.removeEventListener('contextmenu', onContextMenu);
         dataDispose.dispose();
         selDispose.dispose();
         bellDispose.dispose();
         if (unlisten) unlisten();
         if (unlistenExit) unlistenExit();
         resizeDispose.dispose();
-        // Dispose the WebGL addon BEFORE term.dispose(): disposing it after the
-        // core RenderService is torn down throws inside term.dispose, and an
-        // unmount-time throw with no error boundary tears down the whole React
-        // root → blank/frozen app. Guard both for safety.
         try {
           webglAddonRef.current?.dispose();
         } catch {
@@ -751,25 +751,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           console.error('[TerminalTab] kill_pty failed:', err)
         );
       };
-    }, [sessionId, workspacePath, shell, shellArgs]);
+    }, [sessionId, workspacePath, shell, shellArgs, flushWrites, spawnSession]);
 
     // ── GPU renderer lifecycle — attach/detach with visibility ───────────
-    // Far faster than xterm's default DOM renderer for heavy TUI output
-    // (Claude Code, vim, spinners, large logs), but Chromium caps concurrent
-    // WebGL contexts at ~16 and every tab/pane keeps its xterm instance
-    // mounted (so PTY output keeps streaming) even while hidden. So only the
-    // on-screen tab(s) hold a live context: attach when shown, dispose when
-    // hidden, re-attach on the next show. Falls back to xterm's DOM renderer
-    // whenever WebGL is unavailable, lost, or the tab isn't visible.
-    //
-    // Deps mirror the main effect's below (sessionId/workspacePath/shell/
-    // shellArgs) in addition to isVisible: when any of those change, the main
-    // effect tears down and recreates `term` entirely (e.g. editing a
-    // workspace's path while its console is open respawns every open tab's
-    // PTY). This effect must re-run in lockstep — termRef.current is a plain
-    // ref, so it can't itself be a dependency — or a visible tab whose
-    // terminal gets recreated would silently keep the DOM renderer until the
-    // user happens to toggle its visibility again.
     useEffect(() => {
       const term = termRef.current;
       if (!term || !isVisible) return;
@@ -778,8 +762,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       try {
         addon = new WebglAddon();
         addon.onContextLoss(() => {
-          // Dispose once and forget it — re-disposing (here or via term.dispose)
-          // hits an already-torn-down RenderService and throws.
           try {
             addon?.dispose();
           } catch {
@@ -801,47 +783,41 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           try {
             addon.dispose();
           } catch {
-            /* already gone (context loss, or term.dispose() beat us to it) */
+            /* already gone */
           }
         }
         if (webglAddonRef.current === addon) webglAddonRef.current = null;
       };
     }, [isVisible, sessionId, workspacePath, shell, shellArgs]);
 
-    // Apply config changes live to existing terminal instances.
+    // Apply config changes live to existing terminal instances
     useEffect(() => {
       const term = termRef.current;
       if (!term) return;
 
-      // Non-layout options — safe to apply synchronously.
       term.options.theme = terminalConfig.theme;
       term.options.cursorStyle = terminalConfig.cursorStyle;
       term.options.cursorBlink = terminalConfig.cursorBlink;
       term.options.scrollback = terminalConfig.scrollback;
       term.options.macOptionIsMeta = terminalConfig.macOptionIsMeta;
 
-      // Font options change cell metrics — clamp to valid range so intermediate
-      // typed values (e.g. typing "14" passes through "1") never corrupt layout.
       term.options.fontSize = Math.max(8, Math.min(32, terminalConfig.fontSize));
       term.options.fontFamily = terminalConfig.fontFamily;
       term.options.lineHeight = Math.max(0.8, Math.min(2.0, terminalConfig.lineHeight));
       const ls = terminalConfig.letterSpacing;
       term.options.letterSpacing = Math.max(-2, Math.min(10, Number.isFinite(ls) ? ls : 0));
 
-      // Clear the glyph texture atlas so xterm rebuilds it at the new font size.
-      // Without this, cached bitmaps from the old size get reused and look wrong.
       (term as any).clearTextureAtlas?.();
 
-      // Force re-measure then fit. Setting term.options.fontSize while
-      // display:none silently leaves charSizeService.width stale (offsetWidth=0).
-      // Calling measure() here handles the visible case; the ResizeObserver
-      // path handles the hidden→visible transition.
       let id2: number;
       const id1 = requestAnimationFrame(() => {
         (term as any)._core?._charSizeService?.measure();
         id2 = requestAnimationFrame(() => {
           if (fitAddonRef.current) {
-            safeFit(fitAddonRef.current);
+            const dims = proposeSafeDimensions(fitAddonRef.current);
+            if (dims) {
+              requestResizeRef.current?.(dims.cols, dims.rows, true);
+            }
           }
         });
       });
@@ -851,9 +827,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       };
     }, [terminalConfig]);
 
-    // xterm only paints the cols×rows cell grid; the few px of leftover space
-    // around it shows the wrapper/container background. Drive that from the
-    // active theme so edges match the terminal bg when the theme changes.
     const themeBg = terminalConfig.theme.background ?? '#070d14';
 
     return (
@@ -878,7 +851,6 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
                 writeText(term.getSelection()).catch(() => {});
                 setHasCopied(true);
                 setTimeout(() => setHasCopied(false), 2000);
-                // Keep the selection highlighted after copy.
               }
             }}
           >
@@ -900,69 +872,140 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           </div>
         )}
 
-        {/* Search Bar */}
+        {/* Search Bar (VS Code style with toggles & navigation) */}
         {searchVisible && (
           <div
             className={styles.searchBar}
             onMouseDown={(e) => {
-              // Prevent terminal from stealing focus when clicking search bar
               e.stopPropagation();
             }}
           >
-            <Search size={16} />
+            <Search size={14} className={styles.searchIcon} />
             <input
               type="text"
               className={styles.searchInput}
               data-search-input="true"
-              placeholder="Search in terminal..."
+              placeholder="Find..."
               value={searchQuery}
               autoFocus
               onChange={(e) => {
                 const query = e.target.value;
                 setSearchQuery(query);
-                const addon = searchAddonRef.current;
-                if (addon) {
-                  if (query) {
-                    addon.findNext(query, { regex: false });
-                    setSearchResults(1);
-                  } else {
-                    addon.clearDecorations();
-                    setSearchResults(0);
-                  }
-                }
+                executeSearch(query, true);
               }}
               onKeyDown={(e) => {
-                const addon = searchAddonRef.current;
-                if (!addon) return;
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  if (e.shiftKey) {
-                    addon.findPrevious(searchQuery, { regex: false });
-                  } else {
-                    addon.findNext(searchQuery, { regex: false });
-                  }
+                  executeSearch(searchQuery, !e.shiftKey);
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setSearchVisible(false);
+                  searchAddonRef.current?.clearDecorations();
+                  setSearchQuery('');
+                  setSearchResults(null);
+                  termRef.current?.focus();
                 }
               }}
             />
-            {searchResults > 0 && (
+
+            {/* Match status */}
+            {searchQuery && (
               <span className={styles.searchResults}>
-                {searchResults} result{searchResults !== 1 ? 's' : ''}
+                {searchResults
+                  ? searchResults.count === 0
+                    ? 'No results'
+                    : searchResults.count === 1
+                    ? '1 result'
+                    : `${searchResults.index} of ${searchResults.count}`
+                  : ''}
               </span>
             )}
-            <button
-              className={styles.searchCloseBtn}
-              onClick={(e) => {
-                e.stopPropagation();
-                setSearchVisible(false);
-                searchAddonRef.current?.clearDecorations();
-                setSearchQuery('');
-                setSearchResults(0);
-                // Return focus to terminal
-                termRef.current?.focus();
-              }}
-            >
-              <X size={14} />
-            </button>
+
+            {/* Option toggles */}
+            <div className={styles.searchOptionsGroup}>
+              <button
+                type="button"
+                data-active={searchCaseSensitive ? 'true' : 'false'}
+                className={cx(
+                  styles.searchOptionBtn,
+                  searchCaseSensitive && styles.searchOptionBtnActive
+                )}
+                title="Match Case (Alt+C)"
+                onClick={() => {
+                  const next = !searchCaseSensitive;
+                  setSearchCaseSensitive(next);
+                  setTimeout(() => executeSearch(searchQuery, true), 0);
+                }}
+              >
+                Aa
+              </button>
+              <button
+                type="button"
+                data-active={searchWholeWord ? 'true' : 'false'}
+                className={cx(
+                  styles.searchOptionBtn,
+                  searchWholeWord && styles.searchOptionBtnActive
+                )}
+                title="Match Whole Word (Alt+W)"
+                onClick={() => {
+                  const next = !searchWholeWord;
+                  setSearchWholeWord(next);
+                  setTimeout(() => executeSearch(searchQuery, true), 0);
+                }}
+              >
+                \b
+              </button>
+              <button
+                type="button"
+                data-active={searchRegex ? 'true' : 'false'}
+                className={cx(styles.searchOptionBtn, searchRegex && styles.searchOptionBtnActive)}
+                title="Use Regular Expression (Alt+R)"
+                onClick={() => {
+                  const next = !searchRegex;
+                  setSearchRegex(next);
+                  setTimeout(() => executeSearch(searchQuery, true), 0);
+                }}
+              >
+                .*
+              </button>
+            </div>
+
+            {/* Navigation buttons */}
+            <div className={styles.searchNavGroup}>
+              <button
+                type="button"
+                className={styles.searchNavBtn}
+                title="Previous Match (Shift+Enter)"
+                onClick={() => executeSearch(searchQuery, false)}
+                disabled={!searchQuery}
+              >
+                <ChevronUp size={14} />
+              </button>
+              <button
+                type="button"
+                className={styles.searchNavBtn}
+                title="Next Match (Enter)"
+                onClick={() => executeSearch(searchQuery, true)}
+                disabled={!searchQuery}
+              >
+                <ChevronDown size={14} />
+              </button>
+              <button
+                type="button"
+                className={styles.searchCloseBtn}
+                title="Close (Escape)"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSearchVisible(false);
+                  searchAddonRef.current?.clearDecorations();
+                  setSearchQuery('');
+                  setSearchResults(null);
+                  termRef.current?.focus();
+                }}
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
         )}
 
@@ -1061,8 +1104,6 @@ const styles = {
     flex: 1;
     width: 100%;
     min-height: 0;
-    /* xterm renders its own canvas; this colour shows only in any gap
-       before the canvas is attached or while transitioning. */
     background-color: #070d14;
   `,
   floatingCopyBtn: css`
@@ -1139,35 +1180,101 @@ const styles = {
   // Search Bar styles
   searchBar: css`
     position: absolute;
-    top: 12px;
-    left: 12px;
+    top: 10px;
+    right: 20px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    background: rgba(11, 21, 32, 0.9);
-    backdrop-filter: blur(8px);
-    padding: 8px 12px;
+    gap: 6px;
+    background: rgba(15, 23, 42, 0.94);
+    backdrop-filter: blur(12px);
+    padding: 4px 8px;
     border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    z-index: 25;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: 30;
     color: #e2e8f0;
   `,
+  searchIcon: css`
+    color: #64748b;
+    margin-left: 2px;
+  `,
   searchInput: css`
-    terminal-search-input: true;
     background: transparent;
     border: none;
     outline: none;
-    color: #e2e8f0;
-    font-size: 13px;
+    color: #f1f5f9;
+    font-size: 12px;
     font-family: 'Fira Code', monospace;
-    width: 200px;
+    width: 170px;
+    padding: 4px 6px;
     &::placeholder {
       color: #64748b;
     }
   `,
   searchResults: css`
     font-size: 11px;
-    color: #64748b;
+    color: #94a3b8;
+    white-space: nowrap;
+    padding: 0 4px;
+    min-width: 45px;
+    text-align: center;
+  `,
+  searchOptionsGroup: css`
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 0 4px;
+  `,
+  searchOptionBtn: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'Fira Code', monospace;
+    padding: 2px 5px;
+    border-radius: 4px;
+    transition: all 120ms ease;
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #f1f5f9;
+    }
+  `,
+  searchOptionBtnActive: css`
+    background: rgba(123, 104, 238, 0.25) !important;
+    border-color: rgba(123, 104, 238, 0.6) !important;
+    color: #a78bfa !important;
+  `,
+  searchNavGroup: css`
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  `,
+  searchNavBtn: css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 120ms ease;
+    &:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.1);
+      color: #f1f5f9;
+    }
+    &:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
   `,
   searchCloseBtn: css`
     display: flex;
@@ -1175,13 +1282,14 @@ const styles = {
     justify-content: center;
     background: transparent;
     border: none;
-    color: #64748b;
+    color: #94a3b8;
     cursor: pointer;
     padding: 4px;
     border-radius: 4px;
+    transition: all 120ms ease;
     &:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #94a3b8;
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
     }
   `,
   // Visual Bell styles

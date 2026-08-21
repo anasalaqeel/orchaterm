@@ -33,9 +33,11 @@ export class FakeTerminal {
   resizeHandler: ((d: { cols: number; rows: number }) => void) | null = null;
   selectionHandler: (() => void) | null = null;
   bellHandler: (() => void) | null = null;
+  titleHandler: ((title: string) => void) | null = null;
   keyHandler: ((e: Record<string, unknown>) => boolean | undefined) | null = null;
   csiHandlers: Array<{ spec: { prefix?: string; final: string }; cb: (p: unknown[]) => boolean }> =
     [];
+  oscHandlers: Array<{ ident: number; cb: (data: string) => boolean }> = [];
   escHandlers: Array<{ spec: { final: string }; cb: () => boolean }> = [];
 
   parser = {
@@ -44,6 +46,10 @@ export class FakeTerminal {
       cb: (p: unknown[]) => boolean
     ) => {
       this.csiHandlers.push({ spec, cb });
+      return () => {};
+    },
+    registerOscHandler: (ident: number, cb: (data: string) => boolean) => {
+      this.oscHandlers.push({ ident, cb });
       return () => {};
     },
     registerEscHandler: (spec: { final: string }, cb: () => boolean) => {
@@ -104,6 +110,14 @@ export class FakeTerminal {
       },
     };
   }
+  onTitleChange(cb: (title: string) => void) {
+    this.titleHandler = cb;
+    return {
+      dispose: () => {
+        if (this.titleHandler === cb) this.titleHandler = null;
+      },
+    };
+  }
   onResize(cb: (d: { cols: number; rows: number }) => void) {
     this.resizeHandler = cb;
     return {
@@ -118,6 +132,11 @@ export class FakeTerminal {
 
   focus() {
     this.focused++;
+  }
+  resize(cols: number, rows: number) {
+    this.cols = cols;
+    this.rows = rows;
+    this.resizeHandler?.({ cols, rows });
   }
   write(data: string) {
     this.writes.push(data);
@@ -154,11 +173,19 @@ export class FakeTerminal {
   fireSelectionChange() {
     this.selectionHandler?.();
   }
+  fireTitleChange(title: string) {
+    this.titleHandler?.(title);
+  }
   fireKey(e: Record<string, unknown>): boolean | undefined {
     return this.keyHandler?.({ type: 'keydown', ...e }) as boolean | undefined;
   }
   fireCsi(prefix: string, final: string, params: unknown[]) {
-    this.csiHandlers.find((h) => h.spec.prefix === prefix && h.spec.final === final)?.cb(params);
+    this.csiHandlers
+      .find((h) => (h.spec.prefix ?? '') === prefix && h.spec.final === final)
+      ?.cb(params);
+  }
+  fireOsc(ident: number, data: string) {
+    this.oscHandlers.find((h) => h.ident === ident)?.cb(data);
   }
 }
 

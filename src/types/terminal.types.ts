@@ -21,6 +21,10 @@ export interface TerminalSession {
    */
   interruptPolicy: InterruptPolicy;
   isCheckpointing?: boolean;
+  /** Dynamically reported title from OSC 0 / OSC 2 (e.g. "node", "python", "claude"). */
+  dynamicTitle?: string;
+  /** Dynamically reported working directory from OSC 7 / OSC 9. */
+  cwd?: string;
 }
 
 export interface TerminalTheme {
