@@ -311,6 +311,7 @@ describe('TerminalTab keyboard handling', () => {
     mockedInvoke.mockReset().mockResolvedValue(undefined);
     mockedListen.mockReset();
     onExit.mockClear();
+    clipboardStub.writeText.mockClear();
     resetDashboard();
   });
 
@@ -358,11 +359,21 @@ describe('TerminalTab keyboard handling', () => {
     const term = getLastTerminal();
     term.selectionText = 'selected text';
 
-    // ctrl+shift+c is a default keybinding
+    // ctrl+shift+c is standard terminal copy
     expect(await act(async () => term.fireKey({ ctrlKey: true, shiftKey: true, key: 'c' }))).toBe(
       false
     );
     expect(clipboardStub.writeText).toHaveBeenCalledWith('selected text');
+  });
+
+  it('Ctrl+C always passes through to PTY for SIGINT (not hijacked for copy)', async () => {
+    await renderTerminalTab();
+    const term = getLastTerminal();
+    term.selectionText = 'highlighted text';
+
+    // Ctrl+C (without shift) must pass through to PTY as \x03 (SIGINT)
+    expect(await act(async () => term.fireKey({ ctrlKey: true, key: 'c' }))).toBe(true);
+    expect(clipboardStub.writeText).not.toHaveBeenCalled();
   });
 
   it('kitty protocol: answers flag queries and CSI-u encodes ambiguous keys once enabled', async () => {
