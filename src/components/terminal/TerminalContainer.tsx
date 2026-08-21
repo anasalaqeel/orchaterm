@@ -618,6 +618,18 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     setColorPickerOpenId(null);
   };
 
+  const handleTitleChange = useCallback((sessionId: string, title: string) => {
+    setSessions((prev) =>
+      prev.map((s) => (s.id === sessionId && s.dynamicTitle !== title ? { ...s, dynamicTitle: title } : s))
+    );
+  }, []);
+
+  const handleCwdChange = useCallback((sessionId: string, cwd: string) => {
+    setSessions((prev) =>
+      prev.map((s) => (s.id === sessionId && s.cwd !== cwd ? { ...s, cwd } : s))
+    );
+  }, []);
+
   // ── Interrupt policy ─────────────────────────────────────────────────────
 
   const handleTabContextMenu = (e: React.MouseEvent, sessionId: string) => {
@@ -947,7 +959,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       <span
                         onDoubleClick={(e) => startRename(session.id, session.title, e)}
                         className={styles.tabTitle}
-                        title={`${session.title} — double-click to rename`}
+                        title={`${session.title}${session.dynamicTitle ? ` (${session.dynamicTitle})` : ''}${session.cwd ? `\nDirectory: ${session.cwd}` : ''} — double-click to rename`}
                       >
                         {session.title}
                       </span>
@@ -1381,6 +1393,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       shell={session.shell}
                       shellArgs={session.shellArgs}
                       onExit={() => closeTab(session.id)}
+                      onTitleChange={(title) => handleTitleChange(session.id, title)}
+                      onCwdChange={(cwd) => handleCwdChange(session.id, cwd)}
                       isVisible={active && !!pane}
                     />
                   </ErrorBoundary>

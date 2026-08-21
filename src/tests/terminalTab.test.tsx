@@ -95,6 +95,8 @@ Object.defineProperty(navigator, 'clipboard', {
 let container: HTMLDivElement;
 let root: Root | null = null;
 const onExit = vi.fn();
+const onTitleChange = vi.fn();
+const onCwdChange = vi.fn();
 /** PTY event listeners captured from the mocked Tauri `listen`. */
 let ptyListeners: Record<string, (event: unknown) => void> = {};
 
@@ -135,6 +137,8 @@ async function renderTerminalTab() {
           workspacePath={'C:\\dev\\orchaterm'}
           shell="pwsh.exe"
           onExit={onExit}
+          onTitleChange={onTitleChange}
+          onCwdChange={onCwdChange}
         />
       </MemoryRouter>
     );
@@ -226,23 +230,23 @@ describe('TerminalTab PTY lifecycle', () => {
     expect(container.textContent).not.toContain('Terminal failed to start');
   });
 
-  it('writes PTY output to the terminal, stripping exactly one leading prompt newline', async () => {
+  it('writes PTY output to the terminal faithfully without mutating byte stream', async () => {
     await renderTerminalTab();
     const term = getLastTerminal();
 
     await act(async () => {
       firePtyData('\x1b[2J\x1b[H');
-    }); // escapes only → keep waiting
+    });
     expect(term.writes).toEqual(['\x1b[2J\x1b[H']);
 
     await act(async () => {
       firePtyData('\r\n$ ');
-    }); // Git-Bash-style leading newline → strip
-    expect(term.writes[term.writes.length - 1]).toBe('$ ');
+    });
+    expect(term.writes[term.writes.length - 1]).toBe('\r\n$ ');
 
     await act(async () => {
       firePtyData('\nmore output');
-    }); // one-shot: later newlines kept
+    });
     expect(term.writes[term.writes.length - 1]).toBe('\nmore output');
   });
 
@@ -484,5 +488,74 @@ describe('TerminalTab UI surfaces', () => {
     };
     expect(addon.queries).toContain('error');
     expect(container.textContent).toContain('1 result');
+  });
+
+  it('handles OSC 0 and OSC 2 to notify parent of title changes', async () => {
+    await renderTerminalTab();
+    const term = getLastTerminal();
+
+    await act(async () => {
+      term.fireOsc(0, 'node server.js');
+    });
+    expect(onTitleChange).toHaveBeenCalledWith('node server.js');
+
+    await act(async () => {
+      term.fireOsc(2, 'claude');
+    });
+    expect(onTitleChange).toHaveBeenCalledWith('claude');
+  });
+
+  it('handles OSC 7 and OSC 9 to notify parent of directory (CWD) changes', async () => {
+    await renderTerminalTab();
+    const term = getLastTerminal();
+
+    await act(async () => {
+      term.fireOsc(7, 'file://localhost/C:/dev/orchaterm/src');
+    });
+    expect(onCwdChange).toHaveBeenCalledWith('C:/dev/orchaterm/src');
+
+    await act(async () => {
+      term.fireOsc(9, '9;"C:\\dev\\orchaterm\\tests"');
+    });
+    expect(onCwdChange).toHaveBeenCalledWith('C:\\dev\\orchaterm\\tests');
+  });
+
+  it('answers DA1 and DA2 device attribute queries', async () => {
+    await renderTerminalTab();
+    const term = getLastTerminal();
+
+    // DA1 query: CSI c
+    await act(async () => {
+      term.fireCsi('', 'c', [0]);
+    });
+    expect(writtenPayloads()).toContain('\x1b[?61;4c');
+
+    // DA2 query: CSI > c
+    await act(async () => {
+      term.fireCsi('>', 'c', []);
+    });
+    expect(writtenPayloads()).toContain('\x1b[>1;10;0c');
+  });
+
+  it('supports search options (case sensitivity, whole word, regex toggles)', async () => {
+    await renderTerminalTab();
+    const term = getLastTerminal();
+
+    await act(async () => {
+      term.fireKey({ ctrlKey: true, key: 'f' });
+    });
+
+    const caseBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Aa');
+    const wordBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.trim() === '\\b');
+    const regexBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.trim() === '.*');
+
+    expect(caseBtn).toBeTruthy();
+    expect(wordBtn).toBeTruthy();
+    expect(regexBtn).toBeTruthy();
+
+    await act(async () => {
+      caseBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    expect(caseBtn?.getAttribute('data-active')).toBe('true');
   });
 });

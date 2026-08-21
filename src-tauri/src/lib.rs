@@ -269,12 +269,12 @@ fn get_available_shells() -> Vec<ShellInfo> {
         }
 
         // Git Bash / PowerShell 7 via known absolute paths.
-        let abs: &[(&str, &str)] = &[
-            ("Git Bash", r"C:\Program Files\Git\bin\bash.exe"),
-            ("Git Bash", r"C:\Program Files (x86)\Git\bin\bash.exe"),
-            ("PowerShell 7", r"C:\Program Files\PowerShell\7\pwsh.exe"),
+        let abs: &[(&str, &str, &[&str])] = &[
+            ("Git Bash", r"C:\Program Files\Git\bin\bash.exe", &["--login", "-i"]),
+            ("Git Bash", r"C:\Program Files (x86)\Git\bin\bash.exe", &["--login", "-i"]),
+            ("PowerShell 7", r"C:\Program Files\PowerShell\7\pwsh.exe", &[]),
         ];
-        for (label, abs_path) in abs {
+        for (label, abs_path, extra_args) in abs {
             let p = Path::new(abs_path);
             if !p.exists() {
                 continue;
@@ -284,7 +284,11 @@ fn get_available_shells() -> Vec<ShellInfo> {
                 continue;
             }
             seen_keys.insert(key);
-            shells.push(simple(label, abs_path));
+            shells.push(ShellInfo {
+                name: label.to_string(),
+                path: abs_path.to_string(),
+                args: extra_args.iter().map(|s| s.to_string()).collect(),
+            });
         }
 
         // Guarantee a fallback.
@@ -641,55 +645,6 @@ fn spawn_pty(
         sessions.insert(session_id.clone(), session);
     }
 
-    // ── Child process monitor thread ───────────────────────────────────────
-    // portable_pty's reader thread can block indefinitely on Windows even after
-    // the child process dies. Polling `try_wait` guarantees we detect the exit.
-    // Polls only this session's child Arc — never the global session map — so it
-    // cannot contend with write_pty / resize_pty / spawn_pty.
-    let sid_monitor = session_id.clone();
-    let app_handle_monitor = app_handle.clone();
-    let child_monitor = Arc::clone(&child);
-    let shutdown_monitor = Arc::clone(&shutdown);
-
-    thread::spawn(move || {
-        loop {
-            thread::sleep(std::time::Duration::from_millis(100));
-            // kill_pty flips this and removes the session — stop promptly.
-            if shutdown_monitor.load(Ordering::SeqCst) {
-                break;
-            }
-            let exited = {
-                let mut child = match child_monitor.lock() {
-                    Ok(c) => c,
-                    Err(p) => p.into_inner(),
-                };
-                match child.try_wait() {
-                    Ok(Some(_status)) => true,
-                    Ok(None) => false,
-                    Err(_) => true, // error checking status — assume dead
-                }
-            };
-            if exited {
-                let payload = PtyPayload {
-                    session_id: sid_monitor.clone(),
-                    data: String::new(),
-                };
-                let _ = app_handle_monitor
-                    .emit(&format!("pty-exit-{}", sid_monitor), payload);
-
-                // Remove the session so its master/writer drop and the reader
-                // thread unblocks — otherwise a naturally-exited shell leaks a
-                // PTY handle + blocked reader thread until the tab is closed.
-                if let Ok(mut sessions) =
-                    lock_sessions(&app_handle_monitor.state::<PtyState>())
-                {
-                    sessions.remove(&sid_monitor);
-                }
-                break;
-            }
-        }
-    });
-
     // ── Reader thread with coalescing ──────────────────────────────────────
     // Reads output from the PTY master on a dedicated I/O thread, passes it to
     // a coalescer thread over a channel, and debounces/accumulates updates for
@@ -698,6 +653,7 @@ fn spawn_pty(
     let sid = session_id.clone();
     let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
     let reader_shutdown = Arc::clone(&shutdown);
+    let reader_drained = Arc::new(AtomicBool::new(false));
 
     // 1. Spawns I/O reader thread that blocks on read() and forwards raw bytes
     let io_sid = sid.clone();
@@ -732,6 +688,8 @@ fn spawn_pty(
     // for up to 10ms (or 32KB buffer) before emitting to the WebView.
     let coalescer_sid = sid.clone();
     let coalescer_shutdown = Arc::clone(&shutdown);
+    let coalescer_drained = Arc::clone(&reader_drained);
+    let app_handle_coalesce = app_handle.clone();
     let event_name = format!("pty-data-{coalescer_sid}");
 
     thread::Builder::new()
@@ -784,18 +742,86 @@ fn spawn_pty(
                             session_id: coalescer_sid.clone(),
                             data: text,
                         };
-                        if app_handle.emit(&event_name, payload).is_err() {
+                        if app_handle_coalesce.emit(&event_name, payload).is_err() {
                             break;
                         }
                     }
                     Err(_) => {
-                        // Channel sender dropped (reader thread exited)
+                        // Channel sender dropped (reader thread exited) — flush carry buffer
+                        if !carry.is_empty() {
+                            let text = drain_valid_utf8(&mut carry);
+                            if !text.is_empty() {
+                                let payload = PtyPayload {
+                                    session_id: coalescer_sid.clone(),
+                                    data: text,
+                                };
+                                let _ = app_handle_coalesce.emit(&event_name, payload);
+                            }
+                        }
+                        coalescer_drained.store(true, Ordering::SeqCst);
                         break;
                     }
                 }
             }
         })
         .map_err(|e| format!("Failed to spawn PTY coalescer thread: {e}"))?;
+
+    // ── Child process monitor thread ───────────────────────────────────────
+    // portable_pty's reader thread can block indefinitely on Windows even after
+    // the child process dies. Polling `try_wait` guarantees we detect the exit.
+    // Polls only this session's child Arc — never the global session map — so it
+    // cannot contend with write_pty / resize_pty / spawn_pty.
+    let sid_monitor = session_id.clone();
+    let app_handle_monitor = app_handle.clone();
+    let child_monitor = Arc::clone(&child);
+    let shutdown_monitor = Arc::clone(&shutdown);
+    let drained_monitor = Arc::clone(&reader_drained);
+
+    thread::spawn(move || {
+        loop {
+            thread::sleep(std::time::Duration::from_millis(100));
+            // kill_pty flips this and removes the session — stop promptly.
+            if shutdown_monitor.load(Ordering::SeqCst) {
+                break;
+            }
+            let exited = {
+                let mut child = match child_monitor.lock() {
+                    Ok(c) => c,
+                    Err(p) => p.into_inner(),
+                };
+                match child.try_wait() {
+                    Ok(Some(_status)) => true,
+                    Ok(None) => false,
+                    Err(_) => true, // error checking status — assume dead
+                }
+            };
+            if exited {
+                // VS Code-style output flush: wait a short interval (up to 150ms)
+                // for the PTY reader / coalescer to finish draining trailing data.
+                let start_drain = std::time::Instant::now();
+                while !drained_monitor.load(Ordering::SeqCst) && start_drain.elapsed() < std::time::Duration::from_millis(150) {
+                    thread::sleep(std::time::Duration::from_millis(20));
+                }
+
+                let payload = PtyPayload {
+                    session_id: sid_monitor.clone(),
+                    data: String::new(),
+                };
+                let _ = app_handle_monitor
+                    .emit(&format!("pty-exit-{}", sid_monitor), payload);
+
+                // Remove the session so its master/writer drop and the reader
+                // thread unblocks — otherwise a naturally-exited shell leaks a
+                // PTY handle + blocked reader thread until the tab is closed.
+                if let Ok(mut sessions) =
+                    lock_sessions(&app_handle_monitor.state::<PtyState>())
+                {
+                    sessions.remove(&sid_monitor);
+                }
+                break;
+            }
+        }
+    });
 
     Ok(())
 }
