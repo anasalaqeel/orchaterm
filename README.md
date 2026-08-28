@@ -5,7 +5,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="src/assets/logos/wordmark-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="src/assets/logos/wordmark-light.svg">
-  <img alt="Orchaterm Logo" src="src/assets/logos/wordmark-light.svg" width="300">
+  <img alt="Orchaterm Logo" src="src/assets/logos/wordmark-light.svg" width="600">
 </picture>
 
 **The Next-Generation Terminal Built for the AI Era of Software Engineering**
