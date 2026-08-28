@@ -65,8 +65,12 @@ src-tauri/gen/schemas/
 
 # Temporary and Agent Files
 .fallow/
+.orchaterm/
+.antigravitycli/
+.claude/*.local.json
+.claude/memory/
+.claude/todos/
 
-.orchaterm
 # Local test scripts
 src-tauri/src/bin/test_bash_echo.rs
 

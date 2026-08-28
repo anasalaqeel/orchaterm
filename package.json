@@ -1,7 +1,26 @@
 {
-  "name": "tauri-app",
-  "private": true,
+  "name": "orchaterm",
   "version": "0.1.0",
+  "description": "Next-generation developer terminal built for the AI era of software engineering",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anasalaqeel/orchaterm.git"
+  },
+  "homepage": "https://github.com/anasalaqeel/orchaterm#readme",
+  "bugs": {
+    "url": "https://github.com/anasalaqeel/orchaterm/issues"
+  },
+  "keywords": [
+    "terminal",
+    "tauri",
+    "ai-agents",
+    "orchestration",
+    "ollama",
+    "xterm",
+    "pty",
+    "developer-tools"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +30,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\"",
     "prepare": "husky",
     "version": "node scripts/sync-version.js && cd src-tauri && cargo check && git add ../src-tauri/tauri.conf.json ../src-tauri/Cargo.toml ../src-tauri/Cargo.lock"
   },

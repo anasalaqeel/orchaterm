@@ -1,10 +1,12 @@
 [package]
-name = "tauri-app"
+name = "orchaterm"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Next-generation developer terminal built for the AI era of software engineering"
+authors = ["Anas Alaqeel"]
+license = "MIT"
+repository = "https://github.com/anasalaqeel/orchaterm"
 edition = "2021"
-default-run = "tauri-app"
+default-run = "orchaterm"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
