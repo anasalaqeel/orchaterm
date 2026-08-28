@@ -30,7 +30,7 @@ async function renderAllSections(): Promise<string> {
     'Quick Actions',
     'Prompt Vault & Templates',
     'Terminal & Workspaces',
-    'Conductor Multi-Agent',
+    'Visual Pipelines',
     'Settings & AI Configuration',
   ]) {
     await act(async () => {
@@ -71,7 +71,7 @@ describe('HelpModal', () => {
       'Quick Actions',
       'Prompt Vault &amp; Templates',
       'Terminal &amp; Workspaces',
-      'Conductor Multi-Agent',
+      'Visual Pipelines',
       'Settings &amp; AI Configuration',
     ]) {
       expect(html).toContain(title);
