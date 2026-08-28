@@ -19,8 +19,8 @@ There are many ways you can contribute to Orchaterm:
 - 🐛 **Report Bugs**: Check the [issue tracker](https://github.com/anasalaqeel/orchaterm/issues) first. If it hasn't been reported, open a new issue using our [Bug Report Template](.github/ISSUE_TEMPLATE/bug_report.yml).
 - 💡 **Suggest Features**: Propose new ideas or enhancements using our [Feature Request Template](.github/ISSUE_TEMPLATE/feature_request.yml).
 - 💻 **Submit Code Changes**: Pick an existing issue, discuss your approach with maintainers, and submit a PR.
-- 🎨 **Terminal Themes & UI**: Add new terminal color palettes or improve UI styling in the terminal/conductor panels.
-- 🤖 **LLM Providers & Prompts**: Add support for new local/cloud LLM providers or refine conductor and orchestration prompt templates.
+- 🎨 **Terminal Themes & UI**: Add new terminal color palettes or improve UI styling in workspace panels.
+- 🤖 **LLM Providers & Prompts**: Add support for new local/cloud LLM providers or refine orchestration prompt templates.
 - 📝 **Improve Documentation**: Fix typos, add tutorials, expand API docs, or clarify guides.
 - 🧪 **Write Tests**: Increase test coverage for frontend components, sentinel parsers, or Rust backend PTY commands.
 
@@ -77,7 +77,7 @@ bun run dev
 ### Commit Messages
 We follow [Conventional Commits](https://www.conventionalcommits.org/):
 
-- `feat: add model selector in conductor settings`
+- `feat: add model selector in provider settings`
 - `fix: resolve PTY resize deadlock on Windows`
 - `docs: update LLM provider configuration instructions`
 - `test: add unit test for buffer watcher sentinel detection`

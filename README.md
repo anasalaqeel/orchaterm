@@ -55,7 +55,8 @@ When running multiple AI coding tools and build processes across isolated termin
 Orchaterm eliminates that friction:
 - **Zero Loss of CLI Fidelity**: Full native PTY instances with interactive hotkeys and WebGL acceleration.
 - **Automated Observation**: An ambient LLM orchestrator observes terminal buffers, summarizes activity, and detects agent state.
-- **Autonomous Relay & Conductor**: Decompose complex goals into subtasks, dispatch them to specific terminals, and relay context automatically.
+- **Autonomous Multi-Terminal Relay**: Seamlessly route context and handoffs between different active terminals.
+- **Visual Task Pipelines**: Build dependency graphs and dispatch structured workflows to specific terminals.
 - **Continuous Checkpointing**: Automatically capture context checkpoints when processes hit rate or context limits so workflows resume instantly.
 
 ---
@@ -67,12 +68,12 @@ Orchaterm eliminates that friction:
 │                                ORCHATERM                                    │
 │                                                                             │
 │  ┌───────────────────────┐ ┌───────────────────────┐ ┌───────────────────┐  │
-│  │   Terminal Panel      │ │     Chat Panel        │ │  Conductor Panel  │  │
+│  │    Terminal Grids     │ │   Chat & Relay Feed   │ │ Visual Pipelines  │  │
 │  │                       │ │                       │ │                   │  │
-│  │ • PTY Sessions        │ │ • Unified LLM stream  │ │ • Goal breakdown  │  │
-│  │ • Split Panes & Tabs  │ │ • Cross-agent relay   │ │ • Task dispatch   │  │
-│  │ • WebGL Acceleration  │ │ • Agent status cards  │ │ • Execution graph │  │
-│  │ • Sentinel Detection  │ │ • User command bridge │ │ • Checkpoint/Save │  │
+│  │ • PTY Sessions        │ │ • Ambient LLM stream  │ │ • Dependency map  │  │
+│  │ • Split Panes & Tabs  │ │ • Cross-terminal relay│ │ • Live task board │  │
+│  │ • WebGL Acceleration  │ │ • Live status cards   │ │ • Templates       │  │
+│  │ • Sentinel Detection  │ │ • Context injection   │ │ • History & logs  │  │
 │  └───────────────────────┘ └───────────────────────┘ └───────────────────┘  │
 │                                                                             │
 │               Coordination Layer (Ollama / Local / Cloud LLMs)               │
@@ -80,10 +81,10 @@ Orchaterm eliminates that friction:
 ```
 
 - 🖥️ **High-Performance Terminal Grid**: Powered by `@xterm/xterm` and `portable-pty` with WebGL rendering, split panes, customizable themes, search, and native keybindings.
-- 🤖 **Agent Grouping**: Group terminals running specific CLI agents into coordinated teams.
-- 🎯 **Conductor Mode**: Create structured task plans from natural language goals, assign tasks to specific agent terminals, and monitor automated execution.
-- 💬 **Live Chat & Relay Window**: Observe what each agent is working on via real-time summaries and send directives that get routed directly to active terminals.
-- 🛡️ **Sentinel Protocol & State Detection**: Non-intrusively monitors buffer outputs to determine whether an agent is idle, thinking, invoking tools, or awaiting input.
+- 🤖 **Terminal Spaces & Grouping**: Group related processes and shells into focused workspaces.
+- ⚡ **Visual Pipelines & Task Dispatch**: Design structured workflows with dependency graphs, execute tasks in parallel or sequential mode, and monitor live progress.
+- 💬 **Live Chat & Relay Feed**: Observe what each terminal process is working on via real-time summaries and route messages directly between sessions.
+- 🛡️ **Sentinel Protocol & State Detection**: Non-intrusively monitors buffer outputs to determine whether a process or CLI agent is idle, thinking, invoking tools, or awaiting input.
 - 💾 **Session Continuation & Checkpoints**: Detect context window exhaustion or rate limits and generate structured continuation summaries ready for the next session.
 - ⚡ **Prompt Vault & Quick Actions**: Manage reusable prompts and execute quick one-click commands across sessions.
 - 🔒 **Privacy-First & Local LLM Native**: First-class support for Ollama and LM Studio with zero telemetry; optional support for Anthropic Claude and Google Gemini.
