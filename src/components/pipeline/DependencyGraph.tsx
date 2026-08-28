@@ -156,20 +156,31 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ tasks, title, 
               markerHeight="6"
               orient="auto-start-reverse"
             >
-              <path d="M0,0 L10,5 L0,10 z" fill="var(--border-color-hover)" />
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--material-brass)" />
             </marker>
           </defs>
 
-          {edges.map((e) => (
-            <path
-              key={e.key}
-              d={bezierPath(e.from.x + NODE_W, e.from.y + NODE_H / 2, e.to.x, e.to.y + NODE_H / 2)}
-              fill="none"
-              stroke="var(--border-color-hover)"
-              strokeWidth={1.2}
-              markerEnd="url(#dep-arrow)"
-            />
-          ))}
+          {/* Patch cords — brass jack terminals at each end, a warm cable between */}
+          {edges.map((e) => {
+            const x1 = e.from.x + NODE_W;
+            const y1 = e.from.y + NODE_H / 2;
+            const x2 = e.to.x;
+            const y2 = e.to.y + NODE_H / 2;
+            return (
+              <g key={e.key}>
+                <path
+                  d={bezierPath(x1, y1, x2, y2)}
+                  fill="none"
+                  stroke="var(--material-brass)"
+                  strokeWidth={2}
+                  strokeOpacity={0.5}
+                  strokeLinecap="round"
+                  markerEnd="url(#dep-arrow)"
+                />
+                <circle cx={x1} cy={y1} r={2.5} fill="var(--material-brass)" />
+              </g>
+            );
+          })}
 
           {nodes.map((node) => {
             const fill = STATUS_FILL[node.task.status];
@@ -180,7 +191,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ tasks, title, 
                 <rect
                   width={NODE_W}
                   height={NODE_H}
-                  rx={6}
+                  rx={4}
                   fill={fill}
                   stroke={stroke}
                   strokeWidth={1.2}
@@ -240,7 +251,7 @@ const s = {
     overflow: auto;
     max-height: 240px;
     background: var(--bg-tertiary);
-    border-radius: 6px;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
     padding: 6px;
     &::-webkit-scrollbar {
@@ -279,7 +290,7 @@ const s = {
     gap: 6px;
     padding: 12px;
     background: var(--bg-tertiary);
-    border-radius: 6px;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
   `,
   emptyText: css`

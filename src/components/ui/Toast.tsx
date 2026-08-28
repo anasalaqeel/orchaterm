@@ -65,52 +65,28 @@ const styles = {
     box-shadow: var(--shadow-lg);
   `,
   success: css`
-    background-color: rgba(6, 78, 59, 0.9);
-    border-color: rgba(52, 211, 153, 0.3);
-    color: #a7f3d0;
-    box-shadow: 0 0 15px -3px rgba(34, 197, 94, 0.2);
-
-    body.light & {
-      background-color: #ecfdf5;
-      border-color: #a7f3d0;
-      color: #065f46;
-    }
+    background-color: var(--bg-secondary);
+    border-color: rgba(var(--color-success-rgb), 0.35);
+    color: var(--color-success);
+    box-shadow: 0 0 15px -3px rgba(var(--color-success-rgb), 0.25);
   `,
   error: css`
-    background-color: rgba(159, 18, 57, 0.9);
-    border-color: rgba(248, 113, 113, 0.3);
-    color: #fecdd3;
-    box-shadow: 0 0 15px -3px rgba(239, 68, 68, 0.2);
-
-    body.light & {
-      background-color: #fff1f2;
-      border-color: #fecdd3;
-      color: #9f1239;
-    }
+    background-color: var(--bg-secondary);
+    border-color: rgba(var(--color-error-rgb), 0.35);
+    color: var(--color-error);
+    box-shadow: 0 0 15px -3px rgba(var(--color-error-rgb), 0.25);
   `,
   info: css`
-    background-color: rgba(30, 58, 138, 0.9);
-    border-color: rgba(96, 165, 250, 0.3);
-    color: #dbeafe;
-    box-shadow: 0 0 15px -3px rgba(59, 130, 246, 0.2);
-
-    body.light & {
-      background-color: #eff6ff;
-      border-color: #bfdbfe;
-      color: #1e40af;
-    }
+    background-color: var(--bg-secondary);
+    border-color: rgba(var(--color-info-rgb), 0.35);
+    color: var(--color-info);
+    box-shadow: 0 0 15px -3px rgba(var(--color-info-rgb), 0.25);
   `,
   loading: css`
-    background-color: rgba(31, 41, 55, 0.9);
-    border-color: rgba(156, 163, 175, 0.3);
-    color: #f3f4f6;
-    box-shadow: 0 0 15px -3px rgba(156, 163, 175, 0.2);
-
-    body.light & {
-      background-color: #f9fafb;
-      border-color: #e5e7eb;
-      color: #374151;
-    }
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color-hover);
+    color: var(--text-primary);
+    box-shadow: 0 0 15px -3px rgba(var(--material-brass-rgb), 0.2);
   `,
   loaderIcon: css`
     animation: spin 1s linear infinite;
@@ -149,7 +125,7 @@ const styles = {
 
     &:hover {
       opacity: 1;
-      background-color: rgba(255, 255, 255, 0.1);
+      background-color: rgba(var(--material-brass-rgb), 0.16);
     }
   `,
   closeIcon: css`

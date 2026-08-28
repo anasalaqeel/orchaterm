@@ -1308,14 +1308,16 @@ const MessageRow: React.FC<{
     return (
       <div
         className={s.systemRow}
-        style={
-          msg.sessionColor
-            ? { borderLeftColor: msg.sessionColor, backgroundColor: msg.sessionColor + '0d' }
-            : undefined
-        }
+        style={msg.sessionColor ? { backgroundColor: msg.sessionColor + '0d' } : undefined}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
+        {msg.sessionColor && (
+          <span
+            className={s.systemLamp}
+            style={{ color: msg.sessionColor, background: msg.sessionColor }}
+          />
+        )}
         {msg.content}
         {hovered && (
           <button
@@ -1859,18 +1861,21 @@ const s = {
   agentSummaryRow: css`
     display: flex;
     align-items: baseline;
-    gap: 6px;
-    padding: 4px 8px;
+    gap: 7px;
+    padding: 4px 9px;
     background: var(--bg-tertiary);
-    border-radius: 5px;
-    border-left: 2px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-family-mono);
+    border-top: 1px dashed var(--border-color);
+    border-bottom: 1px dashed var(--border-color);
   `,
   agentSummaryDot: css`
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     flex-shrink: 0;
     margin-top: 3px;
+    box-shadow: 0 0 4px 0 currentColor;
   `,
   agentSummaryTitle: css`
     font-size: 10px;
@@ -1878,6 +1883,8 @@ const s = {
     color: var(--text-tertiary);
     white-space: nowrap;
     flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   `,
   agentSummaryText: css`
     font-size: 11px;
@@ -1888,11 +1895,23 @@ const s = {
     font-size: 11px;
     color: var(--text-secondary);
     padding: 5px 10px;
-    border-left: 2px solid var(--border-color);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     background: var(--bg-tertiary);
     line-height: 1.4;
     position: relative;
+    font-family: var(--font-family-mono);
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+  `,
+  systemLamp: css`
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 3px;
+    background: var(--text-tertiary);
+    box-shadow: 0 0 4px 0 currentColor;
   `,
   scrollBtn: css`
     position: absolute;
@@ -1989,9 +2008,9 @@ const s = {
     align-items: baseline;
     gap: 7px;
     padding: 3px 10px;
-    border-radius: 4px;
-    background: rgba(var(--color-brand-rgb), 0.04);
-    border-left: 2px solid rgba(var(--color-brand-rgb), 0.2);
+    border-radius: var(--radius-sm);
+    background: rgba(var(--color-brand-rgb), 0.05);
+    font-family: var(--font-family-mono);
   `,
   conductorIcon: css`
     font-size: 11px;

@@ -527,8 +527,8 @@ const s = {
     width: 22px;
     height: 22px;
     border-radius: 4px;
-    background: rgba(16, 185, 129, 0.12);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background: rgba(var(--color-success-rgb), 0.12);
+    border: 1px solid rgba(var(--color-success-rgb), 0.3);
     color: var(--color-success);
     cursor: pointer;
     flex-shrink: 0;
