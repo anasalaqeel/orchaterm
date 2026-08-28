@@ -106,7 +106,7 @@ export const PromptVaultView: React.FC = () => {
         iconName: 'Sparkles',
         command: prompt.content,
         autoExecute: false,
-        color: '#a855f7',
+        color: '#9c5fa3',
         promptVaultId: prompt.id,
       };
       const updated = [...currentQuickActions, newAction];
@@ -828,7 +828,7 @@ const styles = {
     font-weight: var(--font-weight-semibold);
     cursor: pointer;
     transition: all 0.2s ease-in-out;
-    box-shadow: 0 4px 14px rgba(123, 104, 238, 0.3);
+    box-shadow: 0 4px 14px rgba(209, 64, 31, 0.3);
 
     &:hover {
       filter: brightness(1.06);
@@ -911,19 +911,19 @@ const styles = {
     }
   `,
   tagChipActive: css`
-    background-color: rgba(59, 130, 246, 0.12);
-    border-color: var(--color-brand, #3b82f6);
-    color: var(--color-brand, #3b82f6);
+    background-color: rgba(var(--color-brand-rgb), 0.12);
+    border-color: var(--color-brand);
+    color: var(--color-brand);
     font-weight: var(--font-weight-semibold);
 
     svg {
-      color: var(--color-brand, #3b82f6);
+      color: var(--color-brand);
     }
 
     &:hover {
-      background-color: rgba(59, 130, 246, 0.2);
-      border-color: var(--color-brand, #3b82f6);
-      color: var(--color-brand, #3b82f6);
+      background-color: rgba(var(--color-brand-rgb), 0.2);
+      border-color: var(--color-brand);
+      color: var(--color-brand);
     }
   `,
   clearTagsBtn: css`
@@ -934,12 +934,12 @@ const styles = {
     cursor: pointer;
     font-weight: var(--font-weight-semibold);
     padding: 4px 8px;
-    border-radius: var(--border-radius-sm);
+    border-radius: var(--radius-sm);
     transition: all 0.15s ease;
 
     &:hover {
-      color: var(--color-error, #f87171);
-      background-color: rgba(248, 113, 113, 0.1);
+      color: var(--color-error);
+      background-color: rgba(var(--color-error-rgb), 0.1);
     }
   `,
   filterGroup: css`
@@ -957,7 +957,7 @@ const styles = {
   tooltipTitle: css`
     font-size: var(--font-size-xs, 12px);
     font-weight: var(--font-weight-bold, 700);
-    color: var(--text-primary, #f1f5f9);
+    color: var(--text-primary);
     margin-bottom: 6px;
     display: flex;
     align-items: center;
@@ -975,14 +975,14 @@ const styles = {
     }
   `,
   tooltipExample: css`
-    color: var(--text-tertiary, #64748b);
+    color: var(--text-tertiary);
     font-size: 10px;
     margin-top: 2px;
     margin-bottom: 4px;
     font-style: italic;
 
     code {
-      background-color: var(--bg-primary, #1e293b);
+      background-color: var(--bg-primary);
       padding: 1px 4px;
       border-radius: 3px;
       font-family: var(--font-family-mono);
@@ -1195,7 +1195,7 @@ const styles = {
     justify-content: center;
 
     &:hover {
-      background-color: rgba(248, 113, 113, 0.15);
+      background-color: rgba(var(--color-error-rgb), 0.15);
       color: var(--color-error);
       border-color: var(--color-error);
     }
@@ -1381,7 +1381,7 @@ const styles = {
     border: none;
     transition: filter 0.2s ease;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(123, 104, 238, 0.25);
+    box-shadow: 0 4px 12px rgba(209, 64, 31, 0.25);
 
     &:hover {
       filter: brightness(1.06);
@@ -1391,30 +1391,30 @@ const styles = {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: rgba(168, 85, 247, 0.12);
-    border: 1px solid rgba(168, 85, 247, 0.3);
-    color: #c084fc;
+    background: rgba(156, 95, 163, 0.14);
+    border: 1px solid rgba(156, 95, 163, 0.35);
+    color: #cf9bd6;
     padding: 6px var(--spacing-md);
-    border-radius: var(--border-radius-sm);
+    border-radius: var(--radius-sm);
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-semibold);
     cursor: pointer;
     transition: all 0.2s ease;
 
     &:hover {
-      background: rgba(168, 85, 247, 0.22);
-      border-color: rgba(168, 85, 247, 0.5);
-      color: #e9d5ff;
+      background: rgba(156, 95, 163, 0.24);
+      border-color: rgba(156, 95, 163, 0.55);
+      color: #e6c9ea;
     }
   `,
   pinnedBtn: css`
-    background: rgba(168, 85, 247, 0.35);
-    border-color: #a855f7;
+    background: rgba(156, 95, 163, 0.35);
+    border-color: #9c5fa3;
     color: #ffffff;
-    box-shadow: 0 0 10px rgba(168, 85, 247, 0.3);
+    box-shadow: 0 0 10px rgba(156, 95, 163, 0.3);
 
     &:hover {
-      background: rgba(168, 85, 247, 0.5);
+      background: rgba(156, 95, 163, 0.5);
     }
   `,
   contentViewHeader: css`
@@ -1493,7 +1493,7 @@ const styles = {
     }
   `,
   modalTabActive: css`
-    background: rgba(59, 130, 246, 0.15);
+    background: rgba(var(--color-brand-rgb), 0.15);
     border-color: var(--color-brand);
     color: var(--color-brand);
     font-weight: 600;

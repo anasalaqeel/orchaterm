@@ -62,10 +62,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   const files = task.output?.filesModified ?? [];
 
   return (
-    <div
-      className={cx(s.card, task.status === 'running' && s.cardRunning)}
-      style={{ borderLeftColor: color }}
-    >
+    <div className={cx(s.card, task.status === 'running' && s.cardRunning)}>
       <div className={s.header}>
         <span className={s.statusIcon} style={{ color }}>
           {task.status === 'running' ? <span className={s.spinner} /> : icon}
@@ -171,9 +168,8 @@ const s = {
     display: flex;
     flex-direction: column;
     padding: 8px 10px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
-    border-left: 3px solid var(--text-tertiary);
     background: var(--bg-primary);
     gap: 4px;
   `,
@@ -197,6 +193,7 @@ const s = {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    filter: drop-shadow(0 0 3px currentColor);
   `,
   spinner: css`
     display: inline-block;

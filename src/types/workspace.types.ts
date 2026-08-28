@@ -8,7 +8,9 @@ export interface Workspace {
   name: string; // e.g. "Factinme", "Bulkin", "Exercisee"
   path: string; // local directory path
   description: string;
-  color: string; // hex color for visual tags (e.g. "#3b82f6")
+  color: string; // hex color for visual tags (e.g. "#d1401f")
+  /** Optional user-uploaded icon/logo (data URL). Falls back to the tag color when unset. */
+  icon?: string | null;
   status: 'active' | 'paused' | 'idle';
   currentTask: string; // free text of what's happening right now
   createdAt: string;

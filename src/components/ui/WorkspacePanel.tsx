@@ -21,9 +21,9 @@ interface WorkspacePanelProps {
 }
 
 const LOG_STATUS_COLOR: Record<TaskLog['status'], string> = {
-  'in-progress': '#fbbf24',
-  done: '#34d399',
-  blocked: '#f87171',
+  'in-progress': 'var(--color-warning)',
+  done: 'var(--color-success)',
+  blocked: 'var(--color-error)',
 };
 const LOG_STATUS_ICON: Record<TaskLog['status'], React.FC<{ size?: number }>> = {
   'in-progress': Loader2,
@@ -55,12 +55,12 @@ const OrchestratorStatus: React.FC<{ plan: OrchestratorPlan | null }> = ({ plan 
   const progress = total > 0 ? (counts.done / total) * 100 : 0;
   const color =
     plan.status === 'done'
-      ? '#34d399'
+      ? 'var(--color-success)'
       : plan.status === 'failed'
-        ? '#f87171'
+        ? 'var(--color-error)'
         : plan.status === 'running'
           ? 'var(--color-brand)'
-          : '#5f587e';
+          : 'var(--text-tertiary)';
 
   return (
     <div className={s.planWrap}>
@@ -86,9 +86,15 @@ const OrchestratorStatus: React.FC<{ plan: OrchestratorPlan | null }> = ({ plan 
         {counts.running > 0 && (
           <span style={{ color: 'var(--color-brand)' }}>{counts.running} running</span>
         )}
-        {counts.done > 0 && <span style={{ color: '#34d399' }}>{counts.done} done</span>}
-        {counts.failed > 0 && <span style={{ color: '#f87171' }}>{counts.failed} failed</span>}
-        {counts.pending > 0 && <span style={{ color: '#5f587e' }}>{counts.pending} pending</span>}
+        {counts.done > 0 && (
+          <span style={{ color: 'var(--color-success)' }}>{counts.done} done</span>
+        )}
+        {counts.failed > 0 && (
+          <span style={{ color: 'var(--color-error)' }}>{counts.failed} failed</span>
+        )}
+        {counts.pending > 0 && (
+          <span style={{ color: 'var(--text-tertiary)' }}>{counts.pending} pending</span>
+        )}
       </div>
 
       {plan.tasks
@@ -169,10 +175,8 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => 
       >
         <div
           className={s.identityAvatar}
-          style={{ backgroundColor: workspace.color + '1a', borderColor: workspace.color + '30' }}
-        >
-          <span className={s.identityDot} style={{ backgroundColor: workspace.color }} />
-        </div>
+          style={{ backgroundColor: workspace.color + '33', borderColor: workspace.color + 'aa' }}
+        />
         <div className={s.identityText}>
           <span className={s.identityName}>{workspace.name}</span>
           <span className={s.identityPath}>{workspace.path}</span>
@@ -203,7 +207,10 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => 
                 initial={{ opacity: 0, scale: 0.85 }}
                 animate={{ opacity: 1, scale: 1 }}
               >
-                <span className={s.chipDot} style={{ backgroundColor: sess.color ?? '#5f587e' }} />
+                <span
+                  className={s.chipDot}
+                  style={{ backgroundColor: sess.color ?? 'var(--text-tertiary)' }}
+                />
                 <span className={s.chipLabel}>{sess.title}</span>
               </motion.div>
             ))}
@@ -383,17 +390,10 @@ const s = {
   identityAvatar: css`
     width: 34px;
     height: 34px;
-    border-radius: 9px;
-    border: 1px solid;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    border-radius: var(--radius-full);
+    border: 1.5px solid;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
     flex-shrink: 0;
-  `,
-  identityDot: css`
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
   `,
   identityText: css`
     display: flex;
@@ -561,7 +561,7 @@ const s = {
     font-size: 11px;
     font-weight: 700;
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(123, 104, 238, 0.25);
+    box-shadow: 0 2px 8px rgba(209, 64, 31, 0.25);
     &:hover {
       filter: brightness(1.08);
     }

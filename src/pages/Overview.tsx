@@ -1,11 +1,30 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { css, cx } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useDashboard, DEFAULT_TERMINAL_WORKSPACE } from '../context/DashboardContext';
 import { WorkspaceConsole } from '../components/workspace/WorkspaceConsole';
 import { Input } from '../components/ui';
-import { Plus, ChevronRight, Edit2, Terminal, FolderOpen } from 'lucide-react';
+import {
+  Plus,
+  ChevronRight,
+  Edit2,
+  Terminal,
+  FolderOpen,
+  ImagePlus,
+  X as XIcon,
+} from 'lucide-react';
+
+const MAX_ICON_BYTES = 300 * 1024; // 300KB — icons are persisted as data URLs in the settings store
+
+function readImageAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
 
 /* ── Animation variants ─────────────────────────────────────────────────────── */
 
@@ -53,9 +72,29 @@ export const DashboardView: React.FC = () => {
   const [newProjName, setNewProjName] = useState('');
   const [newProjPath, setNewProjPath] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
-  const [newProjColor, setNewProjColor] = useState('#7c3aed');
+  const [newProjColor, setNewProjColor] = useState('#d1401f');
+  const [newProjIcon, setNewProjIcon] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editTaskValue, setEditTaskValue] = useState('');
+  const newIconInputRef = useRef<HTMLInputElement>(null);
+
+  const handleIconFile = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    onLoaded: (dataUrl: string) => void
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Pick an image file', 'error');
+      return;
+    }
+    if (file.size > MAX_ICON_BYTES) {
+      showToast('Icon too large — 300KB max', 'error');
+      return;
+    }
+    onLoaded(await readImageAsDataUrl(file));
+  };
 
   const handleBackToGrid = useCallback(() => setViewMode('grid'), [setViewMode]);
 
@@ -115,13 +154,15 @@ export const DashboardView: React.FC = () => {
       path: newProjPath,
       description: newProjDesc,
       color: newProjColor,
+      icon: newProjIcon,
       status: 'active',
       currentTask: '',
     });
     setNewProjName('');
     setNewProjPath('');
     setNewProjDesc('');
-    setNewProjColor('#7c3aed');
+    setNewProjColor('#d1401f');
+    setNewProjIcon(null);
     setShowAddProj(false);
   };
 
@@ -233,22 +274,36 @@ export const DashboardView: React.FC = () => {
                       className={cx(s.card, isActive && s.cardActive)}
                       style={{ '--card-color': proj.color } as React.CSSProperties}
                     >
-                      <div
-                        className={s.cardBar}
-                        style={{
-                          background: `linear-gradient(90deg, ${proj.color}, ${proj.color}80)`,
-                        }}
-                      />
                       <div className={s.cardHeader}>
-                        <div
+                        <label
                           className={s.cardAvatar}
-                          style={{
-                            backgroundColor: proj.color + '1a',
-                            border: `1px solid ${proj.color}30`,
-                          }}
+                          style={
+                            !proj.icon
+                              ? {
+                                  backgroundColor: proj.color + '33',
+                                  borderColor: proj.color + 'aa',
+                                }
+                              : { borderColor: proj.color + 'aa' }
+                          }
+                          title={proj.icon ? 'Replace icon' : 'Add an icon or logo'}
                         >
-                          <Terminal size={14} style={{ color: proj.color }} />
-                        </div>
+                          {proj.icon ? (
+                            <img src={proj.icon} alt="" className={s.cardAvatarImg} />
+                          ) : (
+                            <Terminal size={13} className={s.cardAvatarIcon} />
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className={s.hiddenFileInput}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) =>
+                              handleIconFile(e, (dataUrl) =>
+                                updateWorkspace(proj.id, { icon: dataUrl })
+                              )
+                            }
+                          />
+                        </label>
                         <div className={s.cardMeta}>
                           <h4 className={s.cardName}>{proj.name}</h4>
                           <p className={s.cardPath}>{proj.path}</p>
@@ -393,17 +448,61 @@ export const DashboardView: React.FC = () => {
                         />
                       </div>
                       <div className={s.fieldGroup}>
+                        <label className={s.fieldLabel}>
+                          Icon <span className={s.optional}>(optional)</span>
+                        </label>
+                        <div className={s.iconRow}>
+                          <button
+                            type="button"
+                            className={s.iconPreviewBtn}
+                            onClick={() => newIconInputRef.current?.click()}
+                            style={
+                              !newProjIcon
+                                ? {
+                                    backgroundColor: newProjColor + '33',
+                                    borderColor: newProjColor + 'aa',
+                                  }
+                                : undefined
+                            }
+                            title={newProjIcon ? 'Replace icon' : 'Upload an icon or logo'}
+                          >
+                            {newProjIcon ? (
+                              <img src={newProjIcon} alt="" className={s.iconPreviewImg} />
+                            ) : (
+                              <ImagePlus size={15} className={s.iconPreviewGlyph} />
+                            )}
+                          </button>
+                          {newProjIcon && (
+                            <button
+                              type="button"
+                              className={s.iconClearBtn}
+                              onClick={() => setNewProjIcon(null)}
+                              title="Remove icon"
+                            >
+                              <XIcon size={12} />
+                            </button>
+                          )}
+                          <input
+                            ref={newIconInputRef}
+                            type="file"
+                            accept="image/*"
+                            className={s.hiddenFileInput}
+                            onChange={(e) => handleIconFile(e, setNewProjIcon)}
+                          />
+                        </div>
+                      </div>
+                      <div className={s.fieldGroup}>
                         <label className={s.fieldLabel}>Color</label>
                         <div className={s.colorRow}>
                           {[
-                            '#7B68EE',
-                            '#6B5CE7',
-                            '#3b82f6',
-                            '#10b981',
-                            '#ef4444',
-                            '#ec4899',
-                            '#06b6d4',
-                            '#f59e0b',
+                            '#d1401f',
+                            '#b08d57',
+                            '#4a7ca3',
+                            '#6b8f3f',
+                            '#0e8a80',
+                            '#9c5fa3',
+                            '#c98a1f',
+                            '#5a6570',
                           ].map((c) => (
                             <button
                               key={c}
@@ -428,7 +527,10 @@ export const DashboardView: React.FC = () => {
                       <div className={s.dialogActions}>
                         <button
                           type="button"
-                          onClick={() => setShowAddProj(false)}
+                          onClick={() => {
+                            setShowAddProj(false);
+                            setNewProjIcon(null);
+                          }}
                           className={s.cancelBtn}
                         >
                           Cancel
@@ -511,12 +613,12 @@ const s = {
     font-weight: 700;
     border: none;
     cursor: pointer;
-    box-shadow: 0 4px 16px rgba(123, 104, 238, 0.3);
+    box-shadow: 0 4px 16px rgba(209, 64, 31, 0.3);
     transition:
       box-shadow 0.2s,
       filter 0.2s;
     &:hover {
-      box-shadow: 0 6px 24px rgba(123, 104, 238, 0.4);
+      box-shadow: 0 6px 24px rgba(209, 64, 31, 0.4);
       filter: brightness(1.06);
     }
   `,
@@ -566,7 +668,7 @@ const s = {
   `,
   card: css`
     position: relative;
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--border-color);
     background: var(--bg-secondary);
     display: flex;
@@ -579,19 +681,12 @@ const s = {
       box-shadow 0.2s;
     &:hover {
       border-color: var(--border-color-hover);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+      box-shadow: var(--shadow-md);
     }
   `,
   cardActive: css`
-    border-color: rgba(var(--color-brand-rgb), 0.3) !important;
-    box-shadow:
-      0 0 0 1px rgba(var(--color-brand-rgb), 0.15),
-      0 8px 32px rgba(0, 0, 0, 0.3) !important;
-  `,
-  cardBar: css`
-    height: 3px;
-    width: 100%;
-    flex-shrink: 0;
+    border-color: rgba(var(--color-brand-rgb), 0.4) !important;
+    box-shadow: var(--shadow-brand) !important;
   `,
   cardHeader: css`
     display: flex;
@@ -600,13 +695,25 @@ const s = {
     padding: 14px 16px 0;
   `,
   cardAvatar: css`
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md);
+    border: 1.5px solid;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    overflow: hidden;
+    cursor: pointer;
+  `,
+  cardAvatarImg: css`
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  `,
+  cardAvatarIcon: css`
+    color: var(--material-brass);
   `,
   cardMeta: css`
     flex: 1;
@@ -784,16 +891,16 @@ const s = {
     align-items: center;
     justify-content: center;
     padding: 16px;
-    background: rgba(0, 0, 0, 0.7);
+    background: var(--overlay-scrim);
     backdrop-filter: blur(6px);
   `,
   dialog: css`
     width: 100%;
     max-width: 460px;
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
     background: var(--bg-secondary);
     border: 1px solid var(--border-color-hover);
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+    box-shadow: var(--shadow-lg);
     padding: 28px;
   `,
   dialogTitle: css`
@@ -890,10 +997,59 @@ const s = {
     gap: 8px;
     flex-wrap: wrap;
   `,
+  iconRow: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  `,
+  iconPreviewBtn: css`
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--border-color-hover);
+    background: var(--bg-input);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    overflow: hidden;
+    padding: 0;
+    transition: border-color 0.15s ease;
+    &:hover {
+      border-color: var(--color-brand);
+    }
+  `,
+  iconPreviewImg: css`
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  `,
+  iconPreviewGlyph: css`
+    color: var(--text-tertiary);
+  `,
+  iconClearBtn: css`
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    &:hover {
+      color: var(--color-error);
+      border-color: var(--color-error);
+    }
+  `,
+  hiddenFileInput: css`
+    display: none;
+  `,
   colorSwatch: css`
     width: 24px;
     height: 24px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     border: 2px solid transparent;
     cursor: pointer;
     transition:
@@ -904,7 +1060,7 @@ const s = {
     }
   `,
   colorSwatchActive: css`
-    border-color: rgba(255, 255, 255, 0.8) !important;
+    border-color: var(--material-paper) !important;
     transform: scale(1.1);
   `,
   colorCustom: css`
@@ -947,12 +1103,12 @@ const s = {
     border-radius: 8px;
     border: none;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(123, 104, 238, 0.3);
+    box-shadow: 0 4px 14px rgba(209, 64, 31, 0.3);
     transition:
       box-shadow 0.2s,
       filter 0.2s;
     &:hover {
-      box-shadow: 0 6px 20px rgba(123, 104, 238, 0.4);
+      box-shadow: 0 6px 20px rgba(209, 64, 31, 0.4);
       filter: brightness(1.06);
     }
   `,

@@ -521,7 +521,7 @@ const s = {
     position: fixed;
     inset: 0;
     z-index: 1050;
-    background: rgba(2, 6, 23, 0.85);
+    background: var(--overlay-scrim);
     backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
@@ -538,7 +538,7 @@ const s = {
     border: 1px solid var(--border-color);
     box-shadow:
       var(--shadow-lg),
-      0 0 20px -3px rgba(123, 104, 238, 0.25);
+      0 0 20px -3px rgba(209, 64, 31, 0.25);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -560,7 +560,7 @@ const s = {
     color: var(--text-primary);
   `,
   brandIcon: css`
-    color: var(--color-brand, #7b68ee);
+    color: var(--color-brand);
   `,
   iconBtn: css`
     width: 32px;
@@ -653,8 +653,8 @@ const s = {
     }
   `,
   navItemActive: css`
-    background: rgba(123, 104, 238, 0.15);
-    color: var(--color-brand, #7b68ee);
+    background: rgba(209, 64, 31, 0.15);
+    color: var(--color-brand);
     font-weight: 600;
   `,
   navItemDimmed: css`
@@ -684,7 +684,7 @@ const s = {
     display: flex;
     align-items: center;
     gap: 10px;
-    color: var(--color-brand, #7b68ee);
+    color: var(--color-brand);
 
     h2 {
       font-size: 17px;
@@ -732,13 +732,13 @@ const s = {
   `,
   shortcutKeys: css`
     padding: 3px 8px;
-    background: rgba(123, 104, 238, 0.12);
-    border: 1px solid rgba(123, 104, 238, 0.3);
+    background: rgba(209, 64, 31, 0.12);
+    border: 1px solid rgba(209, 64, 31, 0.3);
     border-radius: var(--border-radius-sm);
     font-family: var(--font-family-mono);
     font-size: 11px;
     font-weight: 600;
-    color: var(--color-brand, #7b68ee);
+    color: var(--color-brand);
     white-space: nowrap;
   `,
   categoryBadge: css`
@@ -783,9 +783,9 @@ const s = {
     font-weight: 700;
     padding: 2px 7px;
     border-radius: 4px;
-    background: rgba(123, 104, 238, 0.15);
-    color: var(--color-brand, #7b68ee);
-    border: 1px solid rgba(123, 104, 238, 0.3);
+    background: rgba(209, 64, 31, 0.15);
+    color: var(--color-brand);
+    border: 1px solid rgba(209, 64, 31, 0.3);
   `,
   stepsList: css`
     display: flex;
@@ -801,7 +801,7 @@ const s = {
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--material-brass-rgb), 0.16);
     color: var(--text-primary);
     font-size: 10px;
     font-weight: 700;
@@ -832,15 +832,15 @@ const s = {
     flex-direction: column;
     gap: 3px;
     padding: 8px 10px;
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--bg-canvas);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
+    border-radius: var(--radius-sm);
   `,
   variableTag: css`
     font-family: var(--font-family-mono);
     font-size: 11px;
     font-weight: 600;
-    color: #c084fc;
+    color: #9c5fa3;
   `,
   variableDesc: css`
     font-size: 11px;
@@ -849,9 +849,9 @@ const s = {
   `,
   proTipBox: css`
     padding: 12px 14px;
-    background: rgba(245, 158, 11, 0.08);
-    border: 1px solid rgba(245, 158, 11, 0.25);
-    border-radius: var(--border-radius-md);
+    background: rgba(var(--color-warning-rgb), 0.08);
+    border: 1px solid rgba(var(--color-warning-rgb), 0.25);
+    border-radius: var(--radius-md);
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -862,7 +862,7 @@ const s = {
     gap: 6px;
     font-size: 12px;
     font-weight: 700;
-    color: #f59e0b;
+    color: var(--color-warning);
   `,
   proTipText: css`
     font-size: 12px;

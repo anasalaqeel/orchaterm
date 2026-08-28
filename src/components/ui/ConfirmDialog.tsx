@@ -68,7 +68,7 @@ const styles = {
     align-items: center;
     justify-content: center;
     padding: 16px;
-    background: rgba(0, 0, 0, 0.65);
+    background: var(--overlay-scrim);
     backdrop-filter: blur(4px);
     animation: fadeIn 0.15s ease;
     @keyframes fadeIn {

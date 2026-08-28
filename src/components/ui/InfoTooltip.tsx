@@ -12,7 +12,7 @@ const iconStyle = css`
   transition: color 0.15s ease;
 
   &:hover {
-    color: var(--color-brand, #3b82f6);
+    color: var(--color-brand);
   }
 `;
 

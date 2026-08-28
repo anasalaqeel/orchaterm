@@ -249,7 +249,7 @@ const s = {
   `,
   chipCount: css`
     font-size: 9px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--material-brass-rgb), 0.16);
     padding: 0 5px;
     border-radius: 99px;
     color: inherit;

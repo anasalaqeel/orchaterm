@@ -80,8 +80,8 @@ const styles = {
   `,
   retry: css`
     padding: 6px 14px;
-    border-radius: 6px;
-    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
     background: var(--bg-tertiary);
     color: var(--text-primary);
     cursor: pointer;

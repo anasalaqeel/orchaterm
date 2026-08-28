@@ -282,12 +282,13 @@ export function Sidebar() {
                       className={cx(s.wsClickArea, layoutCollapsed && s.wsClickAreaCollapsed)}
                       onClick={() => openInConsole(w.id)}
                     >
-                      <span
-                        className={s.wsAvatar}
-                        style={{ backgroundColor: w.color + '22', borderColor: w.color + '44' }}
-                      >
-                        <span className={s.wsAvatarDot} style={{ backgroundColor: w.color }} />
-                      </span>
+                      {w.icon ? (
+                        <img src={w.icon} alt="" className={s.wsIcon} />
+                      ) : (
+                        <span className={s.wsInitial} style={{ color: w.color }}>
+                          {w.name.charAt(0).toUpperCase()}
+                        </span>
+                      )}
 
                       <AnimatePresence initial={false}>
                         {!collapsed && (
@@ -356,17 +357,8 @@ export function Sidebar() {
                               setHoveredWsRect(null);
                             }}
                           >
-                            <span
-                              className={s.wsAvatar}
-                              style={{
-                                backgroundColor: w.color + '22',
-                                borderColor: w.color + '44',
-                              }}
-                            >
-                              <span
-                                className={s.wsAvatarDot}
-                                style={{ backgroundColor: w.color }}
-                              />
+                            <span className={s.wsInitial} style={{ color: w.color }}>
+                              {w.name.charAt(0).toUpperCase()}
                             </span>
                             <span className={s.wsName}>{w.name}</span>
                           </button>
@@ -715,7 +707,7 @@ const s = {
     flex-shrink: 0;
     text-decoration: none;
     &:hover {
-      background: rgba(123, 104, 238, 0.12);
+      background: rgba(209, 64, 31, 0.12);
       color: var(--color-brand);
     }
   `,
@@ -755,7 +747,7 @@ const s = {
     justify-content: center;
   `,
   wsRowActive: css`
-    background: rgba(123, 104, 238, 0.1) !important;
+    background: rgba(209, 64, 31, 0.1) !important;
   `,
   wsClickArea: css`
     flex: 1;
@@ -784,17 +776,28 @@ const s = {
   wsAvatar: css`
     width: 22px;
     height: 22px;
-    border-radius: 6px;
-    border: 1px solid transparent;
+    border-radius: var(--radius-full);
+    border: 1.5px solid rgba(var(--material-brass-rgb), 0.35);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
   `,
-  wsAvatarDot: css`
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
+  wsInitial: css`
+    width: 16px;
+    flex-shrink: 0;
+    text-align: center;
+    font-family: var(--font-family-mono);
+    font-size: 12px;
+    font-weight: 700;
+  `,
+  wsIcon: css`
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
   `,
   wsName: css`
     overflow: hidden;
@@ -826,14 +829,14 @@ const s = {
       color 0.1s;
     padding: 0;
     &:hover {
-      background: rgba(255, 255, 255, 0.08);
+      background: rgba(var(--material-brass-rgb), 0.14);
       color: var(--text-primary);
     }
   `,
   iconBtnDanger: css`
     &:hover {
-      background: rgba(248, 113, 113, 0.15) !important;
-      color: #f87171 !important;
+      background: rgba(var(--color-error-rgb), 0.15) !important;
+      color: var(--color-error) !important;
     }
   `,
 

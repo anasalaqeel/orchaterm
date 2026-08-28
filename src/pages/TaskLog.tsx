@@ -360,7 +360,7 @@ const styles = {
     font-size: var(--font-size-sm);
     font-weight: 600;
     transition: all 0.2s ease-in-out;
-    box-shadow: 0 4px 14px rgba(123, 104, 238, 0.3);
+    box-shadow: 0 4px 14px rgba(209, 64, 31, 0.3);
     cursor: pointer;
 
     &:hover {
@@ -654,15 +654,15 @@ const styles = {
   `,
 
   statusDone: css`
-    background-color: rgba(52, 211, 153, 0.1);
+    background-color: rgba(var(--color-success-rgb), 0.1);
     color: var(--color-success);
-    border-color: rgba(52, 211, 153, 0.2);
+    border-color: rgba(var(--color-success-rgb), 0.2);
   `,
 
   statusBlocked: css`
-    background-color: rgba(248, 113, 113, 0.1);
+    background-color: rgba(var(--color-error-rgb), 0.1);
     color: var(--color-error);
-    border-color: rgba(248, 113, 113, 0.2);
+    border-color: rgba(var(--color-error-rgb), 0.2);
     animation: status-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 
     @keyframes status-pulse {
@@ -677,9 +677,9 @@ const styles = {
   `,
 
   statusInProgress: css`
-    background-color: rgba(129, 140, 248, 0.1);
+    background-color: rgba(var(--color-info-rgb), 0.1);
     color: var(--color-info);
-    border-color: rgba(129, 140, 248, 0.2);
+    border-color: rgba(var(--color-info-rgb), 0.2);
   `,
 
   statusIcon: css`
@@ -723,7 +723,7 @@ const styles = {
     height: 26px;
 
     &:hover {
-      background-color: rgba(248, 113, 113, 0.15);
+      background-color: rgba(var(--color-error-rgb), 0.15);
       color: var(--color-error);
     }
   `,
@@ -855,7 +855,7 @@ const styles = {
     border: none;
     cursor: pointer;
     transition: filter 0.15s ease;
-    box-shadow: 0 4px 12px rgba(123, 104, 238, 0.25);
+    box-shadow: 0 4px 12px rgba(209, 64, 31, 0.25);
 
     &:hover {
       filter: brightness(1.06);

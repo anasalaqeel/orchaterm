@@ -140,7 +140,7 @@ export const QuickSwitcher: React.FC = () => {
                   <div className={styles.itemLeft}>
                     <div
                       className={styles.itemDot}
-                      style={{ backgroundColor: proj.color || '#3b82f6' }}
+                      style={{ backgroundColor: proj.color || '#d1401f' }}
                     />
                     <div className={styles.itemMeta}>
                       <div className={styles.itemNameRow}>
@@ -212,7 +212,7 @@ const styles = {
     padding-top: 15vh;
     padding-left: var(--spacing-md);
     padding-right: var(--spacing-md);
-    background-color: rgba(2, 6, 23, 0.85);
+    background-color: var(--overlay-scrim);
     backdrop-filter: blur(4px);
     animation: fadeIn 0.2s ease-out forwards;
 

@@ -333,7 +333,7 @@ const styles = {
     }
   `,
   itemActive: css`
-    background-color: rgba(123, 104, 238, 0.12);
+    background-color: rgba(209, 64, 31, 0.12);
     color: var(--color-brand);
     font-weight: var(--font-weight-semibold);
   `,

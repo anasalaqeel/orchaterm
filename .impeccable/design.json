@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-28T16:31:00Z",
+  "title": "Design System: Orchaterm",
+  "extensions": {
+    "colorMeta": {
+      "lamp": {
+        "role": "primary",
+        "displayName": "Indicator Lamp",
+        "canonical": "#d1401f",
+        "tonalRamp": ["#2b0f08", "#4a1a0e", "#711f11", "#a02c17", "#d1401f", "#e26845", "#ee9273", "#f7c2b1"]
+      },
+      "brass": {
+        "role": "secondary",
+        "displayName": "Brass",
+        "canonical": "#b08d57",
+        "tonalRamp": ["#241c11", "#3d3019", "#5c4a26", "#7d6537", "#b08d57", "#c6a878", "#dbc39d", "#eeddc0"]
+      },
+      "paper": {
+        "role": "tertiary",
+        "displayName": "Ticker Paper",
+        "canonical": "#f0e6d2",
+        "tonalRamp": ["#332c1e", "#544934", "#786a4d", "#9d8c69", "#c3b088", "#daccaa", "#eee3cc", "#f8f2e6"]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Bakelite Canvas",
+        "canonical": "#100e0c",
+        "tonalRamp": ["#050403", "#100e0c", "#1e1a14", "#262019", "#3a3125", "#544a39", "#786c54", "#9d907a"]
+      }
+    },
+    "typographyMeta": {
+      "body": { "displayName": "Body", "purpose": "Default UI text throughout the app shell." },
+      "label": { "displayName": "Stamped Label", "purpose": "Jack plates, section headers, status pills — the engraved-brass-plate register." },
+      "mono": { "displayName": "Mono", "purpose": "Terminal content, code, search, ticker-tape relay rows." }
+    },
+    "shadows": [
+      { "name": "sm", "value": "0 1px 3px rgba(0,0,0,0.55)", "purpose": "Resting card/row separation." },
+      { "name": "md", "value": "0 4px 14px rgba(0,0,0,0.6)", "purpose": "Popovers, dropdowns, floating badges." },
+      { "name": "lg", "value": "0 10px 32px rgba(0,0,0,0.7)", "purpose": "Modals." },
+      { "name": "brand", "value": "0 0 20px rgba(209,64,31,0.28)", "purpose": "Lamp glow — lit indicator or primary action only." },
+      { "name": "glow", "value": "0 0 36px rgba(176,141,87,0.14)", "purpose": "Faint ambient brass glow behind brand-adjacent chrome." }
+    ],
+    "motion": [
+      { "name": "sidebar-collapse", "value": "220ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Sidebar width/opacity transitions." },
+      { "name": "state-transition", "value": "150ms ease", "purpose": "Default hover/focus/active transitions on interactive elements." }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Lamp Indicator",
+      "kind": "custom",
+      "refersTo": "jack-plate",
+      "description": "The system's signature status vocabulary — a small circle that glows only when lit. Replaces colored badges and border-left accents everywhere.",
+      "html": "<span class=\"ds-lamp\" data-lit=\"true\" style=\"--lamp-color:#7fa06a\"></span>",
+      "css": ".ds-lamp { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--lamp-color,#7a6f58); box-shadow: inset 0 0 0 1px rgba(0,0,0,.35), 0 0 0 1px rgba(176,141,87,.25); transition: background .15s ease, box-shadow .15s ease; } .ds-lamp[data-lit='true'] { box-shadow: inset 0 0 0 1px rgba(0,0,0,.25), 0 0 6px 1px var(--lamp-color), 0 0 0 1px rgba(176,141,87,.35); }"
+    },
+    {
+      "name": "Jack Plate",
+      "kind": "custom",
+      "refersTo": "jack-plate",
+      "description": "Brass corner-plate label marking a terminal pane's jack identity (e.g. JACK 4F2A).",
+      "html": "<span class=\"ds-jack-plate\">JACK 4F2A</span>",
+      "css": ".ds-jack-plate { font-family:'Fira Code','JetBrains Mono',monospace; font-size:9px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:#b08d57; background:#262019; border:1px solid rgba(176,141,87,.4); border-radius:3px; padding:1px 5px; }"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Lamp-colored primary action button.",
+      "html": "<button class=\"ds-btn-primary\">Send</button>",
+      "css": ".ds-btn-primary { background:#d1401f; color:#f0e6d2; font-size:13px; font-weight:700; padding:8px 20px; border:none; border-radius:4px; cursor:pointer; transition:filter .15s ease; } .ds-btn-primary:hover { filter:brightness(1.1); } .ds-btn-primary:focus-visible { outline:2px solid #d1401f; outline-offset:2px; } .ds-btn-primary:disabled { opacity:.35; cursor:not-allowed; }"
+    },
+    {
+      "name": "Workspace Jack Socket",
+      "kind": "custom",
+      "description": "Sidebar workspace/session avatar drawn as a literal jack socket rather than a rounded-square icon tile.",
+      "html": "<span class=\"ds-jack-socket\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#d1401f\" stroke-width=\"2\"><polyline points=\"4 17 10 11 4 5\"/><line x1=\"12\" y1=\"19\" x2=\"20\" y2=\"19\"/></svg></span>",
+      "css": ".ds-jack-socket { width:22px; height:22px; border-radius:9999px; border:1.5px solid rgba(176,141,87,.35); box-shadow: inset 0 1px 2px rgba(0,0,0,.3); display:flex; align-items:center; justify-content:center; background:rgba(209,64,31,.13); }"
+    },
+    {
+      "name": "Relay Row (ticker)",
+      "kind": "card",
+      "description": "Agent-summary / system relay row — mono font, dashed top/bottom rules, no colored border-left.",
+      "html": "<div class=\"ds-relay-row\"><span class=\"ds-lamp\" data-lit=\"true\" style=\"--lamp-color:#8095ad\"></span><span class=\"ds-relay-title\">TERMINAL 1</span><span class=\"ds-relay-text\">Build finished, 0 errors.</span></div>",
+      "css": ".ds-relay-row { display:flex; align-items:baseline; gap:7px; padding:4px 9px; background:#262019; border-radius:3px; font-family:'Fira Code','JetBrains Mono',monospace; border-top:1px dashed rgba(176,141,87,.18); border-bottom:1px dashed rgba(176,141,87,.18); } .ds-relay-title { font-size:10px; font-weight:600; color:#7a6f58; text-transform:uppercase; letter-spacing:.04em; } .ds-relay-text { font-size:11px; color:#b6a988; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-default",
+      "description": "Default text input / textarea.",
+      "html": "<input class=\"ds-input\" placeholder=\"Ask anything…\" />",
+      "css": ".ds-input { background:rgba(240,230,210,.05); border:1px solid rgba(176,141,87,.32); border-radius:4px; padding:8px 12px; color:#f0e6d2; font-size:12px; } .ds-input:focus { outline:none; border-color:rgba(209,64,31,.55); } .ds-input::placeholder { color:#7a6f58; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Central Exchange",
+    "overview": "Orchaterm is styled as a live telephone/telegraph exchange operator's desk, circa the early 1900s: brass jack fields, bakelite panels, waxed ticker paper, and a single indicator-lamp accent color. Every terminal session is a jack; relaying context between sessions is a patch cord, not a copy-paste; status is read from a lamp, lit or dark, not from a colored badge. The system replaces Orchaterm's original ClickUp-purple, soft-shadow SaaS-dashboard look — that look is now the explicit anti-reference: rounded cards, gradient accents, and a violet brand color, all retired.\n\nThis is an Operate-mode surface: a working tool a solo developer runs for hours at a time, not a marketing surface. The world's materials (brass, bakelite, paper) express identity through color, radius, and a handful of named components (the jack plate, the lamp, the ticker row) — never through decoration that would slow a developer down mid-task.",
+    "keyCharacteristics": [
+      "One accent color throughout — the indicator lamp — used only for the primary action, current selection, and state.",
+      "Tight, mechanical corner radii (3–9px) instead of soft SaaS rounding.",
+      "No colored border-left accent bars on cards, rows, or callouts — state and provenance read from a lamp dot or an icon color instead.",
+      "Two themes (dark = night shift, light = day/ticker paper), both drawn from the same brass/bakelite/lamp material set.",
+      "Curated xterm theme presets are product functionality, left untouched — out of scope for this system."
+    ],
+    "rules": [
+      { "name": "The One Lamp Rule", "body": "Exactly one saturated accent color exists in the system: the indicator lamp. Every other color is a neutral or a desaturated semantic color.", "section": "colors" },
+      { "name": "The Brass-Is-Structure Rule", "body": "Brass never carries meaning; it only renders hardware — borders, rings, dividers, plates.", "section": "colors" },
+      { "name": "The Stamped-Label Rule", "body": "Any label meant to read as a physical marking is set uppercase, tracked (+0.04em or more), and small (10-11px).", "section": "typography" },
+      { "name": "The Lamp-Glow-Only Rule", "body": "The colored glow shadow is reserved for elements literally modeling a lit indicator lamp or the primary action.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep the lamp color to primary actions, active state, and lit indicators only.",
+      "Do use the lamp component for any per-item state indicator instead of inventing a new colored-dot or badge pattern.",
+      "Do keep radii at the tightened hardware scale — do not reintroduce 10-20px soft card rounding.",
+      "Do tint borders, dividers, and scrollbars from brass rather than plain white/black alpha.",
+      "Do leave the xterm theme presets and their exact hex values untouched."
+    ],
+    "donts": [
+      "Don't add a colored border-left/border-right accent bar to a card, row, callout, or alert — this pattern is banned, not merely discouraged.",
+      "Don't reintroduce gradient text, glass/blur as decoration, or a second saturated accent color alongside the lamp.",
+      "Don't use the lamp-glow shadow on anything that isn't a literal lit-lamp element or the primary action.",
+      "Don't style form controls, buttons, or badges with ad hoc hex colors — every color should trace back to a CSS custom property in src/index.css."
+    ]
+  }
+}

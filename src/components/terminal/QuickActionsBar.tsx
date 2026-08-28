@@ -167,28 +167,23 @@ const styles = {
     display: flex;
     align-items: center;
     gap: 4px;
-    background: rgba(13, 23, 35, 0.7);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(24, 20, 16, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(176, 141, 87, 0.22);
     padding: 6px;
-    border-radius: 14px;
-    box-shadow:
-      0 12px 32px rgba(0, 0, 0, 0.4),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    opacity: 0.6; /* Semi-transparent when not focused */
+    border-radius: var(--radius-lg);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+    transition: all 0.2s ease;
+    opacity: 0.65; /* Semi-transparent when not focused */
     max-width: 100%;
     min-width: 0; /* Let it shrink when constrained by container */
 
     &:hover {
       opacity: 1;
-      background: rgba(15, 25, 38, 0.85);
-      border-color: rgba(255, 255, 255, 0.15);
-      transform: translateY(-2px);
-      box-shadow:
-        0 16px 40px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      background: rgba(30, 26, 20, 0.95);
+      border-color: rgba(176, 141, 87, 0.4);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
     }
   `,
   actionsGroup: css`
@@ -212,81 +207,62 @@ const styles = {
     align-items: center;
     gap: 6px;
     background: transparent;
-    color: #94a3b8;
+    color: var(--text-secondary);
     border: 1px solid transparent;
     padding: 6px 12px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.15s ease;
     outline: none;
 
     /* If a custom color is provided, use it for hover states */
-    --hover-bg: rgba(255, 255, 255, 0.06);
-    --hover-color: var(--action-color, #e2e8f0);
+    --hover-bg: rgba(176, 141, 87, 0.12);
+    --hover-color: var(--action-color, var(--text-primary));
 
     &:hover {
       background: var(--hover-bg);
       color: var(--hover-color);
-      border-color: rgba(255, 255, 255, 0.04);
+      border-color: rgba(176, 141, 87, 0.16);
     }
 
     &:active {
       transform: scale(0.96);
-      background: rgba(255, 255, 255, 0.03);
+      background: rgba(176, 141, 87, 0.08);
     }
 
     svg {
       color: inherit;
-      transition: transform 0.2s ease;
-    }
-
-    &:hover svg {
-      transform: scale(1.1);
     }
   `,
   iconOnlyBtn: css`
     padding: 6px;
-    color: #64748b;
+    color: var(--text-tertiary);
     &:hover {
-      color: #e2e8f0;
-      background: rgba(255, 255, 255, 0.08);
-      transform: rotate(15deg);
+      color: var(--text-primary);
+      background: rgba(176, 141, 87, 0.14);
     }
   `,
   divider: css`
     flex-shrink: 0;
     width: 1px;
     height: 18px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(176, 141, 87, 0.2);
     margin: 0 4px;
-    border-radius: 1px;
   `,
   scrollTrack: css`
     pointer-events: none;
     width: 60px;
     height: 2px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(176, 141, 87, 0.16);
     border-radius: 1px;
     position: relative;
     overflow: hidden;
-    animation: fadeIn 0.25s ease-out;
-
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(-3px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
   `,
   scrollThumb: css`
     height: 100%;
-    background: rgba(255, 255, 255, 0.45);
+    background: var(--material-brass);
     border-radius: 1px;
     transition: transform 0.05s ease-out;
   `,
