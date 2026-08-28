@@ -3,11 +3,11 @@ import type { TerminalConfig, TerminalKeybinding, TerminalTheme } from '../types
 
 export const DEFAULT_TERMINAL_CONFIG: TerminalConfig = {
   theme: {
-    background: '#0C0C0C',
-    foreground: '#d4d4d4',
-    cursor: '#7B68EE',
-    cursorAccent: '#0C0C0C',
-    selectionBackground: 'rgba(158, 255, 255, 0.25)',
+    background: '#100E0C',
+    foreground: '#f0e6d2',
+    cursor: '#d1401f',
+    cursorAccent: '#100E0C',
+    selectionBackground: 'rgba(176, 141, 87, 0.28)',
     selectionForeground: '#ffffff',
     black: '#1a1a1a',
     brightBlack: '#4a4a4a',
@@ -66,7 +66,7 @@ export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
     command:
       'Analyze and explain the following terminal output or error, and provide clear step-by-step fix instructions:\n\n```\n{{terminal_output}}\n```',
     autoExecute: false,
-    color: '#a855f7',
+    color: '#c98a1f',
   },
   {
     id: 'ai-refactor',
@@ -75,7 +75,7 @@ export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
     command:
       'Review the following code or command snippet. Suggest improvements, optimizations, and best practices:\n\n```\n{{selection}}\n```',
     autoExecute: false,
-    color: '#3b82f6',
+    color: '#4a7ca3',
   },
 ];
 

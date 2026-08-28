@@ -36,7 +36,7 @@ export const DEFAULT_TERMINAL_WORKSPACE: Workspace = {
   name: 'Terminal',
   path: '',
   description: 'Global scratch terminal',
-  color: '#8b5cf6',
+  color: '#d1401f',
   status: 'active',
   currentTask: '',
   createdAt: new Date().toISOString(),

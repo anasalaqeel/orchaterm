@@ -370,7 +370,7 @@ const styles = {
   container: css`
     font-size: var(--font-size-sm, 13px);
     line-height: 1.6;
-    color: var(--text-primary, #e2e8f0);
+    color: var(--text-primary);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -382,26 +382,26 @@ const styles = {
   `,
   bold: css`
     font-weight: 700;
-    color: var(--text-primary, #ffffff);
+    color: var(--text-primary);
   `,
   italic: css`
     font-style: italic;
   `,
   strikethrough: css`
     text-decoration: line-through;
-    color: var(--text-tertiary, #64748b);
+    color: var(--text-tertiary);
   `,
   inlineCode: css`
-    background-color: var(--bg-tertiary, #1e293b);
-    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     padding: 1px 6px;
     font-family: var(--font-family-mono, monospace);
     font-size: 0.88em;
-    color: #38bdf8;
+    color: var(--color-info);
   `,
   link: css`
-    color: var(--color-brand, #3b82f6);
+    color: var(--color-brand);
     text-decoration: underline;
     text-underline-offset: 2px;
     display: inline-flex;
@@ -410,7 +410,7 @@ const styles = {
     transition: color 0.15s ease;
 
     &:hover {
-      color: #60a5fa;
+      filter: brightness(1.2);
     }
   `,
   linkIcon: css`
@@ -420,43 +420,45 @@ const styles = {
   h1: css`
     font-size: 1.4em;
     font-weight: 700;
-    color: var(--text-primary, #ffffff);
+    color: var(--text-primary);
     margin: 12px 0 4px;
     padding-bottom: 4px;
-    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-bottom: 1px solid var(--border-color);
   `,
   h2: css`
     font-size: 1.25em;
     font-weight: 700;
-    color: var(--text-primary, #ffffff);
+    color: var(--text-primary);
     margin: 10px 0 4px;
     padding-bottom: 2px;
-    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    border-bottom: 1px solid var(--border-color);
   `,
   h3: css`
     font-size: 1.1em;
     font-weight: 600;
-    color: var(--text-primary, #ffffff);
+    color: var(--text-primary);
     margin: 8px 0 2px;
   `,
   h4: css`
     font-size: 1em;
     font-weight: 600;
-    color: var(--text-secondary, #94a3b8);
+    color: var(--text-secondary);
     margin: 6px 0 2px;
   `,
   hr: css`
     border: none;
-    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-top: 1px solid var(--border-color);
     margin: 10px 0;
   `,
   blockquote: css`
     margin: 6px 0;
-    padding: 6px 12px;
-    border-left: 3px solid var(--color-brand, #3b82f6);
-    background-color: var(--bg-tertiary, rgba(255, 255, 255, 0.03));
-    border-radius: 0 6px 6px 0;
-    color: var(--text-secondary, #94a3b8);
+    padding: 6px 10px;
+    background-color: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    border-top: 1px dashed var(--border-color);
+    border-bottom: 1px dashed var(--border-color);
+    font-family: var(--font-family-mono);
+    color: var(--text-secondary);
   `,
   quoteParagraph: css`
     margin: 0;
@@ -480,9 +482,9 @@ const styles = {
     line-height: 1.5;
   `,
   codeBlockWrapper: css`
-    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
-    border-radius: 8px;
-    background-color: #0b101b;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-canvas);
     margin: 8px 0;
     overflow: hidden;
   `,
@@ -491,13 +493,13 @@ const styles = {
     align-items: center;
     justify-content: space-between;
     padding: 4px 10px;
-    background-color: rgba(255, 255, 255, 0.04);
-    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    background-color: rgba(var(--material-brass-rgb), 0.06);
+    border-bottom: 1px solid var(--border-color);
   `,
   codeLang: css`
     font-size: 10px;
     font-family: var(--font-family-mono, monospace);
-    color: var(--text-tertiary, #64748b);
+    color: var(--text-tertiary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     font-weight: 600;
@@ -511,17 +513,17 @@ const styles = {
     border-radius: 4px;
     padding: 2px 6px;
     font-size: 11px;
-    color: var(--text-secondary, #94a3b8);
+    color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.15s ease;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--text-primary, #ffffff);
+      background: rgba(var(--material-brass-rgb), 0.14);
+      color: var(--text-primary);
     }
   `,
   copySuccessIcon: css`
-    color: #4ade80;
+    color: var(--color-success);
   `,
   codeContent: css`
     margin: 0;
@@ -529,7 +531,7 @@ const styles = {
     font-family: var(--font-family-mono, monospace);
     font-size: 12px;
     line-height: 1.55;
-    color: #f1f5f9;
+    color: var(--text-primary);
     overflow-x: auto;
     white-space: pre;
 
@@ -541,7 +543,7 @@ const styles = {
     overflow-x: auto;
     margin: 8px 0;
     border-radius: 6px;
-    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border: 1px solid var(--border-color);
   `,
   table: css`
     width: 100%;
@@ -550,23 +552,23 @@ const styles = {
   `,
   th: css`
     background-color: var(--bg-tertiary, rgba(255, 255, 255, 0.05));
-    color: var(--text-primary, #ffffff);
+    color: var(--text-primary);
     font-weight: 600;
     text-align: left;
     padding: 6px 10px;
-    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-bottom: 1px solid var(--border-color);
   `,
   tr: css`
     &:nth-child(even) {
-      background-color: rgba(255, 255, 255, 0.02);
+      background-color: rgba(var(--material-brass-rgb), 0.03);
     }
     &:hover {
-      background-color: rgba(255, 255, 255, 0.04);
+      background-color: rgba(var(--material-brass-rgb), 0.06);
     }
   `,
   td: css`
     padding: 6px 10px;
-    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.05));
-    color: var(--text-secondary, #cbd5e1);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-secondary);
   `,
 };

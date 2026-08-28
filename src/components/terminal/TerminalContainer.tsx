@@ -36,14 +36,14 @@ interface HoveredDrop {
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const TAB_COLOR_PRESETS = [
-  '#7B68EE',
-  '#10b981',
-  '#3b82f6',
-  '#8b5cf6',
-  '#ec4899',
-  '#ef4444',
-  '#06b6d4',
-  '#84cc16',
+  '#d1401f', // indicator lamp
+  '#b08d57', // brass
+  '#4a7ca3', // signal wire blue
+  '#6b8f3f', // patina green
+  '#0e8a80', // teal
+  '#9c5fa3', // plum
+  '#c98a1f', // ochre
+  '#5a6570', // steel gray
 ];
 
 // Derives the closest drop edge from cursor position inside an element.
@@ -300,26 +300,10 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleSessionIds.join(','), active, activeSessionId]);
 
-  // ── Color picker ─────────────────────────────────────────────────────────
-  const [colorPickerOpenId, setColorPickerOpenId] = useState<string | null>(null);
-  const [colorPickerPos, setColorPickerPos] = useState<{ top: number; left: number } | null>(null);
-  const colorPickerRef = useRef<HTMLDivElement>(null);
-
-  // ── Interrupt policy menu ────────────────────────────────────────────────
+  // ── Interrupt policy menu (also hosts the tab-color picker) ──────────────
   const [policyMenu, setPolicyMenu] = useState<{ sessionId: string; x: number; y: number } | null>(
     null
   );
-
-  useEffect(() => {
-    if (!colorPickerOpenId) return;
-    const close = (e: MouseEvent) => {
-      if (colorPickerRef.current && !colorPickerRef.current.contains(e.target as Node)) {
-        setColorPickerOpenId(null);
-      }
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [colorPickerOpenId]);
 
   // ── Tab bar drag-to-reorder state ────────────────────────────────────────
   const [dragId, setDragId] = useState<string | null>(null);
@@ -615,7 +599,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const setTabColor = (sessionId: string, color: string | null) => {
     setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, color } : s)));
     updateTerminalSession(sessionId, { color });
-    setColorPickerOpenId(null);
+    setPolicyMenu(null);
   };
 
   const handleTitleChange = useCallback((sessionId: string, title: string) => {
@@ -670,7 +654,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       height: `${rect.height}px`,
       margin: '0',
       transform: 'rotate(-2deg) scale(1.08)',
-      boxShadow: '0 10px 30px rgba(0,0,0,0.55), 0 0 0 1.5px rgba(123,104,238,0.6)',
+      boxShadow: '0 10px 30px rgba(0,0,0,0.55), 0 0 0 1.5px rgba(209,64,31,0.6)',
       borderRadius: '8px',
       opacity: '1',
       pointerEvents: 'none',
@@ -884,8 +868,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 const isEditing = session.id === editingSessionId;
                 const isDragging = session.id === dragId;
                 const isDragOver = session.id === dragOverId;
-                const tabColor = session.color ?? '#7B68EE';
-                const isColorPickerOpen = session.id === colorPickerOpenId;
 
                 return (
                   <div
@@ -910,7 +892,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       isDragging && styles.tabDragging,
                       isDragOver && styles.tabDragOver
                     )}
-                    style={isActive ? { borderTopColor: tabColor } : undefined}
                   >
                     {inSplitGroup && (
                       <span
@@ -922,30 +903,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                         {groupIdx + 1}
                       </span>
                     )}
-                    <div
-                      className={cx(styles.colorDotWrapper)}
-                      onClick={(e) => {
-                        if (!isActive) return;
-                        e.stopPropagation();
-                        if (isColorPickerOpen) {
-                          setColorPickerOpenId(null);
-                        } else {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setColorPickerPos({ top: rect.bottom + 8, left: rect.left - 4 });
-                          setColorPickerOpenId(session.id);
-                        }
-                      }}
-                    >
-                      <span
-                        className={cx(styles.colorDot, isActive && styles.colorDotActive)}
-                        style={{
-                          backgroundColor:
-                            session.color ??
-                            (isActive ? 'var(--color-brand)' : 'var(--bg-tertiary)'),
-                        }}
-                        title={isActive ? 'Change tab color' : undefined}
-                      />
-                    </div>
                     {isEditing ? (
                       <Input
                         type="text"
@@ -1101,47 +1058,6 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       </div>
 
       {/* Portals */}
-      {colorPickerOpenId &&
-        colorPickerPos &&
-        (() => {
-          const pickerSession = sessions.find((s) => s.id === colorPickerOpenId);
-          if (!pickerSession) return null;
-          return createPortal(
-            <div
-              ref={colorPickerRef}
-              className={styles.colorPickerPopover}
-              style={{ top: colorPickerPos.top, left: colorPickerPos.left }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className={styles.colorPickerLabel}>Tab color</div>
-              <div className={styles.colorSwatches}>
-                {TAB_COLOR_PRESETS.map((c) => (
-                  <button
-                    key={c}
-                    className={cx(
-                      styles.colorSwatch,
-                      pickerSession.color === c && styles.colorSwatchActive
-                    )}
-                    style={{ backgroundColor: c }}
-                    onClick={() => setTabColor(pickerSession.id, c)}
-                    title={c}
-                  />
-                ))}
-                {pickerSession.color && (
-                  <button
-                    className={styles.colorSwatchReset}
-                    onClick={() => setTabColor(pickerSession.id, null)}
-                    title="Reset"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            </div>,
-            document.body
-          );
-        })()}
-
       {shellPickerOpen &&
         shellDropdownPos &&
         createPortal(
@@ -1211,6 +1127,67 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   letterSpacing: '0.06em',
                 }}
               >
+                Tab color
+              </div>
+              <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px', flexWrap: 'wrap' }}>
+                {TAB_COLOR_PRESETS.map((c) => {
+                  const sess = sessions.find((s) => s.id === policyMenu.sessionId);
+                  const active = sess?.color === c;
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => setTabColor(policyMenu.sessionId, c)}
+                      title={c}
+                      style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: 3,
+                        border: active
+                          ? '2px solid var(--material-paper)'
+                          : '1px solid rgba(0,0,0,0.35)',
+                        background: c,
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    />
+                  );
+                })}
+                <button
+                  onClick={() => setTabColor(policyMenu.sessionId, null)}
+                  title="Reset to default"
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 3,
+                    border: '1px solid var(--border-color-hover)',
+                    background: 'transparent',
+                    color: 'var(--text-tertiary)',
+                    cursor: 'pointer',
+                    padding: 0,
+                    fontSize: 9,
+                    lineHeight: 1,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              <div
+                style={{
+                  height: 1,
+                  background: 'var(--border-color)',
+                  margin: '4px 0',
+                }}
+              />
+              <div
+                style={{
+                  padding: '4px 12px 6px',
+                  fontSize: 10,
+                  color: 'var(--text-tertiary)',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
                 Auto-inject policy
               </div>
               {(['never', 'prompt-only', 'always'] as const).map((policy) => {
@@ -1230,7 +1207,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       width: '100%',
                       textAlign: 'left',
                       padding: '6px 12px',
-                      background: active ? 'rgba(123,104,238,0.12)' : 'transparent',
+                      background: active ? 'rgba(209,64,31,0.12)' : 'transparent',
                       border: 'none',
                       color: active ? 'var(--color-brand)' : 'var(--text-secondary)',
                       cursor: 'pointer',
@@ -1268,7 +1245,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   fontWeight: 500,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                  e.currentTarget.style.background = 'rgba(176, 141, 87, 0.1)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'transparent';
@@ -1303,7 +1280,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       fontWeight: 500,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                      e.currentTarget.style.background = 'rgba(176, 141, 87, 0.1)';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = 'transparent';
@@ -1589,9 +1566,8 @@ const styles = {
     padding: 8px 10px;
     font-size: 12px;
     font-weight: 700;
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
-    border-top: 2px solid transparent;
+    border-top-left-radius: var(--radius-sm);
+    border-top-right-radius: var(--radius-sm);
     cursor: pointer;
     transition: all 150ms ease;
     user-select: none;
@@ -1638,17 +1614,17 @@ const styles = {
     }
   `,
   groupedActiveTab: css`
-    background-color: rgba(123, 104, 238, 0.2);
+    background-color: rgba(209, 64, 31, 0.2);
     color: var(--text-primary);
     &:hover {
-      background-color: rgba(123, 104, 238, 0.25);
+      background-color: rgba(209, 64, 31, 0.25);
     }
   `,
   groupedInactiveTab: css`
     background-color: transparent;
     color: var(--text-tertiary);
     &:hover {
-      background-color: rgba(123, 104, 238, 0.07);
+      background-color: rgba(209, 64, 31, 0.07);
       color: var(--text-secondary);
     }
   `,
@@ -1658,7 +1634,7 @@ const styles = {
     justify-content: center;
     width: 13px;
     height: 13px;
-    border-radius: 50%;
+    border-radius: 3px;
     font-size: 8px;
     font-weight: 800;
     flex-shrink: 0;
@@ -1671,8 +1647,8 @@ const styles = {
   `,
   paneBadgeInactive: css`
     background: transparent;
-    color: rgba(123, 104, 238, 0.5);
-    border: 1.5px solid rgba(123, 104, 238, 0.28);
+    color: rgba(209, 64, 31, 0.5);
+    border: 1.5px solid rgba(209, 64, 31, 0.28);
   `,
   tabGroupSep: css`
     width: 1px;
@@ -1689,7 +1665,7 @@ const styles = {
   `,
   tabDragOver: css`
     box-shadow: -3px 0 0 0 var(--color-brand);
-    animation: tabNudge 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: tabNudge 220ms cubic-bezier(0.16, 1, 0.3, 1);
     @keyframes tabNudge {
       0% {
         transform: translateX(0);
@@ -1703,14 +1679,14 @@ const styles = {
     }
   `,
   dropIndicator: css`
-    background: rgba(123, 104, 238, 0.16);
+    background: rgba(209, 64, 31, 0.16);
     border: 2px solid var(--color-brand);
     box-sizing: border-box;
     border-radius: 4px;
-    animation: dropSnap 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: dropSnap 200ms cubic-bezier(0.16, 1, 0.3, 1);
     box-shadow:
-      inset 0 0 20px rgba(123, 104, 238, 0.1),
-      0 0 12px rgba(123, 104, 238, 0.3);
+      inset 0 0 20px rgba(209, 64, 31, 0.1),
+      0 0 12px rgba(209, 64, 31, 0.3);
     @keyframes dropSnap {
       from {
         opacity: 0;
@@ -1720,101 +1696,6 @@ const styles = {
         opacity: 1;
         transform: scale(1);
       }
-    }
-  `,
-  colorDotWrapper: css`
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-  `,
-  colorDot: css`
-    display: block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    cursor: pointer;
-    transition:
-      transform 150ms ease,
-      box-shadow 150ms ease;
-    &:hover {
-      transform: scale(1.4);
-      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
-    }
-  `,
-  colorDotActive: css`
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
-  `,
-  colorPickerPopover: css`
-    position: fixed;
-    z-index: 9999;
-    background-color: var(--bg-secondary);
-    border: 1px solid var(--border-color-hover);
-    border-radius: 10px;
-    padding: 10px 12px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
-    animation: popIn 120ms ease-out;
-    @keyframes popIn {
-      from {
-        opacity: 0;
-        transform: scale(0.92) translateY(-4px);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-      }
-    }
-  `,
-  colorPickerLabel: css`
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--text-tertiary);
-    margin-bottom: 8px;
-    white-space: nowrap;
-  `,
-  colorSwatches: css`
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  `,
-  colorSwatch: css`
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    border: 2px solid transparent;
-    cursor: pointer;
-    transition:
-      transform 120ms ease,
-      border-color 120ms ease;
-    flex-shrink: 0;
-    padding: 0;
-    &:hover {
-      transform: scale(1.25);
-    }
-  `,
-  colorSwatchActive: css`
-    border-color: rgba(255, 255, 255, 0.8);
-    transform: scale(1.15);
-  `,
-  colorSwatchReset: css`
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    border: 1px solid var(--border-color-hover);
-    background: var(--bg-canvas);
-    color: var(--text-tertiary);
-    font-size: 9px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    padding: 0;
-    transition: all 120ms ease;
-    &:hover {
-      border-color: #ef4444;
-      color: #ef4444;
     }
   `,
   renameInput: css`
@@ -1869,8 +1750,8 @@ const styles = {
     align-items: center;
     justify-content: center;
     &:hover {
-      background-color: rgba(244, 63, 94, 0.15);
-      color: #fb7185;
+      background-color: rgba(var(--color-error-rgb), 0.15);
+      color: var(--color-error);
     }
   `,
   newTabWrapper: css`
@@ -1928,7 +1809,7 @@ const styles = {
     }
   `,
   shellDropdownItemActive: css`
-    background-color: rgba(123, 104, 238, 0.1);
+    background-color: rgba(209, 64, 31, 0.1);
   `,
   shellItemIcon: css`
     width: 13px;
@@ -2066,7 +1947,7 @@ const styles = {
     height: 22px;
     border-radius: 5px;
     background: rgba(0, 0, 0, 0.55);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(var(--material-brass-rgb), 0.2);
     color: var(--text-secondary);
     cursor: pointer;
     opacity: 0;
@@ -2075,9 +1956,9 @@ const styles = {
       background 150ms ease,
       color 150ms ease;
     &:hover {
-      background: rgba(123, 104, 238, 0.45);
+      background: rgba(209, 64, 31, 0.45);
       color: var(--color-brand);
-      border-color: rgba(123, 104, 238, 0.4);
+      border-color: rgba(209, 64, 31, 0.4);
     }
   `,
   emptyState: css`
@@ -2122,12 +2003,12 @@ const styles = {
     border-radius: 10px;
     border: none;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(123, 104, 238, 0.3);
+    box-shadow: 0 4px 14px rgba(209, 64, 31, 0.3);
     transition:
       box-shadow 0.2s,
       filter 0.2s;
     &:hover {
-      box-shadow: 0 6px 20px rgba(123, 104, 238, 0.4);
+      box-shadow: 0 6px 20px rgba(209, 64, 31, 0.4);
       filter: brightness(1.06);
     }
   `,

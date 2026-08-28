@@ -13,14 +13,14 @@ import { Space } from '../../types';
 import { Input } from './Input';
 
 const COLOR_PRESETS = [
-  '#7B68EE',
-  '#10b981',
-  '#3b82f6',
-  '#8b5cf6',
-  '#ec4899',
-  '#ef4444',
-  '#06b6d4',
-  '#84cc16',
+  '#d1401f',
+  '#b08d57',
+  '#4a7ca3',
+  '#6b8f3f',
+  '#0e8a80',
+  '#9c5fa3',
+  '#c98a1f',
+  '#5a6570',
 ];
 
 interface SpaceManagerModalProps {
@@ -40,7 +40,7 @@ export const SpaceManagerModal: React.FC<SpaceManagerModalProps> = ({
   const workspaceSessions = terminalSessions.filter((s) => s.workspaceId === workspaceId);
 
   const [name, setName] = useState(space?.name ?? '');
-  const [color, setColor] = useState(space?.color ?? '#3b82f6');
+  const [color, setColor] = useState(space?.color ?? '#d1401f');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(space?.sessionIds ?? []));
 
   const toggleSession = (id: string) => {
@@ -140,7 +140,7 @@ export const SpaceManagerModal: React.FC<SpaceManagerModalProps> = ({
                       />
                       <span
                         className={s.sessionDot}
-                        style={{ backgroundColor: sess.color ?? '#334155' }}
+                        style={{ backgroundColor: sess.color ?? 'var(--text-tertiary)' }}
                       />
                       <span className={s.sessionName}>{sess.title}</span>
                     </label>
@@ -205,7 +205,8 @@ const s = {
     position: fixed;
     inset: 0;
     z-index: 500;
-    background: rgba(0, 0, 0, 0.65);
+    background: var(--overlay-scrim);
+    backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -221,10 +222,10 @@ const s = {
   `,
   modal: css`
     width: 440px;
-    background: #0b1520;
-    border: 1px solid #1a2e40;
-    border-radius: 12px;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
     animation: slideUp 150ms ease-out;
     @keyframes slideUp {
       from {
@@ -242,7 +243,7 @@ const s = {
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px 14px;
-    border-bottom: 1px solid #132030;
+    border-bottom: 1px solid var(--border-color);
   `,
   headerLeft: css`
     display: flex;
@@ -259,24 +260,24 @@ const s = {
   title: css`
     font-size: 14px;
     font-weight: 700;
-    color: #e2e8f0;
+    color: var(--text-primary);
     margin: 0;
   `,
   closeBtn: css`
     width: 28px;
     height: 28px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     border: none;
     background: transparent;
-    color: #64748b;
+    color: var(--text-tertiary);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 150ms ease;
     &:hover {
-      background: #1e3a5f;
-      color: #e2e8f0;
+      background: var(--bg-hover);
+      color: var(--text-primary);
     }
   `,
   form: css`
@@ -295,29 +296,29 @@ const s = {
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: #64748b;
+    color: var(--text-tertiary);
   `,
   labelHint: css`
     font-size: 10px;
     font-weight: 500;
     letter-spacing: 0;
     text-transform: none;
-    color: #475569;
+    color: var(--text-tertiary);
   `,
   input: css`
-    background: #071018;
-    border: 1px solid #1e3a5f;
-    border-radius: 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color-hover);
+    border-radius: var(--radius-md);
     padding: 10px 12px;
-    color: #e2e8f0;
+    color: var(--text-primary);
     font-size: 13px;
     outline: none;
     transition: border-color 150ms ease;
     &:focus {
-      border-color: #2d5a8a;
+      border-color: var(--border-color-focus);
     }
     &::placeholder {
-      color: #334155;
+      color: var(--text-tertiary);
     }
   `,
   swatches: css`
@@ -340,7 +341,7 @@ const s = {
     }
   `,
   swatchActive: css`
-    border-color: rgba(255, 255, 255, 0.8);
+    border-color: var(--material-paper);
     transform: scale(1.15);
   `,
   emptySessionsBox: css`
@@ -348,15 +349,15 @@ const s = {
     align-items: center;
     gap: 8px;
     padding: 12px 14px;
-    background: #071018;
-    border: 1px dashed #1a2e40;
-    border-radius: 8px;
-    color: #475569;
+    background: var(--bg-canvas);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-tertiary);
     font-size: 12px;
     line-height: 1.4;
   `,
   emptyIcon: css`
-    color: #334155;
+    color: var(--text-tertiary);
     flex-shrink: 0;
   `,
   sessionList: css`
@@ -369,7 +370,7 @@ const s = {
       width: 4px;
     }
     &::-webkit-scrollbar-thumb {
-      background: #1e3a5f;
+      background: var(--border-color-hover);
       border-radius: 2px;
     }
   `,
@@ -378,20 +379,20 @@ const s = {
     align-items: center;
     gap: 10px;
     padding: 9px 12px;
-    background: #071018;
-    border: 1px solid #132030;
-    border-radius: 8px;
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition:
       border-color 150ms ease,
       background 150ms ease;
     &:hover {
-      background: #0d1c2a;
-      border-color: #1e3a5f;
+      background: var(--bg-hover);
+      border-color: var(--border-color-hover);
     }
   `,
   sessionItemChecked: css`
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(var(--color-brand-rgb), 0.08);
   `,
   checkbox: css`
     width: 14px;
@@ -409,14 +410,14 @@ const s = {
   sessionName: css`
     font-size: 12px;
     font-weight: 600;
-    color: #94a3b8;
+    color: var(--text-secondary);
   `,
   staleSection: css`
     margin-top: 8px;
     padding: 10px 12px;
-    background: rgba(245, 158, 11, 0.06);
-    border: 1px solid rgba(245, 158, 11, 0.2);
-    border-radius: 8px;
+    background: rgba(var(--color-warning-rgb), 0.07);
+    border: 1px solid rgba(var(--color-warning-rgb), 0.22);
+    border-radius: var(--radius-md);
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -424,7 +425,7 @@ const s = {
   staleLabel: css`
     font-size: 10px;
     font-weight: 700;
-    color: #f59e0b;
+    color: var(--color-warning);
   `,
   staleItem: css`
     display: flex;
@@ -435,26 +436,26 @@ const s = {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #475569;
+    background: var(--text-tertiary);
     flex-shrink: 0;
   `,
   staleId: css`
     font-size: 10px;
-    color: #475569;
+    color: var(--text-tertiary);
     font-family: 'Fira Code', monospace;
     flex: 1;
   `,
   staleRemoveBtn: css`
     background: transparent;
     border: none;
-    color: #64748b;
+    color: var(--text-tertiary);
     font-size: 9px;
     cursor: pointer;
     padding: 2px 4px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     transition: color 120ms ease;
     &:hover {
-      color: #ef4444;
+      color: var(--color-error);
     }
   `,
   actions: css`
@@ -465,24 +466,24 @@ const s = {
   `,
   cancelBtn: css`
     padding: 9px 18px;
-    border-radius: 8px;
-    border: 1px solid #1e3a5f;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color-hover);
     background: transparent;
-    color: #94a3b8;
+    color: var(--text-secondary);
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
     transition: all 150ms ease;
     &:hover {
-      background: #0d1c2a;
-      color: #e2e8f0;
+      background: var(--bg-hover);
+      color: var(--text-primary);
     }
   `,
   submitBtn: css`
     padding: 9px 20px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     border: none;
-    color: #070d14;
+    color: var(--text-inverse);
     font-size: 12px;
     font-weight: 700;
     cursor: pointer;

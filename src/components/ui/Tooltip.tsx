@@ -101,12 +101,12 @@ const styles = {
   `,
   tooltip: css`
     position: absolute;
-    background-color: var(--bg-secondary, #0e1726);
-    border: 1px solid var(--border-color, #1e293b);
-    border-radius: var(--border-radius-md, 8px);
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
     padding: var(--spacing-md, 12px);
     box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.5));
-    color: var(--text-secondary, #94a3b8);
+    color: var(--text-secondary);
     font-size: var(--font-size-xs, 11px);
     font-weight: var(--font-weight-normal, 400);
     line-height: 1.5;
@@ -140,11 +140,11 @@ const styles = {
 
     &::after {
       top: 100%;
-      border-color: var(--bg-secondary, #0e1726) transparent transparent transparent;
+      border-color: var(--bg-secondary) transparent transparent transparent;
     }
     &::before {
       top: 100%;
-      border-color: var(--border-color, #1e293b) transparent transparent transparent;
+      border-color: var(--border-color) transparent transparent transparent;
     }
 
     @keyframes tooltipFadeInTop {
@@ -164,11 +164,11 @@ const styles = {
 
     &::after {
       bottom: 100%;
-      border-color: transparent transparent var(--bg-secondary, #0e1726) transparent;
+      border-color: transparent transparent var(--bg-secondary) transparent;
     }
     &::before {
       bottom: 100%;
-      border-color: transparent transparent var(--border-color, #1e293b) transparent;
+      border-color: transparent transparent var(--border-color) transparent;
     }
 
     @keyframes tooltipFadeInBottom {

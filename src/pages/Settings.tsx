@@ -593,7 +593,7 @@ export const SettingsView: React.FC = () => {
   const [projName, setProjName] = useState('');
   const [projPath, setProjPath] = useState('');
   const [projDesc, setProjDesc] = useState('');
-  const [projColor, setProjColor] = useState('#3b82f6');
+  const [projColor, setProjColor] = useState('#d1401f');
   const [projStatus, setProjStatus] = useState<'active' | 'paused' | 'idle'>('active');
 
   // Export Settings Handler
@@ -899,10 +899,10 @@ export const SettingsView: React.FC = () => {
                         className={css`
                           position: absolute;
                           inset: 0;
-                          background-color: #7b68ee;
+                          background-color: #d1401f;
                           border-radius: 6px;
                           z-index: -1;
-                          box-shadow: 0 1px 3px rgba(123, 104, 238, 0.4);
+                          box-shadow: 0 1px 3px rgba(209, 64, 31, 0.4);
                         `}
                         transition={{ type: 'spring', bounce: 0.15, duration: 0.5 }}
                       />
@@ -1193,11 +1193,11 @@ export const SettingsView: React.FC = () => {
                         font-size: 12px;
                         cursor: pointer;
                         border: 1px solid
-                          ${conductorInteractionMode === mode ? '#7b68ee' : 'var(--border-color)'};
-                        background: ${conductorInteractionMode === mode ? '#7b68ee22' : 'transparent'};
-                        color: ${conductorInteractionMode === mode ? '#7b68ee' : 'var(--text-secondary)'};
+                          ${conductorInteractionMode === mode ? '#d1401f' : 'var(--border-color)'};
+                        background: ${conductorInteractionMode === mode ? '#d1401f22' : 'transparent'};
+                        color: ${conductorInteractionMode === mode ? '#d1401f' : 'var(--text-secondary)'};
                         &:hover {
-                          border-color: #7b68ee;
+                          border-color: #d1401f;
                         }
                       `}
                     >
@@ -1640,7 +1640,7 @@ export const SettingsView: React.FC = () => {
                       cursor: pointer;
                       border: 1px solid
                         ${terminalConfig.cursorStyle === s ? 'var(--color-brand)' : 'var(--border-color)'};
-                      background: ${terminalConfig.cursorStyle === s ? 'rgba(123,104,238,0.15)' : 'transparent'};
+                      background: ${terminalConfig.cursorStyle === s ? 'rgba(209,64,31,0.15)' : 'transparent'};
                       color: ${terminalConfig.cursorStyle === s ? 'var(--color-brand)' : 'var(--text-secondary)'};
                       &:hover {
                         border-color: var(--color-brand);
@@ -1952,7 +1952,7 @@ export const SettingsView: React.FC = () => {
                   color: var(--color-brand);
                   background: transparent;
                   &:hover:not(:disabled) {
-                    background: rgba(123, 104, 238, 0.1);
+                    background: rgba(209, 64, 31, 0.1);
                   }
                   &:disabled {
                     opacity: 0.4;
@@ -2052,7 +2052,7 @@ export const SettingsView: React.FC = () => {
                         key={action.id || idx}
                         className={css`
                           border-bottom: 1px solid var(--border-color);
-                          ${isEditing ? 'background: rgba(123, 104, 238, 0.05);' : ''}
+                          ${isEditing ? 'background: rgba(209, 64, 31, 0.05);' : ''}
                         `}
                       >
                         <td
@@ -2107,7 +2107,7 @@ export const SettingsView: React.FC = () => {
                                 height: 16px;
                                 border-radius: 50%;
                                 background: ${action.color};
-                                border: 1px solid rgba(255, 255, 255, 0.1);
+                                border: 1px solid rgba(var(--material-brass-rgb), 0.3);
                               `}
                             />
                           )}
@@ -2356,7 +2356,7 @@ export const SettingsView: React.FC = () => {
                         display: inline-flex;
                         align-items: center;
                         gap: 4px;
-                        background: ${quickActionPreviewMode === 'edit' ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
+                        background: ${quickActionPreviewMode === 'edit' ? 'rgba(var(--color-brand-rgb), 0.15)' : 'transparent'};
                         border: 1px solid
                           ${quickActionPreviewMode === 'edit' ? 'var(--color-brand)' : 'var(--border-color)'};
                         color: ${quickActionPreviewMode === 'edit' ? 'var(--color-brand)' : 'var(--text-secondary)'};
@@ -2376,7 +2376,7 @@ export const SettingsView: React.FC = () => {
                         display: inline-flex;
                         align-items: center;
                         gap: 4px;
-                        background: ${quickActionPreviewMode === 'preview' ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
+                        background: ${quickActionPreviewMode === 'preview' ? 'rgba(var(--color-brand-rgb), 0.15)' : 'transparent'};
                         border: 1px solid
                           ${quickActionPreviewMode === 'preview' ? 'var(--color-brand)' : 'var(--border-color)'};
                         color: ${quickActionPreviewMode === 'preview' ? 'var(--color-brand)' : 'var(--text-secondary)'};
@@ -2466,7 +2466,7 @@ Explain this error:
                         font-size: 10px;
                         cursor: pointer;
                         &:hover {
-                          background: rgba(59, 130, 246, 0.15);
+                          background: rgba(var(--color-brand-rgb), 0.15);
                           border-color: var(--color-brand);
                           color: var(--color-brand);
                         }
@@ -2585,7 +2585,7 @@ Explain this error:
                       color: var(--color-brand);
                       background: transparent;
                       &:hover:not(:disabled) {
-                        background: rgba(123, 104, 238, 0.1);
+                        background: rgba(209, 64, 31, 0.1);
                       }
                       &:disabled {
                         opacity: 0.4;
@@ -3151,7 +3151,7 @@ const styles = {
     transition: all 0.2s ease-in-out;
 
     &:hover {
-      background-color: rgba(239, 68, 68, 0.1);
+      background-color: rgba(var(--color-error-rgb), 0.1);
       color: var(--color-error);
     }
   `,
@@ -3167,7 +3167,7 @@ const styles = {
     text-transform: uppercase;
   `,
   statusActive: css`
-    background-color: rgba(52, 211, 153, 0.1);
+    background-color: rgba(var(--color-success-rgb), 0.1);
     color: var(--color-success);
   `,
   statusInactive: css`
@@ -3206,7 +3206,7 @@ const styles = {
     border: 1px solid var(--border-color);
     box-shadow:
       var(--shadow-lg),
-      0 0 20px rgba(123, 104, 238, 0.15);
+      0 0 20px rgba(209, 64, 31, 0.15);
     padding: var(--spacing-lg);
     animation: slideUp 0.25s ease-out;
 
