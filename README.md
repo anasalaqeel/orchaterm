@@ -2,7 +2,11 @@
 
 <div align="center">
 
-![Orchaterm Logo](public/logo.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="src/assets/logos/wordmark-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="src/assets/logos/wordmark-light.svg">
+  <img alt="Orchaterm Logo" src="src/assets/logos/wordmark-light.svg" width="300">
+</picture>
 
 **The Next-Generation Terminal Built for the AI Era of Software Engineering**
 
@@ -119,7 +123,7 @@ Orchaterm can use a local or cloud LLM provider to power orchestration:
 > **High Cost Warning for Paid Cloud APIs**
 > Orchaterm's ambient orchestration works by continuously reading your active terminal buffers and making frequent, high-volume LLM requests behind the scenes to summarize state, parse logs, and track context. 
 > 
-> If you configure a paid, usage-based cloud API (like Anthropic Claude or Google Gemini) as your orchestrator, **it will rapidly consume a massive amount of tokens and can result in surprisingly high, unexpected API costs.** 
+> If you configure a paid, usage-based cloud API (like Anthropic Claude or Google Gemini) as your orchestrator, **it will rapidly consume a massive amount of tokens and can result in surprisingly high, unexpected API costs** (unless continuous orchestration is turned off in Settings).
 > 
 > We strongly recommend using local, zero-cost models (via Ollama or LM Studio) as your primary orchestration engine.
 
