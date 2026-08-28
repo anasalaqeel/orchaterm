@@ -620,7 +620,9 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
   const handleTitleChange = useCallback((sessionId: string, title: string) => {
     setSessions((prev) =>
-      prev.map((s) => (s.id === sessionId && s.dynamicTitle !== title ? { ...s, dynamicTitle: title } : s))
+      prev.map((s) =>
+        s.id === sessionId && s.dynamicTitle !== title ? { ...s, dynamicTitle: title } : s
+      )
     );
   }, []);
 

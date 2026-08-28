@@ -184,8 +184,7 @@ export class FakeTerminal {
   }
   fireKey(e: Record<string, unknown>): boolean | undefined {
     return this.keyHandler?.({ type: 'keydown', preventDefault: () => {}, ...e }) as
-      | boolean
-      | undefined;
+      boolean | undefined;
   }
   fireCsi(prefix: string, final: string, params: unknown[]) {
     this.csiHandlers
