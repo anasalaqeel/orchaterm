@@ -167,24 +167,15 @@ const styles = {
     display: flex;
     align-items: center;
     gap: 4px;
-    background: rgba(24, 20, 16, 0.85);
+    background: rgba(20, 23, 26, 0.85);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(176, 141, 87, 0.22);
+    border: 1px solid rgba(86, 93, 97, 0.22);
     padding: 6px;
     border-radius: var(--radius-lg);
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
-    transition: all 0.2s ease;
-    opacity: 0.65; /* Semi-transparent when not focused */
     max-width: 100%;
     min-width: 0; /* Let it shrink when constrained by container */
-
-    &:hover {
-      opacity: 1;
-      background: rgba(30, 26, 20, 0.95);
-      border-color: rgba(176, 141, 87, 0.4);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
-    }
   `,
   actionsGroup: css`
     display: flex;
@@ -218,18 +209,18 @@ const styles = {
     outline: none;
 
     /* If a custom color is provided, use it for hover states */
-    --hover-bg: rgba(176, 141, 87, 0.12);
+    --hover-bg: rgba(86, 93, 97, 0.12);
     --hover-color: var(--action-color, var(--text-primary));
 
     &:hover {
       background: var(--hover-bg);
       color: var(--hover-color);
-      border-color: rgba(176, 141, 87, 0.16);
+      border-color: rgba(86, 93, 97, 0.16);
     }
 
     &:active {
       transform: scale(0.96);
-      background: rgba(176, 141, 87, 0.08);
+      background: rgba(86, 93, 97, 0.08);
     }
 
     svg {
@@ -241,21 +232,21 @@ const styles = {
     color: var(--text-tertiary);
     &:hover {
       color: var(--text-primary);
-      background: rgba(176, 141, 87, 0.14);
+      background: rgba(86, 93, 97, 0.14);
     }
   `,
   divider: css`
     flex-shrink: 0;
     width: 1px;
     height: 18px;
-    background: rgba(176, 141, 87, 0.2);
+    background: rgba(86, 93, 97, 0.2);
     margin: 0 4px;
   `,
   scrollTrack: css`
     pointer-events: none;
     width: 60px;
     height: 2px;
-    background: rgba(176, 141, 87, 0.16);
+    background: rgba(86, 93, 97, 0.16);
     border-radius: 1px;
     position: relative;
     overflow: hidden;

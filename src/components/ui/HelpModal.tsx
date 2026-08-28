@@ -538,7 +538,7 @@ const s = {
     border: 1px solid var(--border-color);
     box-shadow:
       var(--shadow-lg),
-      0 0 20px -3px rgba(209, 64, 31, 0.25);
+      0 0 20px -3px rgba(47, 143, 122, 0.25);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -653,7 +653,7 @@ const s = {
     }
   `,
   navItemActive: css`
-    background: rgba(209, 64, 31, 0.15);
+    background: rgba(47, 143, 122, 0.15);
     color: var(--color-brand);
     font-weight: 600;
   `,
@@ -732,8 +732,8 @@ const s = {
   `,
   shortcutKeys: css`
     padding: 3px 8px;
-    background: rgba(209, 64, 31, 0.12);
-    border: 1px solid rgba(209, 64, 31, 0.3);
+    background: rgba(47, 143, 122, 0.12);
+    border: 1px solid rgba(47, 143, 122, 0.3);
     border-radius: var(--border-radius-sm);
     font-family: var(--font-family-mono);
     font-size: 11px;
@@ -783,9 +783,9 @@ const s = {
     font-weight: 700;
     padding: 2px 7px;
     border-radius: 4px;
-    background: rgba(209, 64, 31, 0.15);
+    background: rgba(47, 143, 122, 0.15);
     color: var(--color-brand);
-    border: 1px solid rgba(209, 64, 31, 0.3);
+    border: 1px solid rgba(47, 143, 122, 0.3);
   `,
   stepsList: css`
     display: flex;
@@ -800,7 +800,7 @@ const s = {
   stepNumber: css`
     width: 18px;
     height: 18px;
-    border-radius: 50%;
+    border-radius: var(--radius-sm);
     background: rgba(var(--material-brass-rgb), 0.16);
     color: var(--text-primary);
     font-size: 10px;

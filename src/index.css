@@ -29,7 +29,7 @@
   --font-weight-bold: 700;
   --font-weight-extrabold: 800;
 
-  /* Radii — brass/bakelite hardware chamfers, not soft SaaS corners */
+  /* Radii — instrument-panel chamfers, not soft SaaS corners */
   --radius-sm: 3px;
   --radius-md: 4px;
   --radius-lg: 6px;
@@ -44,126 +44,126 @@
   --border-radius-full: var(--radius-full);
 }
 
-/* ── Dark Theme — Central Exchange (night shift) ───────────────────────────── */
+/* ── Dark Theme — Meteorological Station Model (night chart room) ──────────── */
 :root[data-theme='dark'] {
-  /* Brand — indicator-lamp amber-red */
-  --color-brand: #d1401f;
-  --color-brand-rgb: 209, 64, 31;
-  --color-primary: #d1401f;
-  --color-primary-rgb: 209, 64, 31;
+  /* Brand — chart-ink teal (primary/active) */
+  --color-brand: #2f8f7a;
+  --color-brand-rgb: 47, 143, 122;
+  --color-primary: #2f8f7a;
+  --color-primary-rgb: 47, 143, 122;
 
   /* Semantic */
-  --color-success: #7fa06a;
-  --color-success-rgb: 127, 160, 106;
-  --color-warning: #d9932a;
-  --color-warning-rgb: 217, 147, 42;
-  --color-error: #c73e2e;
-  --color-error-rgb: 199, 62, 46;
-  --color-danger: #c73e2e;
-  --color-info: #8095ad;
-  --color-info-rgb: 128, 149, 173;
+  --color-success: #4f9d5c;
+  --color-success-rgb: 79, 157, 92;
+  --color-warning: #d0972f;
+  --color-warning-rgb: 208, 151, 47;
+  --color-error: #c0392b;
+  --color-error-rgb: 192, 57, 43;
+  --color-danger: #c0392b;
+  --color-info: #2f6fa8;
+  --color-info-rgb: 47, 111, 168;
 
-  /* Material — brass hardware, ticker paper */
-  --material-brass: #b08d57;
-  --material-brass-rgb: 176, 141, 87;
-  --material-paper: #f0e6d2;
+  /* Material — graphite ink structure, printed chart paper */
+  --material-brass: #565d61;
+  --material-brass-rgb: 86, 93, 97;
+  --material-paper: #e9e6da;
 
-  /* Surfaces — bakelite dark */
-  --bg-canvas: #100e0c; /* near-black bakelite */
-  --bg-primary: #17140f; /* main content */
-  --bg-secondary: #1e1a14; /* sidebar, panels */
-  --bg-tertiary: #262019; /* cards, inner surfaces */
-  --bg-hover: #2f281f; /* hover state */
-  --bg-active: #3a3125; /* active / selected */
-  --bg-input: rgba(240, 230, 210, 0.05);
+  /* Surfaces — night chart room */
+  --bg-canvas: #14171a; /* near-black graphite ground */
+  --bg-primary: #1a1e21; /* main content */
+  --bg-secondary: #21262a; /* sidebar, panels */
+  --bg-tertiary: #282e33; /* cards, inner surfaces */
+  --bg-hover: #333b42; /* hover state */
+  --bg-active: #3f4952; /* active / selected */
+  --bg-input: rgba(233, 230, 218, 0.05);
 
   /* Text */
-  --text-primary: #f0e6d2; /* ticker paper */
-  --text-secondary: #b6a988;
-  --text-tertiary: #7a6f58;
-  --text-inverse: #100e0c;
+  --text-primary: #e9e6da; /* chart-ink readout */
+  --text-secondary: #a3aaad;
+  --text-tertiary: #6b7276;
+  --text-inverse: #14171a;
 
-  /* Borders — brass at low alpha */
-  --border-color: rgba(176, 141, 87, 0.18);
-  --border-color-hover: rgba(176, 141, 87, 0.32);
-  --border-color-focus: rgba(209, 64, 31, 0.55);
+  /* Borders — graphite ink at low alpha */
+  --border-color: rgba(86, 93, 97, 0.2);
+  --border-color-hover: rgba(86, 93, 97, 0.34);
+  --border-color-focus: rgba(47, 143, 122, 0.55);
 
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.55);
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.6);
   --shadow-lg: 0 10px 32px rgba(0, 0, 0, 0.7);
-  --shadow-brand: 0 0 20px rgba(209, 64, 31, 0.28);
-  --shadow-glow: 0 0 36px rgba(176, 141, 87, 0.14);
+  --shadow-brand: 0 0 20px rgba(47, 143, 122, 0.26);
+  --shadow-glow: 0 0 36px rgba(86, 93, 97, 0.16);
 
   /* Gradients */
-  --gradient-brand: linear-gradient(135deg, #d1401f, #a8331a);
-  --gradient-surface: linear-gradient(160deg, #1e1a14 0%, rgba(23, 20, 15, 0.5) 100%);
-  --gradient-card: linear-gradient(160deg, rgba(176, 141, 87, 0.07) 0%, rgba(176, 141, 87, 0) 100%);
-  --gradient-brass: linear-gradient(160deg, #d9bb85 0%, #8a6a3d 55%, #cfa66b 100%);
+  --gradient-brand: linear-gradient(135deg, #2f8f7a, #236e5c);
+  --gradient-surface: linear-gradient(160deg, #21262a 0%, rgba(26, 30, 33, 0.5) 100%);
+  --gradient-card: linear-gradient(160deg, rgba(86, 93, 97, 0.08) 0%, rgba(86, 93, 97, 0) 100%);
+  --gradient-brass: linear-gradient(160deg, #7a8085 0%, #454b4f 55%, #6b7176 100%);
 
   /* Modal scrim — one value, every modal */
-  --overlay-scrim: rgba(8, 7, 5, 0.72);
+  --overlay-scrim: rgba(8, 9, 11, 0.72);
 }
 
-/* ── Light Theme — Central Exchange (day shift, ticker paper) ──────────────── */
+/* ── Light Theme — Meteorological Station Model (day chart table) ──────────── */
 :root[data-theme='light'] {
-  /* Brand — indicator-lamp amber-red, deepened for contrast on paper */
-  --color-brand: #b8391f;
-  --color-brand-rgb: 184, 57, 31;
-  --color-primary: #b8391f;
-  --color-primary-rgb: 184, 57, 31;
+  /* Brand — chart-ink teal, deepened for contrast on paper */
+  --color-brand: #24705c;
+  --color-brand-rgb: 36, 112, 92;
+  --color-primary: #24705c;
+  --color-primary-rgb: 36, 112, 92;
 
   /* Semantic */
-  --color-success: #4f7a3f;
-  --color-success-rgb: 79, 122, 63;
-  --color-warning: #a86a12;
-  --color-warning-rgb: 168, 106, 18;
-  --color-error: #a3301f;
-  --color-error-rgb: 163, 48, 31;
-  --color-danger: #a3301f;
-  --color-info: #4a5f7a;
-  --color-info-rgb: 74, 95, 122;
+  --color-success: #3f7a4a;
+  --color-success-rgb: 63, 122, 74;
+  --color-warning: #a8721f;
+  --color-warning-rgb: 168, 114, 31;
+  --color-error: #a8321f;
+  --color-error-rgb: 168, 50, 31;
+  --color-danger: #a8321f;
+  --color-info: #24557f;
+  --color-info-rgb: 36, 85, 127;
 
-  /* Material — brass hardware, ticker paper */
-  --material-brass: #9c7a48;
-  --material-brass-rgb: 156, 122, 72;
-  --material-paper: #f5efe0;
+  /* Material — graphite ink structure, printed chart paper */
+  --material-brass: #6e7579;
+  --material-brass-rgb: 110, 117, 121;
+  --material-paper: #f2efe4;
 
-  /* Surfaces — aged ticker paper */
-  --bg-canvas: #ece4d2;
-  --bg-primary: #f5efe0;
-  --bg-secondary: #efe6d0;
-  --bg-tertiary: #e8dcc0;
-  --bg-hover: #e0d2ae;
-  --bg-active: #d6c397;
-  --bg-input: #fbf7ec;
+  /* Surfaces — day chart table paper */
+  --bg-canvas: #e8e3d3;
+  --bg-primary: #f2efe4;
+  --bg-secondary: #ece7d8;
+  --bg-tertiary: #e3ddc9;
+  --bg-hover: #d8d0b8;
+  --bg-active: #cdc2a3;
+  --bg-input: #f8f5ea;
 
   /* Text */
-  --text-primary: #241d12;
-  --text-secondary: #55492f;
-  --text-tertiary: #8a7a55;
-  --text-inverse: #f5efe0;
+  --text-primary: #24272a;
+  --text-secondary: #4d5457;
+  --text-tertiary: #7a8184;
+  --text-inverse: #f2efe4;
 
   /* Borders */
-  --border-color: rgba(36, 29, 18, 0.14);
-  --border-color-hover: rgba(36, 29, 18, 0.24);
-  --border-color-focus: rgba(184, 57, 31, 0.5);
+  --border-color: rgba(36, 39, 42, 0.14);
+  --border-color-hover: rgba(36, 39, 42, 0.24);
+  --border-color-focus: rgba(36, 112, 92, 0.5);
 
   /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(36, 29, 18, 0.1);
-  --shadow-md: 0 4px 12px rgba(36, 29, 18, 0.12);
-  --shadow-lg: 0 12px 32px rgba(36, 29, 18, 0.16);
-  --shadow-brand: 0 0 24px rgba(184, 57, 31, 0.16);
-  --shadow-glow: 0 0 40px rgba(156, 122, 72, 0.12);
+  --shadow-sm: 0 1px 3px rgba(36, 39, 42, 0.1);
+  --shadow-md: 0 4px 12px rgba(36, 39, 42, 0.12);
+  --shadow-lg: 0 12px 32px rgba(36, 39, 42, 0.16);
+  --shadow-brand: 0 0 24px rgba(36, 112, 92, 0.16);
+  --shadow-glow: 0 0 40px rgba(110, 117, 121, 0.12);
 
   /* Gradients */
-  --gradient-brand: linear-gradient(135deg, #b8391f, #8f2c17);
-  --gradient-surface: linear-gradient(160deg, #f5efe0 0%, rgba(236, 228, 210, 0.5) 100%);
-  --gradient-card: linear-gradient(160deg, rgba(36, 29, 18, 0.05) 0%, rgba(36, 29, 18, 0) 100%);
-  --gradient-brass: linear-gradient(160deg, #d9bb85 0%, #8a6a3d 55%, #cfa66b 100%);
+  --gradient-brand: linear-gradient(135deg, #24705c, #1a5445);
+  --gradient-surface: linear-gradient(160deg, #f2efe4 0%, rgba(232, 227, 211, 0.5) 100%);
+  --gradient-card: linear-gradient(160deg, rgba(36, 39, 42, 0.05) 0%, rgba(36, 39, 42, 0) 100%);
+  --gradient-brass: linear-gradient(160deg, #7a8085 0%, #454b4f 55%, #6b7176 100%);
 
   /* Modal scrim — one value, every modal */
-  --overlay-scrim: rgba(36, 29, 18, 0.55);
+  --overlay-scrim: rgba(36, 39, 42, 0.55);
 }
 
 /* ── Reset ──────────────────────────────────────────────────────────────────── */
@@ -217,8 +217,10 @@ input[type='radio'] {
   accent-color: var(--color-brand);
 }
 
-/* ── Central Exchange materials ─────────────────────────────────────────────── */
-/* Indicator lamp — the world's status vocabulary. Swap --lamp-color per state. */
+/* ── Meteorological Station Model materials ─────────────────────────────────── */
+/* Station readout dot — sparing use only; a chip's own fill/tint is the primary
+   status vocabulary (see station-tag / status tint patterns in individual
+   components). Swap --lamp-color per state. */
 .lamp {
   --lamp-color: var(--text-tertiary);
   display: inline-block;
@@ -252,12 +254,12 @@ input[type='radio'] {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  border: 1px dashed rgba(var(--color-error-rgb, 199, 62, 46), 0.5);
+  border: 1px dashed rgba(var(--color-error-rgb, 156, 52, 40), 0.5);
   margin: 2px;
 }
 
-/* Brass corner plate — jack-module identity on a terminal pane. */
-.brass-plate {
+/* Station tag — printed chart-label chip, graphite-ink-bordered. */
+.station-tag {
   font-family: var(--font-family-mono);
   font-size: 9px;
   font-weight: 600;

@@ -101,7 +101,7 @@ export const PendingPlanPreview: React.FC<PendingPlanPreviewProps> = ({
 const s = {
   preview: css`
     border: 1px solid rgba(var(--color-info-rgb), 0.2);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     overflow: hidden;
     background: rgba(var(--color-info-rgb), 0.04);
   `,
@@ -191,7 +191,7 @@ const s = {
     margin: 6px 10px 0;
     background: var(--bg-canvas);
     border: 1px solid rgba(var(--color-info-rgb), 0.15);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
   `,
   modeLabel: css`
     font-size: 11px;

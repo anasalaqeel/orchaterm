@@ -8,7 +8,7 @@ export interface Workspace {
   name: string; // e.g. "Factinme", "Bulkin", "Exercisee"
   path: string; // local directory path
   description: string;
-  color: string; // hex color for visual tags (e.g. "#d1401f")
+  color: string; // hex color for visual tags (e.g. "#2f8f7a")
   /** Optional user-uploaded icon/logo (data URL). Falls back to the tag color when unset. */
   icon?: string | null;
   status: 'active' | 'paused' | 'idle';

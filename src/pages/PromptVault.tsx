@@ -828,7 +828,7 @@ const styles = {
     font-weight: var(--font-weight-semibold);
     cursor: pointer;
     transition: all 0.2s ease-in-out;
-    box-shadow: 0 4px 14px rgba(209, 64, 31, 0.3);
+    box-shadow: 0 4px 14px rgba(47, 143, 122, 0.3);
 
     &:hover {
       filter: brightness(1.06);
@@ -1381,7 +1381,7 @@ const styles = {
     border: none;
     transition: filter 0.2s ease;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(209, 64, 31, 0.25);
+    box-shadow: 0 4px 12px rgba(47, 143, 122, 0.25);
 
     &:hover {
       filter: brightness(1.06);

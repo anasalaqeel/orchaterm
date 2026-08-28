@@ -1,13 +1,13 @@
 <svg width="215" height="50" viewBox="0 0 215 50" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!-- Icon 44x44 -->
-  <rect x="0" y="0" width="44" height="44" rx="4" fill="#f5efe0" stroke="#d9c9a8" stroke-width="1.5"/>
+  <rect x="0" y="0" width="44" height="44" rx="4" fill="#f2efe4" stroke="#a8adb0" stroke-width="1.5"/>
   <g transform="scale(0.2973)">
-    <polyline points="22,40 56,74 22,108" fill="none" stroke="#b8391f" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="78" y1="50" x2="126" y2="36" stroke="#b8391f" stroke-width="8" stroke-linecap="round"/>
-    <line x1="78" y1="74" x2="130" y2="74" stroke="#b8391f" stroke-width="8" stroke-linecap="round"/>
-    <line x1="78" y1="98" x2="126" y2="112" stroke="#b8391f" stroke-width="8" stroke-linecap="round"/>
+    <polyline points="22,40 56,74 22,108" fill="none" stroke="#24705c" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="78" y1="50" x2="126" y2="36" stroke="#24705c" stroke-width="8" stroke-linecap="round"/>
+    <line x1="78" y1="74" x2="130" y2="74" stroke="#24705c" stroke-width="8" stroke-linecap="round"/>
+    <line x1="78" y1="98" x2="126" y2="112" stroke="#24705c" stroke-width="8" stroke-linecap="round"/>
   </g>
   <!-- Wordmark text -->
-  <text x="56" y="30" font-family="Inter, sans-serif" font-size="28" font-weight="700" fill="#241d12">Orcha<tspan fill="#b8391f" font-weight="400">term</tspan></text>
-  <text x="57" y="46" font-family="Inter, sans-serif" font-size="9" fill="#8a7a55" letter-spacing="3">TERMINAL EMULATOR</text>
+  <text x="56" y="30" font-family="Inter, sans-serif" font-size="28" font-weight="700" fill="#24272a">Orcha<tspan fill="#24705c" font-weight="400">term</tspan></text>
+  <text x="57" y="46" font-family="Inter, sans-serif" font-size="9" fill="#7a8184" letter-spacing="3">TERMINAL EMULATOR</text>
 </svg>

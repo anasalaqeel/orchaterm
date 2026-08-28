@@ -455,8 +455,7 @@ const styles = {
     padding: 6px 10px;
     background-color: var(--bg-tertiary);
     border-radius: var(--radius-sm);
-    border-top: 1px dashed var(--border-color);
-    border-bottom: 1px dashed var(--border-color);
+    border-top: 1px solid rgba(var(--material-brass-rgb), 0.3);
     font-family: var(--font-family-mono);
     color: var(--text-secondary);
   `,
