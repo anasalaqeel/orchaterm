@@ -3,11 +3,11 @@ import type { TerminalConfig, TerminalKeybinding, TerminalTheme } from '../types
 
 export const DEFAULT_TERMINAL_CONFIG: TerminalConfig = {
   theme: {
-    background: '#100E0C',
-    foreground: '#f0e6d2',
-    cursor: '#d1401f',
-    cursorAccent: '#100E0C',
-    selectionBackground: 'rgba(176, 141, 87, 0.28)',
+    background: '#14171a',
+    foreground: '#e9e6da',
+    cursor: '#2f8f7a',
+    cursorAccent: '#14171a',
+    selectionBackground: 'rgba(86, 93, 97, 0.28)',
     selectionForeground: '#ffffff',
     black: '#1a1a1a',
     brightBlack: '#4a4a4a',

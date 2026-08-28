@@ -316,7 +316,7 @@ const s = {
     flex-direction: column;
     gap: 6px;
     padding: 6px 10px 4px 36px;
-    border-top: 1px dashed var(--border-color);
+    border-top: 1px solid rgba(var(--material-brass-rgb), 0.3);
     margin-top: 2px;
   `,
   section: css`

@@ -1,45 +1,51 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-28T16:31:00Z",
+  "generatedAt": "2026-08-28T20:08:00Z",
   "title": "Design System: Orchaterm",
   "extensions": {
     "colorMeta": {
-      "lamp": {
+      "brand": {
         "role": "primary",
-        "displayName": "Indicator Lamp",
-        "canonical": "#d1401f",
-        "tonalRamp": ["#2b0f08", "#4a1a0e", "#711f11", "#a02c17", "#d1401f", "#e26845", "#ee9273", "#f7c2b1"]
+        "displayName": "Chart-Ink Teal",
+        "canonical": "#2f8f7a",
+        "tonalRamp": ["#0a211c", "#123a30", "#1c5647", "#237360", "#2f8f7a", "#5aab99", "#8cc7ba", "#c1e2da"]
       },
-      "brass": {
+      "info": {
         "role": "secondary",
-        "displayName": "Brass",
-        "canonical": "#b08d57",
-        "tonalRamp": ["#241c11", "#3d3019", "#5c4a26", "#7d6537", "#b08d57", "#c6a878", "#dbc39d", "#eeddc0"]
+        "displayName": "Info Blue",
+        "canonical": "#2f6fa8",
+        "tonalRamp": ["#0c1c29", "#153044", "#1f4763", "#286184", "#2f6fa8", "#5c8fbf", "#8ab0d3", "#bcd4e8"]
       },
-      "paper": {
+      "error": {
+        "role": "semantic",
+        "displayName": "Alarm Red",
+        "canonical": "#c0392b",
+        "tonalRamp": ["#2b0d0a", "#451711", "#661f16", "#8c281c", "#c0392b", "#d1614f", "#e0897a", "#eeb6ab"]
+      },
+      "ink": {
         "role": "tertiary",
-        "displayName": "Ticker Paper",
-        "canonical": "#f0e6d2",
-        "tonalRamp": ["#332c1e", "#544934", "#786a4d", "#9d8c69", "#c3b088", "#daccaa", "#eee3cc", "#f8f2e6"]
+        "displayName": "Graphite Ink",
+        "canonical": "#565d61",
+        "tonalRamp": ["#131516", "#212527", "#33383b", "#454b4e", "#565d61", "#767c80", "#9ba0a3", "#c3c6c8"]
       },
       "canvas": {
         "role": "neutral",
-        "displayName": "Bakelite Canvas",
-        "canonical": "#100e0c",
-        "tonalRamp": ["#050403", "#100e0c", "#1e1a14", "#262019", "#3a3125", "#544a39", "#786c54", "#9d907a"]
+        "displayName": "Chart Room Canvas",
+        "canonical": "#14171a",
+        "tonalRamp": ["#050607", "#14171a", "#21262a", "#282e33", "#3f4952", "#5a656d", "#7c868c", "#a2aaae"]
       }
     },
     "typographyMeta": {
       "body": { "displayName": "Body", "purpose": "Default UI text throughout the app shell." },
-      "label": { "displayName": "Stamped Label", "purpose": "Jack plates, section headers, status pills — the engraved-brass-plate register." },
-      "mono": { "displayName": "Mono", "purpose": "Terminal content, code, search, ticker-tape relay rows." }
+      "label": { "displayName": "Station Tag", "purpose": "Station tags, section headers, status pills — the printed-chart register." },
+      "mono": { "displayName": "Mono", "purpose": "Terminal content, code, search, relay-feed rows." }
     },
     "shadows": [
       { "name": "sm", "value": "0 1px 3px rgba(0,0,0,0.55)", "purpose": "Resting card/row separation." },
       { "name": "md", "value": "0 4px 14px rgba(0,0,0,0.6)", "purpose": "Popovers, dropdowns, floating badges." },
       { "name": "lg", "value": "0 10px 32px rgba(0,0,0,0.7)", "purpose": "Modals." },
-      { "name": "brand", "value": "0 0 20px rgba(209,64,31,0.28)", "purpose": "Lamp glow — lit indicator or primary action only." },
-      { "name": "glow", "value": "0 0 36px rgba(176,141,87,0.14)", "purpose": "Faint ambient brass glow behind brand-adjacent chrome." }
+      { "name": "brand", "value": "0 0 20px rgba(47,143,122,0.26)", "purpose": "Teal glow — active/selected or primary action only." },
+      { "name": "glow", "value": "0 0 36px rgba(86,93,97,0.16)", "purpose": "Faint ambient ink glow behind brand-adjacent chrome." }
     ],
     "motion": [
       { "name": "sidebar-collapse", "value": "220ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Sidebar width/opacity transitions." },
@@ -49,42 +55,49 @@
   },
   "components": [
     {
-      "name": "Lamp Indicator",
+      "name": "Station Readout",
       "kind": "custom",
-      "refersTo": "jack-plate",
-      "description": "The system's signature status vocabulary — a small circle that glows only when lit. Replaces colored badges and border-left accents everywhere.",
-      "html": "<span class=\"ds-lamp\" data-lit=\"true\" style=\"--lamp-color:#7fa06a\"></span>",
-      "css": ".ds-lamp { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--lamp-color,#7a6f58); box-shadow: inset 0 0 0 1px rgba(0,0,0,.35), 0 0 0 1px rgba(176,141,87,.25); transition: background .15s ease, box-shadow .15s ease; } .ds-lamp[data-lit='true'] { box-shadow: inset 0 0 0 1px rgba(0,0,0,.25), 0 0 6px 1px var(--lamp-color), 0 0 0 1px rgba(176,141,87,.35); }"
+      "refersTo": "station-tag",
+      "description": "Sparing-use status circle, retained from the shared vocabulary but secondary to a chip's own fill — a small circle that glows only when lit.",
+      "html": "<span class=\"ds-lamp\" data-lit=\"true\" style=\"--lamp-color:#4f9d5c\"></span>",
+      "css": ".ds-lamp { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--lamp-color,#6b7276); box-shadow: inset 0 0 0 1px rgba(0,0,0,.35), 0 0 0 1px rgba(86,93,97,.25); transition: background .15s ease, box-shadow .15s ease; } .ds-lamp[data-lit='true'] { box-shadow: inset 0 0 0 1px rgba(0,0,0,.25), 0 0 6px 1px var(--lamp-color), 0 0 0 1px rgba(86,93,97,.35); }"
     },
     {
-      "name": "Jack Plate",
+      "name": "Station Tag",
       "kind": "custom",
-      "refersTo": "jack-plate",
-      "description": "Brass corner-plate label marking a terminal pane's jack identity (e.g. JACK 4F2A).",
-      "html": "<span class=\"ds-jack-plate\">JACK 4F2A</span>",
-      "css": ".ds-jack-plate { font-family:'Fira Code','JetBrains Mono',monospace; font-size:9px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:#b08d57; background:#262019; border:1px solid rgba(176,141,87,.4); border-radius:3px; padding:1px 5px; }"
+      "refersTo": "station-tag",
+      "description": "Ink-bordered printed-chart label chip marking a UI element's identity.",
+      "html": "<span class=\"ds-station-tag\">RUN 4F2A</span>",
+      "css": ".ds-station-tag { font-family:'Fira Code','JetBrains Mono',monospace; font-size:9px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:#565d61; background:#282e33; border:1px solid rgba(86,93,97,.4); border-radius:3px; padding:1px 5px; }"
     },
     {
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Lamp-colored primary action button.",
+      "description": "Teal-colored primary action button — never red; red is reserved for error/danger.",
       "html": "<button class=\"ds-btn-primary\">Send</button>",
-      "css": ".ds-btn-primary { background:#d1401f; color:#f0e6d2; font-size:13px; font-weight:700; padding:8px 20px; border:none; border-radius:4px; cursor:pointer; transition:filter .15s ease; } .ds-btn-primary:hover { filter:brightness(1.1); } .ds-btn-primary:focus-visible { outline:2px solid #d1401f; outline-offset:2px; } .ds-btn-primary:disabled { opacity:.35; cursor:not-allowed; }"
+      "css": ".ds-btn-primary { background:#2f8f7a; color:#e9e6da; font-size:13px; font-weight:700; padding:8px 20px; border:none; border-radius:4px; cursor:pointer; transition:filter .15s ease; } .ds-btn-primary:hover { filter:brightness(1.1); } .ds-btn-primary:focus-visible { outline:2px solid #2f8f7a; outline-offset:2px; } .ds-btn-primary:disabled { opacity:.35; cursor:not-allowed; }"
     },
     {
-      "name": "Workspace Jack Socket",
+      "name": "Workspace Identity Chip",
       "kind": "custom",
-      "description": "Sidebar workspace/session avatar drawn as a literal jack socket rather than a rounded-square icon tile.",
-      "html": "<span class=\"ds-jack-socket\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#d1401f\" stroke-width=\"2\"><polyline points=\"4 17 10 11 4 5\"/><line x1=\"12\" y1=\"19\" x2=\"20\" y2=\"19\"/></svg></span>",
-      "css": ".ds-jack-socket { width:22px; height:22px; border-radius:9999px; border:1.5px solid rgba(176,141,87,.35); box-shadow: inset 0 1px 2px rgba(0,0,0,.3); display:flex; align-items:center; justify-content:center; background:rgba(209,64,31,.13); }"
+      "description": "Sidebar workspace/session identity mark — a small rounded-square chip (uploaded icon or plain colored letter), never a circular avatar or dot.",
+      "html": "<span class=\"ds-id-chip\">O</span>",
+      "css": ".ds-id-chip { width:22px; height:22px; border-radius:3px; border:1.5px solid rgba(86,93,97,.35); box-shadow: inset 0 1px 2px rgba(0,0,0,.3); display:flex; align-items:center; justify-content:center; background:rgba(47,143,122,.13); font-family:'Fira Code','JetBrains Mono',monospace; font-weight:700; font-size:12px; color:#2f8f7a; }"
     },
     {
-      "name": "Relay Row (ticker)",
+      "name": "Chart Row (relay feed)",
       "kind": "card",
-      "description": "Agent-summary / system relay row — mono font, dashed top/bottom rules, no colored border-left.",
-      "html": "<div class=\"ds-relay-row\"><span class=\"ds-lamp\" data-lit=\"true\" style=\"--lamp-color:#8095ad\"></span><span class=\"ds-relay-title\">TERMINAL 1</span><span class=\"ds-relay-text\">Build finished, 0 errors.</span></div>",
-      "css": ".ds-relay-row { display:flex; align-items:baseline; gap:7px; padding:4px 9px; background:#262019; border-radius:3px; font-family:'Fira Code','JetBrains Mono',monospace; border-top:1px dashed rgba(176,141,87,.18); border-bottom:1px dashed rgba(176,141,87,.18); } .ds-relay-title { font-size:10px; font-weight:600; color:#7a6f58; text-transform:uppercase; letter-spacing:.04em; } .ds-relay-text { font-size:11px; color:#b6a988; }"
+      "description": "Agent-summary / system relay row — mono font, single solid ink-tinted top rule, no dashed perforated-tape borders and no colored border-left.",
+      "html": "<div class=\"ds-relay-row\"><span class=\"ds-relay-title\">TERMINAL 1</span><span class=\"ds-relay-text\">Build finished, 0 errors.</span></div>",
+      "css": ".ds-relay-row { display:flex; align-items:baseline; gap:7px; padding:4px 9px; background:#282e33; border-radius:3px; font-family:'Fira Code','JetBrains Mono',monospace; border-top:1px solid rgba(86,93,97,.3); } .ds-relay-title { font-size:10px; font-weight:600; color:#6b7276; text-transform:uppercase; letter-spacing:.04em; } .ds-relay-text { font-size:11px; color:#a3aaad; }"
+    },
+    {
+      "name": "Merged Tab Row Header",
+      "kind": "custom",
+      "description": "Workspace identity, active space pill, and the 'Workspaces' back button render inside the terminal's own tab row, right-aligned — one row of chrome, not a separate header stacked above the tabs.",
+      "html": "<div class=\"ds-tabrow\"><span class=\"ds-tab\">1</span><span class=\"ds-tabrow-right\"><b>Bulkin</b><button>Workspaces</button></span></div>",
+      "css": ".ds-tabrow { display:flex; align-items:flex-end; background:#21262a; border-bottom:1px solid rgba(86,93,97,.2); } .ds-tabrow-right { flex:1; display:flex; justify-content:flex-end; align-items:center; gap:8px; align-self:center; padding-right:4px; }"
     },
     {
       "name": "Input Field",
@@ -92,36 +105,45 @@
       "refersTo": "input-default",
       "description": "Default text input / textarea.",
       "html": "<input class=\"ds-input\" placeholder=\"Ask anything…\" />",
-      "css": ".ds-input { background:rgba(240,230,210,.05); border:1px solid rgba(176,141,87,.32); border-radius:4px; padding:8px 12px; color:#f0e6d2; font-size:12px; } .ds-input:focus { outline:none; border-color:rgba(209,64,31,.55); } .ds-input::placeholder { color:#7a6f58; }"
+      "css": ".ds-input { background:rgba(233,230,218,.05); border:1px solid rgba(86,93,97,.32); border-radius:4px; padding:8px 12px; color:#e9e6da; font-size:12px; } .ds-input:focus { outline:none; border-color:rgba(47,143,122,.55); } .ds-input::placeholder { color:#6b7276; }"
     }
   ],
   "narrative": {
-    "northStar": "The Central Exchange",
-    "overview": "Orchaterm is styled as a live telephone/telegraph exchange operator's desk, circa the early 1900s: brass jack fields, bakelite panels, waxed ticker paper, and a single indicator-lamp accent color. Every terminal session is a jack; relaying context between sessions is a patch cord, not a copy-paste; status is read from a lamp, lit or dark, not from a colored badge. The system replaces Orchaterm's original ClickUp-purple, soft-shadow SaaS-dashboard look — that look is now the explicit anti-reference: rounded cards, gradient accents, and a violet brand color, all retired.\n\nThis is an Operate-mode surface: a working tool a solo developer runs for hours at a time, not a marketing surface. The world's materials (brass, bakelite, paper) express identity through color, radius, and a handful of named components (the jack plate, the lamp, the ticker row) — never through decoration that would slow a developer down mid-task.",
+    "northStar": "Meteorological Station Model",
+    "overview": "Orchaterm is styled as a meteorological chart room: printed chart paper, graphite-ink structure, and a single chart-ink teal accent for primary/active state — a calm instrument palette, not an alarm palette. This replaces this project's prior visual worlds (\"Flight Strip Board,\" an air-traffic-control theme, and before that \"Central Exchange,\" a telegraph/switchboard theme) — aluminum, brass, radar-sweep green, straight routing vectors, and patch cords are all retired, along with the original ClickUp-purple SaaS look. An intermediate pass of this same world used red as the primary accent; that read as constant alarm on every button and active state, so red was moved to be exclusively the error color and teal took over primary/active.\n\nThis is an Operate-mode surface: a working tool a solo developer runs for hours at a time, not a marketing surface. The world's materials (chart paper, graphite ink) express identity through color, radius, and a handful of named components (the station tag, the chart row, the isobar line) — never through decoration that would slow a developer down mid-task. Window chrome is a single row: workspace identity and tabs share one strip, never a separate header row stacked above the tabs.",
     "keyCharacteristics": [
-      "One accent color throughout — the indicator lamp — used only for the primary action, current selection, and state.",
-      "Tight, mechanical corner radii (3–9px) instead of soft SaaS rounding.",
-      "No colored border-left accent bars on cards, rows, or callouts — state and provenance read from a lamp dot or an icon color instead.",
-      "Two themes (dark = night shift, light = day/ticker paper), both drawn from the same brass/bakelite/lamp material set.",
+      "One primary accent — chart-ink teal — carries all primary/active meaning; red is reserved exclusively for error/danger.",
+      "Tight, mechanical corner radii (3–9px) for panels/controls; small status chips are sharp (0–2px), not round.",
+      "No colored border-left accent bars, no dashed perforated-tape row dividers, no straight or curved cable connectors with terminal-jack circles — dependency edges are smooth isobar-style contour curves.",
+      "No metal-hardware material (no brass, no aluminum) — deliberately distinct from both retired worlds.",
+      "Single-row window chrome — workspace identity and the back button live inside the tab row, not a separate header row.",
+      "Two themes (dark = night chart room, light = day chart table), both drawn from the same chart-paper/ink/teal material set.",
       "Curated xterm theme presets are product functionality, left untouched — out of scope for this system."
     ],
     "rules": [
-      { "name": "The One Lamp Rule", "body": "Exactly one saturated accent color exists in the system: the indicator lamp. Every other color is a neutral or a desaturated semantic color.", "section": "colors" },
-      { "name": "The Brass-Is-Structure Rule", "body": "Brass never carries meaning; it only renders hardware — borders, rings, dividers, plates.", "section": "colors" },
-      { "name": "The Stamped-Label Rule", "body": "Any label meant to read as a physical marking is set uppercase, tracked (+0.04em or more), and small (10-11px).", "section": "typography" },
-      { "name": "The Lamp-Glow-Only Rule", "body": "The colored glow shadow is reserved for elements literally modeling a lit indicator lamp or the primary action.", "section": "elevation" }
+      { "name": "The Teal-Is-Primary Rule", "body": "Exactly one saturated accent carries primary/active meaning: chart-ink teal. Red is reserved exclusively for error/danger.", "section": "colors" },
+      { "name": "The Ink-Is-Structure Rule", "body": "Graphite ink never carries meaning; it only renders structure — borders, dividers, tag chips.", "section": "colors" },
+      { "name": "The Isobar-Not-Cable Rule", "body": "Dependency edges render as smooth isobar-style contour curves, never straight vectors and never a cable ending in a jack-terminal circle. Row dividers are a single solid rule, never dashed.", "section": "colors" },
+      { "name": "The Station-Tag Rule", "body": "Any label meant to read as a physical marking is set uppercase, tracked (+0.04em or more), and small (10-11px).", "section": "typography" },
+      { "name": "The Teal-Glow-Only Rule", "body": "The colored glow shadow is reserved for the primary action or a genuinely active/selected element.", "section": "elevation" },
+      { "name": "The Single-Row Chrome Rule", "body": "Workspace identity, the active space pill, and the back button render inside the tab row, right-aligned — one row of window chrome, never two.", "section": "layout" }
     ],
     "dos": [
-      "Do keep the lamp color to primary actions, active state, and lit indicators only.",
-      "Do use the lamp component for any per-item state indicator instead of inventing a new colored-dot or badge pattern.",
-      "Do keep radii at the tightened hardware scale — do not reintroduce 10-20px soft card rounding.",
-      "Do tint borders, dividers, and scrollbars from brass rather than plain white/black alpha.",
+      "Do keep teal to primary actions and active/selected state; keep red to error/danger only.",
+      "Do keep radii at the tightened hardware scale for panels — do not reintroduce 10-20px soft card rounding.",
+      "Do draw workspace/session identity as a small rounded-square chip, never a circular avatar.",
+      "Do tint borders, dividers, and scrollbars from graphite ink rather than plain white/black alpha, and never reach for a metal-hardware material.",
+      "Do keep window chrome to a single row.",
       "Do leave the xterm theme presets and their exact hex values untouched."
     ],
     "donts": [
+      "Don't use red for a primary button, active nav/tab state, focus ring, or cursor — red means error only.",
       "Don't add a colored border-left/border-right accent bar to a card, row, callout, or alert — this pattern is banned, not merely discouraged.",
-      "Don't reintroduce gradient text, glass/blur as decoration, or a second saturated accent color alongside the lamp.",
-      "Don't use the lamp-glow shadow on anything that isn't a literal lit-lamp element or the primary action.",
+      "Don't use a dashed perforated-tape pair of borders on a row — use a single solid ink-tinted rule.",
+      "Don't draw a straight routing vector or a curved cable with a terminal-jack circle for dependency edges — use a smooth isobar-style contour curve.",
+      "Don't reintroduce gradient text, glass/blur as decoration, or a second saturated primary accent alongside teal.",
+      "Don't use the teal-glow shadow on anything that isn't the primary action or a genuinely active/selected element.",
+      "Don't stack a separate workspace-identity header row above the tab row.",
       "Don't style form controls, buttons, or badges with ad hoc hex colors — every color should trace back to a CSS custom property in src/index.css."
     ]
   }

@@ -244,7 +244,7 @@ const s = {
     padding: 10px 12px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
   `,
   statusIcon: css`
     font-size: 16px;
@@ -308,7 +308,7 @@ const s = {
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     padding: 4px 10px;
     font-size: 10px;
     font-weight: 600;
@@ -355,7 +355,7 @@ const s = {
     left: 0;
     bottom: 0;
     transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    border-radius: 5px 0 0 5px;
+    border-radius: var(--radius-md) 0 0 var(--radius-md);
   `,
   progressFillStripped: css`
     background-image: linear-gradient(
@@ -396,7 +396,7 @@ const s = {
   graphSection: css`
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     padding: 8px 10px;
   `,
 

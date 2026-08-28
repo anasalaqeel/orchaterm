@@ -72,7 +72,7 @@ export const DashboardView: React.FC = () => {
   const [newProjName, setNewProjName] = useState('');
   const [newProjPath, setNewProjPath] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
-  const [newProjColor, setNewProjColor] = useState('#d1401f');
+  const [newProjColor, setNewProjColor] = useState('#2f8f7a');
   const [newProjIcon, setNewProjIcon] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editTaskValue, setEditTaskValue] = useState('');
@@ -161,7 +161,7 @@ export const DashboardView: React.FC = () => {
     setNewProjName('');
     setNewProjPath('');
     setNewProjDesc('');
-    setNewProjColor('#d1401f');
+    setNewProjColor('#2f8f7a');
     setNewProjIcon(null);
     setShowAddProj(false);
   };
@@ -495,8 +495,8 @@ export const DashboardView: React.FC = () => {
                         <label className={s.fieldLabel}>Color</label>
                         <div className={s.colorRow}>
                           {[
-                            '#d1401f',
-                            '#b08d57',
+                            '#2f8f7a',
+                            '#565d61',
                             '#4a7ca3',
                             '#6b8f3f',
                             '#0e8a80',
@@ -608,17 +608,17 @@ const s = {
     background: var(--gradient-brand);
     color: #fff;
     padding: 9px 18px;
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     font-size: 12px;
     font-weight: 700;
     border: none;
     cursor: pointer;
-    box-shadow: 0 4px 16px rgba(209, 64, 31, 0.3);
+    box-shadow: 0 4px 16px rgba(47, 143, 122, 0.3);
     transition:
       box-shadow 0.2s,
       filter 0.2s;
     &:hover {
-      box-shadow: 0 6px 24px rgba(209, 64, 31, 0.4);
+      box-shadow: 0 6px 24px rgba(47, 143, 122, 0.4);
       filter: brightness(1.06);
     }
   `,
@@ -633,13 +633,13 @@ const s = {
     padding: 64px 32px;
     text-align: center;
     border: 1px dashed var(--border-color-hover);
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
     background: var(--bg-secondary);
   `,
   emptyIcon: css`
     width: 64px;
     height: 64px;
-    border-radius: 16px;
+    border-radius: var(--radius-xl);
     background: var(--bg-hover);
     display: flex;
     align-items: center;
@@ -779,7 +779,7 @@ const s = {
     flex: 1;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color-hover);
-    border-radius: 7px;
+    border-radius: var(--radius-lg);
     padding: 5px 9px;
     font-size: 12px;
     color: var(--text-primary);
@@ -938,7 +938,7 @@ const s = {
     width: 100%;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     padding: 9px 12px;
     font-size: 12px;
     color: var(--text-primary);
@@ -974,7 +974,7 @@ const s = {
     padding: 8px 14px;
     background: var(--bg-hover);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 600;
@@ -1085,7 +1085,7 @@ const s = {
     color: var(--text-tertiary);
     border: 1px solid var(--border-color);
     padding: 9px 18px;
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     cursor: pointer;
     transition: all 0.15s;
     &:hover {
@@ -1100,15 +1100,15 @@ const s = {
     font-size: 12px;
     font-weight: 700;
     padding: 9px 20px;
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     border: none;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(209, 64, 31, 0.3);
+    box-shadow: 0 4px 14px rgba(47, 143, 122, 0.3);
     transition:
       box-shadow 0.2s,
       filter 0.2s;
     &:hover {
-      box-shadow: 0 6px 20px rgba(209, 64, 31, 0.4);
+      box-shadow: 0 6px 20px rgba(47, 143, 122, 0.4);
       filter: brightness(1.06);
     }
   `,

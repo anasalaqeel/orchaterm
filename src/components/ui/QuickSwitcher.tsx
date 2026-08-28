@@ -140,7 +140,7 @@ export const QuickSwitcher: React.FC = () => {
                   <div className={styles.itemLeft}>
                     <div
                       className={styles.itemDot}
-                      style={{ backgroundColor: proj.color || '#d1401f' }}
+                      style={{ backgroundColor: proj.color || '#2f8f7a' }}
                     />
                     <div className={styles.itemMeta}>
                       <div className={styles.itemNameRow}>

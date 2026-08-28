@@ -160,25 +160,23 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ tasks, title, 
             </marker>
           </defs>
 
-          {/* Patch cords — brass jack terminals at each end, a warm cable between */}
+          {/* Isobar lines — smooth contour curves, chart-line style, no cable terminals */}
           {edges.map((e) => {
             const x1 = e.from.x + NODE_W;
             const y1 = e.from.y + NODE_H / 2;
             const x2 = e.to.x;
             const y2 = e.to.y + NODE_H / 2;
             return (
-              <g key={e.key}>
-                <path
-                  d={bezierPath(x1, y1, x2, y2)}
-                  fill="none"
-                  stroke="var(--material-brass)"
-                  strokeWidth={2}
-                  strokeOpacity={0.5}
-                  strokeLinecap="round"
-                  markerEnd="url(#dep-arrow)"
-                />
-                <circle cx={x1} cy={y1} r={2.5} fill="var(--material-brass)" />
-              </g>
+              <path
+                key={e.key}
+                d={isobarPath(x1, y1, x2, y2)}
+                fill="none"
+                stroke="var(--material-brass)"
+                strokeWidth={1.5}
+                strokeOpacity={0.55}
+                strokeLinecap="round"
+                markerEnd="url(#dep-arrow)"
+              />
             );
           })}
 
@@ -228,8 +226,8 @@ function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }
 
-/** Cubic-bezier path from (x1,y1) → (x2,y2) curving horizontally. */
-function bezierPath(x1: number, y1: number, x2: number, y2: number): string {
+/** Isobar-style contour path from (x1,y1) → (x2,y2): one smooth chart-line curve. */
+function isobarPath(x1: number, y1: number, x2: number, y2: number): string {
   const dx = Math.max(20, Math.abs(x2 - x1) * 0.5);
   return `M ${x1},${y1} C ${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
 }

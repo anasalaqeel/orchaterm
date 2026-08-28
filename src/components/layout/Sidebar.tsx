@@ -707,7 +707,7 @@ const s = {
     flex-shrink: 0;
     text-decoration: none;
     &:hover {
-      background: rgba(209, 64, 31, 0.12);
+      background: rgba(47, 143, 122, 0.12);
       color: var(--color-brand);
     }
   `,
@@ -734,7 +734,7 @@ const s = {
   wsRow: css`
     display: flex;
     align-items: center;
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     transition: background 0.15s;
     padding-right: 4px;
     position: relative;
@@ -747,7 +747,7 @@ const s = {
     justify-content: center;
   `,
   wsRowActive: css`
-    background: rgba(209, 64, 31, 0.1) !important;
+    background: rgba(47, 143, 122, 0.1) !important;
   `,
   wsClickArea: css`
     flex: 1;
@@ -763,7 +763,7 @@ const s = {
     font-weight: 600;
     cursor: pointer;
     text-align: left;
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     transition: color 0.15s;
     &:hover {
       color: var(--text-primary);
@@ -776,7 +776,7 @@ const s = {
   wsAvatar: css`
     width: 22px;
     height: 22px;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-sm);
     border: 1.5px solid rgba(var(--material-brass-rgb), 0.35);
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
     display: flex;
@@ -816,7 +816,7 @@ const s = {
   iconBtn: css`
     width: 22px;
     height: 22px;
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     border: none;
     background: transparent;
     color: var(--text-tertiary);
@@ -854,7 +854,7 @@ const s = {
     align-items: center;
     gap: 10px;
     padding: 8px 10px;
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 600;
@@ -917,7 +917,7 @@ const s = {
   footerBtn: css`
     width: 30px;
     height: 30px;
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     border: 1px solid var(--border-color);
     background: transparent;
     color: var(--text-secondary);

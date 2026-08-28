@@ -450,7 +450,7 @@ const s = {
   tabDot: css`
     width: 6px;
     height: 6px;
-    border-radius: 50%;
+    border-radius: 1px;
     background: var(--text-tertiary);
     flex-shrink: 0;
     animation: tabdotpulse 1.2s ease-in-out infinite;

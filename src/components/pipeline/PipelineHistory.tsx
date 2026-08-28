@@ -263,7 +263,7 @@ const s = {
   `,
   card: css`
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     background: var(--bg-secondary);
     overflow: hidden;
     transition: border-color 0.15s;
@@ -348,7 +348,7 @@ const s = {
 
   body: css`
     padding: 10px;
-    border-top: 1px dashed var(--border-color);
+    border-top: 1px solid rgba(var(--material-brass-rgb), 0.3);
     background: var(--bg-canvas);
     display: flex;
     flex-direction: column;
@@ -364,7 +364,7 @@ const s = {
     flex-direction: column;
     gap: 5px;
     padding-top: 6px;
-    border-top: 1px dashed var(--border-color);
+    border-top: 1px solid rgba(var(--material-brass-rgb), 0.3);
   `,
   summaryItem: css`
     display: flex;

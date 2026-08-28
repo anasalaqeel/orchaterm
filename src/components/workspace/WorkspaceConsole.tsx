@@ -41,39 +41,37 @@ export const WorkspaceConsole = memo(function WorkspaceConsole({
   panelKey,
   onBack,
 }: WorkspaceConsoleProps) {
+  const headerRight = (
+    <div className={s.consoleHeaderRight}>
+      <span className={s.consoleDot} style={{ backgroundColor: project.color }} />
+      <h2 className={s.consoleName}>{project.name}</h2>
+
+      <AnimatePresence>
+        {space && (
+          <motion.div
+            className={s.spacePill}
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.85 }}
+            style={{ borderColor: space.color + '40' }}
+          >
+            <span className={s.spacePillDot} style={{ backgroundColor: space.color }} />
+            <span className={s.spacePillName} style={{ color: space.color }}>
+              {space.name}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <motion.button whileHover={{ x: -2 }} onClick={onBack} className={s.backBtn}>
+        <ArrowLeft size={13} />
+        <span>Workspaces</span>
+      </motion.button>
+    </div>
+  );
+
   return (
     <div className={active ? s.consoleLayer : s.consoleLayerHidden}>
-      {/* Console header */}
-      <div className={s.consoleHeader}>
-        <div className={s.consoleHeaderLeft}>
-          <span className={s.consoleDot} style={{ backgroundColor: project.color }} />
-          <h2 className={s.consoleName}>{project.name}</h2>
-          <span className={s.consolePath}>{project.path}</span>
-
-          <AnimatePresence>
-            {space && (
-              <motion.div
-                className={s.spacePill}
-                initial={{ opacity: 0, scale: 0.85 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.85 }}
-                style={{ borderColor: space.color + '40' }}
-              >
-                <span className={s.spacePillDot} style={{ backgroundColor: space.color }} />
-                <span className={s.spacePillName} style={{ color: space.color }}>
-                  {space.name}
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <motion.button whileHover={{ x: -2 }} onClick={onBack} className={s.backBtn}>
-          <ArrowLeft size={13} />
-          <span>Workspaces</span>
-        </motion.button>
-      </div>
-
       <ConsoleSplit
         active={active}
         terminal={
@@ -83,6 +81,7 @@ export const WorkspaceConsole = memo(function WorkspaceConsole({
             workspaceId={project.id}
             workspacePath={project.path}
             active={active}
+            headerRight={headerRight}
           />
         }
         right={active && <RightPanel key={panelKey} workspaceId={project.id} />}
@@ -117,43 +116,29 @@ const s = {
   consoleLayerHidden: css`
     display: none;
   `,
-  consoleHeader: css`
-    padding: 10px 20px;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-    user-select: none;
-  `,
-  consoleHeaderLeft: css`
+  consoleHeaderRight: css`
     display: flex;
     align-items: center;
     gap: 8px;
     min-width: 0;
     overflow: hidden;
+    user-select: none;
   `,
   consoleDot: css`
     width: 9px;
     height: 9px;
-    border-radius: 50%;
+    border-radius: 2px;
     flex-shrink: 0;
     box-shadow: 0 0 8px var(--color-brand);
   `,
   consoleName: css`
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
     color: var(--text-primary);
     white-space: nowrap;
-  `,
-  consolePath: css`
-    font-size: 10px;
-    color: var(--text-tertiary);
-    font-family: var(--font-family-mono);
-    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
   `,
   spacePill: css`
     display: inline-flex;
@@ -168,7 +153,7 @@ const s = {
   spacePillDot: css`
     width: 5px;
     height: 5px;
-    border-radius: 50%;
+    border-radius: 1px;
     flex-shrink: 0;
   `,
   spacePillName: css`
@@ -183,7 +168,7 @@ const s = {
     background: transparent;
     color: var(--text-tertiary);
     padding: 5px 10px;
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     font-size: 11px;
     font-weight: 600;
     border: 1px solid var(--border-color);

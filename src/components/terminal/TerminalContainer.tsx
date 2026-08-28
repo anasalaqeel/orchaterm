@@ -24,6 +24,8 @@ interface TerminalContainerProps {
   workspacePath: string;
   scopeKey: string;
   active?: boolean;
+  /** Rendered right-aligned in the tab row itself — workspace identity, back button, etc. */
+  headerRight?: React.ReactNode;
 }
 
 type DropEdge = 'left' | 'right' | 'top' | 'bottom';
@@ -36,8 +38,8 @@ interface HoveredDrop {
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const TAB_COLOR_PRESETS = [
-  '#d1401f', // indicator lamp
-  '#b08d57', // brass
+  '#2f8f7a', // chart-ink teal
+  '#565d61', // graphite ink
   '#4a7ca3', // signal wire blue
   '#6b8f3f', // patina green
   '#0e8a80', // teal
@@ -90,6 +92,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   workspacePath,
   scopeKey,
   active = true,
+  headerRight,
 }) => {
   const {
     settings,
@@ -654,8 +657,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       height: `${rect.height}px`,
       margin: '0',
       transform: 'rotate(-2deg) scale(1.08)',
-      boxShadow: '0 10px 30px rgba(0,0,0,0.55), 0 0 0 1.5px rgba(209,64,31,0.6)',
-      borderRadius: '8px',
+      boxShadow: '0 10px 30px rgba(0,0,0,0.55), 0 0 0 1.5px rgba(47, 143, 122,0.6)',
+      borderRadius: '9px',
       opacity: '1',
       pointerEvents: 'none',
     });
@@ -933,7 +936,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                           border: 1px solid var(--border-color);
                           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
                           padding: 2px 8px;
-                          border-radius: 12px;
+                          border-radius: var(--radius-xl);
                           font-weight: 500;
                           margin-left: 8px;
                           display: inline-flex;
@@ -1054,7 +1057,11 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
           )}
         </div>
 
-        <div className={styles.headerSpacer} />
+        {headerRight ? (
+          <div className={styles.headerRight}>{headerRight}</div>
+        ) : (
+          <div className={styles.headerSpacer} />
+        )}
       </div>
 
       {/* Portals */}
@@ -1207,7 +1214,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       width: '100%',
                       textAlign: 'left',
                       padding: '6px 12px',
-                      background: active ? 'rgba(209,64,31,0.12)' : 'transparent',
+                      background: active ? 'rgba(47, 143, 122,0.12)' : 'transparent',
                       border: 'none',
                       color: active ? 'var(--color-brand)' : 'var(--text-secondary)',
                       cursor: 'pointer',
@@ -1245,7 +1252,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                   fontWeight: 500,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(176, 141, 87, 0.1)';
+                  e.currentTarget.style.background = 'rgba(86, 93, 97, 0.1)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'transparent';
@@ -1280,7 +1287,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                       fontWeight: 500,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(176, 141, 87, 0.1)';
+                      e.currentTarget.style.background = 'rgba(86, 93, 97, 0.1)';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = 'transparent';
@@ -1520,7 +1527,7 @@ const styles = {
     display: flex;
     align-items: flex-end;
     overflow-x: auto;
-    padding-top: 8px;
+    padding-top: 4px;
     gap: 4px;
     width: 100%;
     min-width: 0;
@@ -1563,7 +1570,7 @@ const styles = {
     display: flex;
     align-items: center;
     gap: 7px;
-    padding: 8px 10px;
+    padding: 6px 10px;
     font-size: 12px;
     font-weight: 700;
     border-top-left-radius: var(--radius-sm);
@@ -1614,17 +1621,17 @@ const styles = {
     }
   `,
   groupedActiveTab: css`
-    background-color: rgba(209, 64, 31, 0.2);
+    background-color: rgba(47, 143, 122, 0.2);
     color: var(--text-primary);
     &:hover {
-      background-color: rgba(209, 64, 31, 0.25);
+      background-color: rgba(47, 143, 122, 0.25);
     }
   `,
   groupedInactiveTab: css`
     background-color: transparent;
     color: var(--text-tertiary);
     &:hover {
-      background-color: rgba(209, 64, 31, 0.07);
+      background-color: rgba(47, 143, 122, 0.07);
       color: var(--text-secondary);
     }
   `,
@@ -1647,8 +1654,8 @@ const styles = {
   `,
   paneBadgeInactive: css`
     background: transparent;
-    color: rgba(209, 64, 31, 0.5);
-    border: 1.5px solid rgba(209, 64, 31, 0.28);
+    color: rgba(47, 143, 122, 0.5);
+    border: 1.5px solid rgba(47, 143, 122, 0.28);
   `,
   tabGroupSep: css`
     width: 1px;
@@ -1679,14 +1686,14 @@ const styles = {
     }
   `,
   dropIndicator: css`
-    background: rgba(209, 64, 31, 0.16);
+    background: rgba(47, 143, 122, 0.16);
     border: 2px solid var(--color-brand);
     box-sizing: border-box;
     border-radius: 4px;
     animation: dropSnap 200ms cubic-bezier(0.16, 1, 0.3, 1);
     box-shadow:
-      inset 0 0 20px rgba(209, 64, 31, 0.1),
-      0 0 12px rgba(209, 64, 31, 0.3);
+      inset 0 0 20px rgba(47, 143, 122, 0.1),
+      0 0 12px rgba(47, 143, 122, 0.3);
     @keyframes dropSnap {
       from {
         opacity: 0;
@@ -1766,13 +1773,23 @@ const styles = {
     flex: 1;
     min-width: 8px;
   `,
+  headerRight: css`
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    align-self: center;
+    padding-right: 4px;
+    min-width: 0;
+    overflow: hidden;
+  `,
   shellDropdown: css`
     position: fixed;
     z-index: 9999;
     min-width: 240px;
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color-hover);
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
     animation: fadeDropdown 120ms ease-out;
@@ -1809,7 +1826,7 @@ const styles = {
     }
   `,
   shellDropdownItemActive: css`
-    background-color: rgba(209, 64, 31, 0.1);
+    background-color: rgba(47, 143, 122, 0.1);
   `,
   shellItemIcon: css`
     width: 13px;
@@ -1945,7 +1962,7 @@ const styles = {
     justify-content: center;
     width: 22px;
     height: 22px;
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     background: rgba(0, 0, 0, 0.55);
     border: 1px solid rgba(var(--material-brass-rgb), 0.2);
     color: var(--text-secondary);
@@ -1956,9 +1973,9 @@ const styles = {
       background 150ms ease,
       color 150ms ease;
     &:hover {
-      background: rgba(209, 64, 31, 0.45);
+      background: rgba(47, 143, 122, 0.45);
       color: var(--color-brand);
-      border-color: rgba(209, 64, 31, 0.4);
+      border-color: rgba(47, 143, 122, 0.4);
     }
   `,
   emptyState: css`
@@ -2000,15 +2017,15 @@ const styles = {
     font-size: 12px;
     font-weight: 700;
     padding: 9px 18px;
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     border: none;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(209, 64, 31, 0.3);
+    box-shadow: 0 4px 14px rgba(47, 143, 122, 0.3);
     transition:
       box-shadow 0.2s,
       filter 0.2s;
     &:hover {
-      box-shadow: 0 6px 20px rgba(209, 64, 31, 0.4);
+      box-shadow: 0 6px 20px rgba(47, 143, 122, 0.4);
       filter: brightness(1.06);
     }
   `,

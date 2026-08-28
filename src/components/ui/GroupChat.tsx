@@ -1411,7 +1411,7 @@ const s = {
     justify-content: center;
     width: 26px;
     height: 26px;
-    border-radius: 7px;
+    border-radius: var(--radius-lg);
     color: var(--text-tertiary);
     background: transparent;
     border: 1px solid transparent;
@@ -1470,7 +1470,7 @@ const s = {
     max-width: 260px;
     padding: 20px 22px;
     border: 1px solid var(--border-color);
-    border-radius: 12px;
+    border-radius: var(--radius-xl);
     background: var(--bg-secondary);
     box-shadow: var(--shadow-md);
   `,
@@ -1493,7 +1493,7 @@ const s = {
     align-items: center;
     gap: 6px;
     padding: 7px 14px;
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     border: none;
     cursor: pointer;
     font-size: 12px;
@@ -1547,7 +1547,7 @@ const s = {
   headerIconBtn: css`
     width: 24px;
     height: 24px;
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     border: none;
     background: transparent;
     color: var(--text-tertiary);
@@ -1602,7 +1602,7 @@ const s = {
   onlineDot: css`
     width: 5px;
     height: 5px;
-    border-radius: 50%;
+    border-radius: 1px;
     background: var(--color-success);
     animation: blink 2.5s ease-in-out infinite;
     @keyframes blink {
@@ -1626,7 +1626,7 @@ const s = {
   refreshBtn: css`
     width: 22px;
     height: 22px;
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     border: none;
     background: transparent;
     color: var(--text-tertiary);
@@ -1736,7 +1736,7 @@ const s = {
   suggestionBtn: css`
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     color: var(--text-tertiary);
     font-size: 11px;
     padding: 8px 12px;
@@ -1770,7 +1770,7 @@ const s = {
   avatar: css`
     width: 22px;
     height: 22px;
-    border-radius: 50%;
+    border-radius: var(--radius-sm);
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     display: flex;
@@ -1786,7 +1786,7 @@ const s = {
   bubble: css`
     max-width: 82%;
     padding: 9px 12px;
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     font-size: 12px;
     line-height: 1.6;
     word-break: break-word;
@@ -1844,7 +1844,7 @@ const s = {
   actionBtn: css`
     width: 20px;
     height: 20px;
-    border-radius: 50%;
+    border-radius: var(--radius-sm);
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     color: var(--text-tertiary);
@@ -1866,16 +1866,14 @@ const s = {
     background: var(--bg-tertiary);
     border-radius: var(--radius-sm);
     font-family: var(--font-family-mono);
-    border-top: 1px dashed var(--border-color);
-    border-bottom: 1px dashed var(--border-color);
+    border-top: 1px solid rgba(var(--material-brass-rgb), 0.3);
   `,
   agentSummaryDot: css`
     width: 6px;
     height: 6px;
-    border-radius: 50%;
+    border-radius: 2px;
     flex-shrink: 0;
     margin-top: 3px;
-    box-shadow: 0 0 4px 0 currentColor;
   `,
   agentSummaryTitle: css`
     font-size: 10px;
@@ -1907,7 +1905,7 @@ const s = {
   systemLamp: css`
     width: 6px;
     height: 6px;
-    border-radius: 50%;
+    border-radius: 1px;
     flex-shrink: 0;
     margin-top: 3px;
     background: var(--text-tertiary);
@@ -1919,7 +1917,7 @@ const s = {
     right: 14px;
     width: 26px;
     height: 26px;
-    border-radius: 50%;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border-color);
     background: var(--bg-secondary);
     color: var(--text-tertiary);
@@ -1947,7 +1945,7 @@ const s = {
     flex: 1;
     background: var(--bg-input);
     border: 1px solid var(--border-color-hover);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     padding: 8px 12px;
     color: var(--text-primary);
     font-size: 12px;
@@ -1973,7 +1971,7 @@ const s = {
     width: 32px;
     height: 32px;
     flex-shrink: 0;
-    border-radius: 7px;
+    border-radius: var(--radius-lg);
     border: none;
     background: var(--color-brand);
     color: #fff;
@@ -2038,7 +2036,7 @@ const s = {
   planThinkingDot: css`
     width: 5px;
     height: 5px;
-    border-radius: 50%;
+    border-radius: 1px;
     background: var(--color-info);
     animation: planPulse 1.2s ease-in-out infinite;
     @keyframes planPulse {
@@ -2067,7 +2065,7 @@ const s = {
     width: 240px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
     z-index: 50;

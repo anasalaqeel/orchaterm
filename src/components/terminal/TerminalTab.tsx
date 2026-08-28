@@ -340,8 +340,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           wholeWord: searchWholeWord,
           regex: searchRegex,
           decorations: {
-            matchOverviewRuler: '#b08d57',
-            activeMatchColorOverviewRuler: '#d1401f',
+            matchOverviewRuler: '#565d61',
+            activeMatchColorOverviewRuler: '#2f8f7a',
           },
         };
 
@@ -1239,7 +1239,7 @@ const styles = {
     height: 100%;
     display: flex;
     flex-direction: column;
-    background-color: #100e0c;
+    background-color: #14171a;
     overflow: hidden;
     position: relative;
   `,
@@ -1247,7 +1247,7 @@ const styles = {
     flex: 1;
     width: 100%;
     min-height: 0;
-    background-color: #100e0c;
+    background-color: #14171a;
   `,
   floatingCopyBtn: css`
     position: absolute;
@@ -1256,20 +1256,20 @@ const styles = {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: rgba(16, 14, 12, 0.88);
+    background: rgba(8, 9, 11, 0.88);
     backdrop-filter: blur(4px);
-    color: #f0e6d2;
+    color: #e9e6da;
     font-size: 12px;
     font-weight: 600;
     padding: 6px 12px;
     border-radius: var(--radius-md);
-    border: 1px solid rgba(176, 141, 87, 0.28);
+    border: 1px solid rgba(86, 93, 97, 0.28);
     cursor: pointer;
     z-index: 20;
     transition: all 0.2s;
     &:hover {
-      background: rgba(24, 20, 16, 0.95);
-      border-color: rgba(176, 141, 87, 0.45);
+      background: rgba(20, 23, 26, 0.95);
+      border-color: rgba(86, 93, 97, 0.45);
     }
   `,
   errorOverlay: css`
@@ -1278,7 +1278,7 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(16, 14, 12, 0.9);
+    background: rgba(8, 9, 11, 0.9);
     backdrop-filter: blur(4px);
     z-index: 10;
   `,
@@ -1287,23 +1287,23 @@ const styles = {
     max-width: 360px;
     padding: 24px;
     border-radius: var(--radius-lg);
-    background: #1e1a14;
-    border: 1px solid rgba(199, 62, 46, 0.45);
+    background: #21262a;
+    border: 1px solid rgba(192, 57, 43, 0.45);
     box-shadow:
-      0 0 0 1px rgba(199, 62, 46, 0.15),
+      0 0 0 1px rgba(192, 57, 43, 0.15),
       var(--shadow-md);
   `,
   errorTitle: css`
     font-size: 14px;
     font-weight: 700;
-    color: #e0644f;
+    color: #b8493a;
     margin-bottom: 8px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
   `,
   errorMsg: css`
     font-size: 12px;
-    color: #b6a988;
+    color: #a3aaad;
     margin-bottom: 16px;
     word-break: break-word;
     font-family: 'Fira Code', monospace;
@@ -1312,8 +1312,8 @@ const styles = {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: #d1401f;
-    color: #f0e6d2;
+    background: #2f8f7a;
+    color: #e9e6da;
     font-size: 12px;
     font-weight: 700;
     padding: 8px 20px;
@@ -1322,7 +1322,7 @@ const styles = {
     cursor: pointer;
     transition: background 150ms ease;
     &:hover {
-      background: #e04d29;
+      background: #d1503f;
     }
   `,
   // Search Bar styles
@@ -1333,35 +1333,35 @@ const styles = {
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(24, 20, 16, 0.95);
+    background: rgba(20, 23, 26, 0.95);
     backdrop-filter: blur(12px);
     padding: 4px 8px;
     border-radius: var(--radius-md);
-    border: 1px solid rgba(176, 141, 87, 0.3);
+    border: 1px solid rgba(86, 93, 97, 0.3);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
     z-index: 30;
-    color: #f0e6d2;
+    color: #e9e6da;
   `,
   searchIcon: css`
-    color: #7a6f58;
+    color: #6b7276;
     margin-left: 2px;
   `,
   searchInput: css`
     background: transparent;
     border: none;
     outline: none;
-    color: #f0e6d2;
+    color: #e9e6da;
     font-size: 12px;
     font-family: 'Fira Code', monospace;
     width: 170px;
     padding: 4px 6px;
     &::placeholder {
-      color: #7a6f58;
+      color: #6b7276;
     }
   `,
   searchResults: css`
     font-size: 11px;
-    color: #b6a988;
+    color: #a3aaad;
     white-space: nowrap;
     padding: 0 4px;
     min-width: 45px;
@@ -1371,8 +1371,8 @@ const styles = {
     display: flex;
     align-items: center;
     gap: 2px;
-    border-left: 1px solid rgba(176, 141, 87, 0.2);
-    border-right: 1px solid rgba(176, 141, 87, 0.2);
+    border-left: 1px solid rgba(86, 93, 97, 0.2);
+    border-right: 1px solid rgba(86, 93, 97, 0.2);
     padding: 0 4px;
   `,
   searchOptionBtn: css`
@@ -1381,7 +1381,7 @@ const styles = {
     justify-content: center;
     background: transparent;
     border: 1px solid transparent;
-    color: #b6a988;
+    color: #a3aaad;
     cursor: pointer;
     font-size: 11px;
     font-weight: 600;
@@ -1390,14 +1390,14 @@ const styles = {
     border-radius: var(--radius-sm);
     transition: all 120ms ease;
     &:hover {
-      background: rgba(176, 141, 87, 0.14);
-      color: #f0e6d2;
+      background: rgba(86, 93, 97, 0.14);
+      color: #e9e6da;
     }
   `,
   searchOptionBtnActive: css`
-    background: rgba(209, 64, 31, 0.25) !important;
-    border-color: rgba(209, 64, 31, 0.6) !important;
-    color: #e8a48f !important;
+    background: rgba(47, 143, 122, 0.25) !important;
+    border-color: rgba(47, 143, 122, 0.6) !important;
+    color: #e8a89e !important;
   `,
   searchNavGroup: css`
     display: flex;
@@ -1410,14 +1410,14 @@ const styles = {
     justify-content: center;
     background: transparent;
     border: none;
-    color: #b6a988;
+    color: #a3aaad;
     cursor: pointer;
     padding: 4px;
     border-radius: var(--radius-sm);
     transition: all 120ms ease;
     &:hover:not(:disabled) {
-      background: rgba(176, 141, 87, 0.16);
-      color: #f0e6d2;
+      background: rgba(86, 93, 97, 0.16);
+      color: #e9e6da;
     }
     &:disabled {
       opacity: 0.3;
@@ -1430,21 +1430,21 @@ const styles = {
     justify-content: center;
     background: transparent;
     border: none;
-    color: #b6a988;
+    color: #a3aaad;
     cursor: pointer;
     padding: 4px;
     border-radius: var(--radius-sm);
     transition: all 120ms ease;
     &:hover {
-      background: rgba(199, 62, 46, 0.22);
-      color: #e0644f;
+      background: rgba(192, 57, 43, 0.22);
+      color: #b8493a;
     }
   `,
   // Visual Bell styles
   bellOverlay: css`
     position: absolute;
     inset: 0;
-    background: rgba(240, 230, 210, 0.12);
+    background: rgba(233, 230, 218, 0.12);
     pointer-events: none;
     animation: bell-flash 0.2s ease-out;
     @keyframes bell-flash {
@@ -1460,9 +1460,9 @@ const styles = {
   contextMenu: css`
     position: fixed;
     min-width: 160px;
-    background: rgba(24, 20, 16, 0.97);
+    background: rgba(20, 23, 26, 0.97);
     backdrop-filter: blur(8px);
-    border: 1px solid rgba(176, 141, 87, 0.28);
+    border: 1px solid rgba(86, 93, 97, 0.28);
     border-radius: var(--radius-md);
     padding: 4px;
     z-index: 1000;
@@ -1473,18 +1473,18 @@ const styles = {
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    color: #f0e6d2;
+    color: #e9e6da;
     font-size: 13px;
     cursor: pointer;
     border-radius: var(--radius-sm);
     transition: background 100ms ease;
     &:hover {
-      background: rgba(176, 141, 87, 0.14);
+      background: rgba(86, 93, 97, 0.14);
     }
   `,
   contextMenuDivider: css`
     height: 1px;
-    background: rgba(176, 141, 87, 0.18);
+    background: rgba(86, 93, 97, 0.18);
     margin: 4px 0;
   `,
   contextMenuBackdrop: css`

@@ -360,7 +360,7 @@ const styles = {
     font-size: var(--font-size-sm);
     font-weight: 600;
     transition: all 0.2s ease-in-out;
-    box-shadow: 0 4px 14px rgba(209, 64, 31, 0.3);
+    box-shadow: 0 4px 14px rgba(47, 143, 122, 0.3);
     cursor: pointer;
 
     &:hover {
@@ -416,7 +416,7 @@ const styles = {
     gap: 8px;
     background-color: var(--bg-tertiary);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     padding: 6px 12px;
     transition: border-color 0.15s ease;
 
@@ -581,7 +581,7 @@ const styles = {
   workspaceDot: css`
     width: 10px;
     height: 10px;
-    border-radius: 50%;
+    border-radius: 2px;
     flex-shrink: 0;
   `,
 
@@ -604,7 +604,7 @@ const styles = {
   agentDot: css`
     width: 6px;
     height: 6px;
-    border-radius: 50%;
+    border-radius: 1px;
     flex-shrink: 0;
   `,
 
@@ -805,7 +805,7 @@ const styles = {
     width: 100%;
     background-color: var(--bg-primary);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     padding: 8px;
     font-size: var(--font-size-sm);
     color: var(--text-primary);
@@ -834,7 +834,7 @@ const styles = {
     color: var(--text-secondary);
     border: 1px solid var(--border-color);
     padding: 8px 16px;
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     cursor: pointer;
     transition: all 0.15s ease;
 
@@ -851,11 +851,11 @@ const styles = {
     font-size: 12px;
     font-weight: 700;
     padding: 8px 16px;
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     border: none;
     cursor: pointer;
     transition: filter 0.15s ease;
-    box-shadow: 0 4px 12px rgba(209, 64, 31, 0.25);
+    box-shadow: 0 4px 12px rgba(47, 143, 122, 0.25);
 
     &:hover {
       filter: brightness(1.06);

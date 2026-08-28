@@ -13,8 +13,8 @@ import { Space } from '../../types';
 import { Input } from './Input';
 
 const COLOR_PRESETS = [
-  '#d1401f',
-  '#b08d57',
+  '#2f8f7a',
+  '#565d61',
   '#4a7ca3',
   '#6b8f3f',
   '#0e8a80',
@@ -40,7 +40,7 @@ export const SpaceManagerModal: React.FC<SpaceManagerModalProps> = ({
   const workspaceSessions = terminalSessions.filter((s) => s.workspaceId === workspaceId);
 
   const [name, setName] = useState(space?.name ?? '');
-  const [color, setColor] = useState(space?.color ?? '#d1401f');
+  const [color, setColor] = useState(space?.color ?? '#2f8f7a');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(space?.sessionIds ?? []));
 
   const toggleSession = (id: string) => {
@@ -253,7 +253,7 @@ const s = {
   headerDot: css`
     width: 10px;
     height: 10px;
-    border-radius: 50%;
+    border-radius: 2px;
     flex-shrink: 0;
     transition: background-color 200ms ease;
   `,
@@ -329,7 +329,7 @@ const s = {
   swatch: css`
     width: 24px;
     height: 24px;
-    border-radius: 50%;
+    border-radius: var(--radius-sm);
     border: 2px solid transparent;
     cursor: pointer;
     padding: 0;
@@ -404,7 +404,7 @@ const s = {
   sessionDot: css`
     width: 8px;
     height: 8px;
-    border-radius: 50%;
+    border-radius: 1px;
     flex-shrink: 0;
   `,
   sessionName: css`
@@ -435,7 +435,7 @@ const s = {
   staleDot: css`
     width: 6px;
     height: 6px;
-    border-radius: 50%;
+    border-radius: 1px;
     background: var(--text-tertiary);
     flex-shrink: 0;
   `,
