@@ -588,7 +588,7 @@ const s = {
     padding: 6px 10px;
     background: var(--bg-canvas);
     border: 1px solid rgba(var(--color-info-rgb), 0.15);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
   `,
   modeLabel: css`
     font-size: 11px;
@@ -598,7 +598,7 @@ const s = {
 
   graphRow: css`
     background: var(--bg-canvas);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     border: 1px solid var(--border-color);
     padding: 8px;
   `,
@@ -615,7 +615,7 @@ const s = {
     background: var(--gradient-brand);
     color: #fff;
     border: none;
-    border-radius: 7px;
+    border-radius: var(--radius-lg);
     padding: 8px 12px;
     font-size: 12px;
     font-weight: 700;
@@ -633,7 +633,7 @@ const s = {
   saveTplBtn: css`
     background: transparent;
     border: 1px solid var(--border-color);
-    border-radius: 7px;
+    border-radius: var(--radius-lg);
     padding: 8px 12px;
     font-size: 11px;
     font-weight: 600;
@@ -653,7 +653,7 @@ const s = {
   clearBtn: css`
     background: transparent;
     border: 1px solid var(--border-color);
-    border-radius: 7px;
+    border-radius: var(--radius-lg);
     padding: 8px 12px;
     font-size: 11px;
     font-weight: 600;
@@ -675,7 +675,7 @@ const s = {
     padding: 10px;
     background: var(--bg-canvas);
     border: 1px solid rgba(var(--color-info-rgb), 0.2);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
   `,
   tplActions: css`
     display: flex;

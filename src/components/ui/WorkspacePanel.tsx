@@ -390,7 +390,7 @@ const s = {
   identityAvatar: css`
     width: 34px;
     height: 34px;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-sm);
     border: 1.5px solid;
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
     flex-shrink: 0;
@@ -476,7 +476,7 @@ const s = {
   chipDot: css`
     width: 5px;
     height: 5px;
-    border-radius: 50%;
+    border-radius: 1px;
     flex-shrink: 0;
   `,
   chipLabel: css`
@@ -491,7 +491,7 @@ const s = {
     line-height: 1.6;
     cursor: pointer;
     padding: 7px 9px;
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     border: 1px solid transparent;
     transition:
       border-color 0.15s,
@@ -513,7 +513,7 @@ const s = {
     display: flex;
     align-items: center;
     padding: 3px 5px;
-    border-radius: 5px;
+    border-radius: var(--radius-md);
     transition:
       color 0.12s,
       background 0.12s;
@@ -532,7 +532,7 @@ const s = {
     box-sizing: border-box;
     background: var(--bg-canvas);
     border: 1px solid var(--border-color-focus);
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     padding: 9px 10px;
     font-size: 12px;
     color: var(--text-primary);
@@ -557,11 +557,11 @@ const s = {
     background: var(--gradient-brand);
     color: #fff;
     border: none;
-    border-radius: 7px;
+    border-radius: var(--radius-lg);
     font-size: 11px;
     font-weight: 700;
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(209, 64, 31, 0.25);
+    box-shadow: 0 2px 8px rgba(47, 143, 122, 0.25);
     &:hover {
       filter: brightness(1.08);
     }
@@ -638,7 +638,7 @@ const s = {
   runPulse: css`
     width: 6px;
     height: 6px;
-    border-radius: 50%;
+    border-radius: 1px;
     background: var(--color-brand);
     flex-shrink: 0;
     animation: rp 1.5s ease-in-out infinite;

@@ -226,7 +226,7 @@ const s = {
   tabDot: css`
     width: 6px;
     height: 6px;
-    border-radius: 50%;
+    border-radius: 1px;
     background: var(--color-info);
     flex-shrink: 0;
   `,

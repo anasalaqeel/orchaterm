@@ -722,7 +722,7 @@ const styles = {
     font-weight: var(--font-weight-semibold);
     cursor: pointer;
     transition: filter 0.15s;
-    box-shadow: 0 2px 6px rgba(209, 64, 31, 0.25);
+    box-shadow: 0 2px 6px rgba(47, 143, 122, 0.25);
     &:hover {
       filter: brightness(1.06);
     }

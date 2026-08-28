@@ -593,7 +593,7 @@ export const SettingsView: React.FC = () => {
   const [projName, setProjName] = useState('');
   const [projPath, setProjPath] = useState('');
   const [projDesc, setProjDesc] = useState('');
-  const [projColor, setProjColor] = useState('#d1401f');
+  const [projColor, setProjColor] = useState('#2f8f7a');
   const [projStatus, setProjStatus] = useState<'active' | 'paused' | 'idle'>('active');
 
   // Export Settings Handler
@@ -821,7 +821,7 @@ export const SettingsView: React.FC = () => {
                   position: relative;
                   width: 44px;
                   height: 24px;
-                  border-radius: 12px;
+                  border-radius: var(--radius-xl);
                   border: none;
                   cursor: pointer;
                   flex-shrink: 0;
@@ -862,7 +862,7 @@ export const SettingsView: React.FC = () => {
                 align-self: flex-start;
                 background-color: var(--bg-tertiary);
                 padding: 4px;
-                border-radius: 8px;
+                border-radius: var(--radius-xl);
                 gap: 4px;
                 margin-bottom: 16px;
                 border: 1px solid var(--border-color);
@@ -899,10 +899,10 @@ export const SettingsView: React.FC = () => {
                         className={css`
                           position: absolute;
                           inset: 0;
-                          background-color: #d1401f;
+                          background-color: #2f8f7a;
                           border-radius: 6px;
                           z-index: -1;
-                          box-shadow: 0 1px 3px rgba(209, 64, 31, 0.4);
+                          box-shadow: 0 1px 3px rgba(47, 143, 122, 0.4);
                         `}
                         transition={{ type: 'spring', bounce: 0.15, duration: 0.5 }}
                       />
@@ -1021,7 +1021,7 @@ export const SettingsView: React.FC = () => {
                     position: relative;
                     width: 44px;
                     height: 24px;
-                    border-radius: 12px;
+                    border-radius: var(--radius-xl);
                     border: none;
                     cursor: pointer;
                     background: ${(settings.continuation?.enabled ?? false) ? 'var(--color-brand)' : 'var(--bg-tertiary)'};
@@ -1193,11 +1193,11 @@ export const SettingsView: React.FC = () => {
                         font-size: 12px;
                         cursor: pointer;
                         border: 1px solid
-                          ${conductorInteractionMode === mode ? '#d1401f' : 'var(--border-color)'};
-                        background: ${conductorInteractionMode === mode ? '#d1401f22' : 'transparent'};
-                        color: ${conductorInteractionMode === mode ? '#d1401f' : 'var(--text-secondary)'};
+                          ${conductorInteractionMode === mode ? '#2f8f7a' : 'var(--border-color)'};
+                        background: ${conductorInteractionMode === mode ? '#2f8f7a22' : 'transparent'};
+                        color: ${conductorInteractionMode === mode ? '#2f8f7a' : 'var(--text-secondary)'};
                         &:hover {
-                          border-color: #d1401f;
+                          border-color: #2f8f7a;
                         }
                       `}
                     >
@@ -1640,7 +1640,7 @@ export const SettingsView: React.FC = () => {
                       cursor: pointer;
                       border: 1px solid
                         ${terminalConfig.cursorStyle === s ? 'var(--color-brand)' : 'var(--border-color)'};
-                      background: ${terminalConfig.cursorStyle === s ? 'rgba(209,64,31,0.15)' : 'transparent'};
+                      background: ${terminalConfig.cursorStyle === s ? 'rgba(47, 143, 122,0.15)' : 'transparent'};
                       color: ${terminalConfig.cursorStyle === s ? 'var(--color-brand)' : 'var(--text-secondary)'};
                       &:hover {
                         border-color: var(--color-brand);
@@ -1952,7 +1952,7 @@ export const SettingsView: React.FC = () => {
                   color: var(--color-brand);
                   background: transparent;
                   &:hover:not(:disabled) {
-                    background: rgba(209, 64, 31, 0.1);
+                    background: rgba(47, 143, 122, 0.1);
                   }
                   &:disabled {
                     opacity: 0.4;
@@ -2052,7 +2052,7 @@ export const SettingsView: React.FC = () => {
                         key={action.id || idx}
                         className={css`
                           border-bottom: 1px solid var(--border-color);
-                          ${isEditing ? 'background: rgba(209, 64, 31, 0.05);' : ''}
+                          ${isEditing ? 'background: rgba(47, 143, 122, 0.05);' : ''}
                         `}
                       >
                         <td
@@ -2105,7 +2105,7 @@ export const SettingsView: React.FC = () => {
                               className={css`
                                 width: 16px;
                                 height: 16px;
-                                border-radius: 50%;
+                                border-radius: var(--radius-sm);
                                 background: ${action.color};
                                 border: 1px solid rgba(var(--material-brass-rgb), 0.3);
                               `}
@@ -2585,7 +2585,7 @@ Explain this error:
                       color: var(--color-brand);
                       background: transparent;
                       &:hover:not(:disabled) {
-                        background: rgba(209, 64, 31, 0.1);
+                        background: rgba(47, 143, 122, 0.1);
                       }
                       &:disabled {
                         opacity: 0.4;
@@ -3056,7 +3056,7 @@ const styles = {
     display: block;
     width: 16px;
     height: 16px;
-    border-radius: 50%;
+    border-radius: var(--radius-sm);
   `,
   td: css`
     padding: 16px;
@@ -3206,7 +3206,7 @@ const styles = {
     border: 1px solid var(--border-color);
     box-shadow:
       var(--shadow-lg),
-      0 0 20px rgba(209, 64, 31, 0.15);
+      0 0 20px rgba(47, 143, 122, 0.15);
     padding: var(--spacing-lg);
     animation: slideUp 0.25s ease-out;
 

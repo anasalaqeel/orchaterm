@@ -218,7 +218,7 @@ export const ContinuationModal: React.FC<ContinuationModalProps> = ({
           className={css`
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
-            border-radius: 12px;
+            border-radius: var(--radius-xl);
             padding: 24px;
             width: 420px;
             max-width: 90vw;

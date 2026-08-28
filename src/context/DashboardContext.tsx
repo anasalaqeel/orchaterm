@@ -36,12 +36,33 @@ export const DEFAULT_TERMINAL_WORKSPACE: Workspace = {
   name: 'Terminal',
   path: '',
   description: 'Global scratch terminal',
-  color: '#d1401f',
+  color: '#2f8f7a',
   status: 'active',
   currentTask: '',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
+
+// Workspaces created under a retired visual world persisted that world's default
+// accent color verbatim. Only exact matches to a known historical *default* are
+// remapped — any color a user actually picked from the swatch row is untouched.
+const STALE_DEFAULT_WORKSPACE_COLORS = new Set([
+  '#8b5cf6',
+  '#d1401f',
+  '#b8391f',
+  '#39c96f',
+  '#2d8f4f',
+  '#c0392b',
+  '#a8321f',
+]);
+
+function migrateStaleWorkspaceColors(ws: Workspace[]): Workspace[] {
+  return ws.map((w) =>
+    w.color && STALE_DEFAULT_WORKSPACE_COLORS.has(w.color)
+      ? { ...w, color: DEFAULT_TERMINAL_WORKSPACE.color }
+      : w
+  );
+}
 
 export interface ToastInfo {
   id: string;
@@ -305,14 +326,21 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           loadPipelineTemplates(),
         ]);
 
-        const ws = data.workspaces || [];
+        const rawWs = data.workspaces || [];
+        const ws = migrateStaleWorkspaceColors(rawWs);
         const sps = data.spaces || [];
+        const logs = data.taskLogs || [];
+        const prompts = data.savedPrompts || [];
 
         setWorkspaces(ws);
         setSpaces(sps);
-        setTaskLogs(data.taskLogs || []);
-        setSavedPrompts(data.savedPrompts || []);
+        setTaskLogs(logs);
+        setSavedPrompts(prompts);
         if (data.settings) setSettings(migrateSettings(data.settings));
+
+        if (ws.some((w, i) => w.color !== rawWs[i]?.color)) {
+          await persist(ws, sps, logs, prompts, data.settings);
+        }
         setPlans(savedPlans);
         setPipelineTemplates(savedTemplates);
 
