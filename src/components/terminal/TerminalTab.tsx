@@ -161,7 +161,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
     const [searchWholeWord, setSearchWholeWord] = useState(false);
     const [searchRegex, setSearchRegex] = useState(false);
-    const [searchResults, setSearchResults] = useState<{ index: number; count: number } | null>(null);
+    const [searchResults, setSearchResults] = useState<{ index: number; count: number } | null>(
+      null
+    );
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -176,9 +178,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     const effectActiveRef = useRef(false);
     const isSpawnedRef = useRef(false);
     const lastPtyColsRowsRef = useRef<{ cols: number; rows: number } | null>(null);
-    const requestResizeRef = useRef<((cols: number, rows: number, immediate?: boolean) => void) | null>(
-      null
-    );
+    const requestResizeRef = useRef<
+      ((cols: number, rows: number, immediate?: boolean) => void) | null
+    >(null);
 
     // Live refs to avoid stale closures in listeners
     const keybindingsRef = useRef(terminalConfig.keybindings);
@@ -399,13 +401,15 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
       // Listen to search result updates if supported by the search addon
       if ((searchAddon as any).onDidChangeResults) {
-        (searchAddon as any).onDidChangeResults((e: { resultIndex: number; resultCount: number }) => {
-          if (e.resultCount === 0) {
-            setSearchResults({ index: 0, count: 0 });
-          } else {
-            setSearchResults({ index: e.resultIndex + 1, count: e.resultCount });
+        (searchAddon as any).onDidChangeResults(
+          (e: { resultIndex: number; resultCount: number }) => {
+            if (e.resultCount === 0) {
+              setSearchResults({ index: 0, count: 0 });
+            } else {
+              setSearchResults({ index: e.resultIndex + 1, count: e.resultCount });
+            }
           }
-        });
+        );
       }
 
       term.loadAddon(new Unicode11Addon());
@@ -731,7 +735,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           const t = termRef.current;
           if (!t) return;
           const currentLast = lastPtyColsRowsRef.current;
-          if (currentLast && currentLast.cols === clampedCols && currentLast.rows === clampedRows) return;
+          if (currentLast && currentLast.cols === clampedCols && currentLast.rows === clampedRows)
+            return;
           lastPtyColsRowsRef.current = { cols: clampedCols, rows: clampedRows };
           if (t.cols !== clampedCols || t.rows !== clampedRows) {
             t.resize(clampedCols, clampedRows);
@@ -1053,8 +1058,8 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
                   ? searchResults.count === 0
                     ? 'No results'
                     : searchResults.count === 1
-                    ? '1 result'
-                    : `${searchResults.index} of ${searchResults.count}`
+                      ? '1 result'
+                      : `${searchResults.index} of ${searchResults.count}`
                   : ''}
               </span>
             )}

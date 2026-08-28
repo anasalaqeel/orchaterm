@@ -283,13 +283,13 @@ describe('TerminalTab PTY lifecycle', () => {
     await renderTerminalTab(); // spawns at 80x24
     await act(async () => {
       getLastTerminal().fireResize(120, 40);
-      await new Promise(r => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 120));
     });
     expect(commandsCalled('resize_pty')).toEqual([{ sessionId: 's1', cols: 120, rows: 40 }]);
 
     await act(async () => {
       getLastTerminal().fireResize(120, 40);
-      await new Promise(r => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 120));
     }); // same size → suppressed
     expect(commandsCalled('resize_pty')).toHaveLength(1);
   });
@@ -556,9 +556,15 @@ describe('TerminalTab UI surfaces', () => {
       term.fireKey({ ctrlKey: true, key: 'f' });
     });
 
-    const caseBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Aa');
-    const wordBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.trim() === '\\b');
-    const regexBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.trim() === '.*');
+    const caseBtn = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Aa'
+    );
+    const wordBtn = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === '\\b'
+    );
+    const regexBtn = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === '.*'
+    );
 
     expect(caseBtn).toBeTruthy();
     expect(wordBtn).toBeTruthy();
