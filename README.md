@@ -194,7 +194,7 @@ cd src-tauri && cargo check && cargo test
 ```
 orchaterm/
 ├── src/                      # React frontend
-│   ├── components/           # UI components (Terminal, Chat, Conductor, etc.)
+│   ├── components/           # UI components (Terminal, Chat, Pipeline, etc.)
 │   ├── hooks/                # Custom React hooks
 │   ├── services/             # Core business logic (LLM providers, PTY, sentinel, checkpoints)
 │   ├── tests/                # Vitest test suite
@@ -209,9 +209,9 @@ orchaterm/
 ```
 
 For a deeper dive into internal mechanics, see:
-- [Architecture & Implementation Guide](ORCHATERM_ARCHITECTURE.md)
-- [User Guide & Operations Manual](ORCHATERM_USER_GUIDE.md)
-- [Session Continuation Workflow](SESSION_CONTINUATION_WORKFLOW.md)
+- [Architecture & Implementation Guide](docs/ARCHITECTURE.md)
+- [User Guide & Operations Manual](docs/USER_GUIDE.md)
+- [Session Continuation Workflow](docs/SESSION_CONTINUATION.md)
 
 ---
 

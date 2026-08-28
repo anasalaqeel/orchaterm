@@ -89,8 +89,8 @@ const SECTIONS: Section[] = [
       },
       {
         key: 'P / R / S',
-        description: 'Pause, Resume, or Stop running Conductor pipeline',
-        category: 'Conductor',
+        description: 'Pause, Resume, or Stop running pipeline',
+        category: 'Pipeline',
       },
       { key: 'Escape', description: 'Close modal or search overlay', category: 'Global' },
       {
@@ -215,7 +215,7 @@ const SECTIONS: Section[] = [
         steps: [
           'Click the Space selector at the top-left of the console header.',
           'Create or switch to a dedicated Space (e.g. "Frontend Team", "Backend Team").',
-          'Terminals, chat feeds, and conductor plans in that space remain logically grouped together.',
+          'Terminals, chat feeds, and pipeline plans in that space remain logically grouped together.',
         ],
       },
       {
@@ -228,21 +228,21 @@ const SECTIONS: Section[] = [
       },
     ],
     proTip:
-      'Terminal processes continue running seamlessly in the background when switching between Workspace, Chat, and Conductor tabs.',
+      'Terminal processes continue running seamlessly in the background when switching between Workspace, Chat, and Pipeline tabs.',
   },
   {
-    id: 'conductor',
-    title: 'Conductor Multi-Agent',
+    id: 'pipelines',
+    title: 'Visual Pipelines',
     icon: MessageSquare,
     description:
-      'Orchestrate complex tasks across multiple AI coding agents with dependency graphs and automated handoffs.',
+      'Orchestrate complex tasks across multiple terminal sessions with dependency graphs and automated handoffs.',
     guides: [
       {
-        title: 'Running a Multi-Agent Pipeline',
+        title: 'Running a Multi-Terminal Pipeline',
         badge: 'Pipeline',
         steps: [
-          'Open separate terminal tabs in your workspace and start your agents (e.g. Claude Code in Tab 1, Antigravity in Tab 2).',
-          'Open the Conductor tab and click "+" to create a new plan goal.',
+          'Open separate terminal tabs in your workspace and start your processes or CLI tools.',
+          'Open the Pipelines tab and click "+" to create a new plan goal.',
           'Add tasks, assign each task to a specific terminal session, and check dependencies ("dependsOn").',
           'Click "Approve & Run". The engine dispatches Wave 1 tasks to their assigned terminals.',
           'When an agent outputs ###ORCHATERM_DONE###, Orchaterm captures the output, generates a handoff brief with the local Relay model, and automatically dispatches the next dependent tasks.',
@@ -252,7 +252,7 @@ const SECTIONS: Section[] = [
         title: 'Generating a Plan with an AI Agent',
         badge: 'AI Planner',
         steps: [
-          'In the Conductor Plan Builder, click "Generate Plan with Agent".',
+          'In the Pipeline Builder, click "Generate Plan with Agent".',
           'Describe your high-level goal and choose which agent session should draft the plan.',
           'The agent generates the structured task list and dependency graph for you to review and approve.',
         ],
@@ -267,7 +267,7 @@ const SECTIONS: Section[] = [
       },
     ],
     proTip:
-      'Click the 📖 icon in Conductor to copy or download CLAUDE.md protocol instructions into your project root.',
+      'Click the 📖 icon in Pipelines to copy or download CLAUDE.md protocol instructions into your project root.',
   },
   {
     id: 'settings',
