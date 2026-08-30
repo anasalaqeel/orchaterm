@@ -482,11 +482,13 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
             // Explicit passthrough: skip built-ins, optionally kitty-encode.
             const kittySeq = kittyEncodeKey(e, kitty.getFlags());
             if (kittySeq) {
+              e.preventDefault?.();
               invoke('write_pty', { sessionId, data: kittySeq }).catch(() => {});
               return false;
             }
             return true;
           }
+          e.preventDefault?.();
           switch (binding.action) {
             case 'clear':
               term.clear();
@@ -561,6 +563,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
         // Ctrl+F / Cmd+F opens search (only when not rebound above)
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.shiftKey && !e.altKey) {
+          e.preventDefault?.();
           setSearchVisible(true);
           requestAnimationFrame(() => {
             const searchInput = document.querySelector(
@@ -575,18 +578,22 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         // Cross-platform Page / Scroll navigation (Shift+PageUp/Down, Shift+Home/End)
         if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
           if (e.key === 'PageUp') {
+            e.preventDefault?.();
             term.scrollPages(-1);
             return false;
           }
           if (e.key === 'PageDown') {
+            e.preventDefault?.();
             term.scrollPages(1);
             return false;
           }
           if (e.key === 'Home') {
+            e.preventDefault?.();
             term.scrollToTop();
             return false;
           }
           if (e.key === 'End') {
+            e.preventDefault?.();
             term.scrollToBottom();
             return false;
           }
