@@ -4,6 +4,7 @@ import { TaskLog } from '../types';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Select } from '../components/ui/Select';
 import { Input } from '../components/ui';
+import { WindowControls } from '../components/layout/WindowControls';
 import { History, Search, Trash2, Plus, AlertTriangle, CheckCircle, Clock, X } from 'lucide-react';
 import { css, cx } from '@emotion/css';
 
@@ -88,7 +89,7 @@ export const TaskLogView: React.FC = () => {
   return (
     <div className={styles.container}>
       {/* Header section */}
-      <div className={styles.header}>
+      <div className={styles.header} data-tauri-drag-region="deep">
         <div>
           <h2 className={styles.headerTitle}>Handoff & Task Logs</h2>
           <p className={styles.headerSubtitle}>
@@ -96,18 +97,21 @@ export const TaskLogView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            if (workspaces.length > 0) {
-              setNewLogWorkspace(workspaces[0].id);
-            }
-            setShowAddModal(true);
-          }}
-          className={styles.manualEntryBtn}
-        >
-          <Plus className={styles.iconSm} />
-          <span>Manual Entry</span>
-        </button>
+        <div className={styles.headerRightGroup}>
+          <button
+            onClick={() => {
+              if (workspaces.length > 0) {
+                setNewLogWorkspace(workspaces[0].id);
+              }
+              setShowAddModal(true);
+            }}
+            className={styles.manualEntryBtn}
+          >
+            <Plus className={styles.iconSm} />
+            <span>Manual Entry</span>
+          </button>
+          <WindowControls />
+        </div>
       </div>
 
       {/* Filters Bar */}
@@ -334,6 +338,11 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: space-between;
+  `,
+  headerRightGroup: css`
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
   `,
 
   headerTitle: css`

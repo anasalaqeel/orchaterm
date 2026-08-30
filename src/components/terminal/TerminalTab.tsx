@@ -174,6 +174,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     // Search addon ref
     const searchAddonRef = useRef<SearchAddon | null>(null);
 
+    // Live search options — read by executeSearch so option toggles take
+    // effect immediately instead of racing React's re-render through a
+    // setTimeout closure that captured the previous option state.
+    const searchOptionsRef = useRef({ caseSensitive: false, wholeWord: false, regex: false });
+
     // Guards & tracking refs
     const effectActiveRef = useRef(false);
     const isSpawnedRef = useRef(false);
@@ -288,10 +293,12 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
     );
 
     // ── Spawn helper ─────────────────────────────────────────────────────────
+    const spawnInFlightRef = useRef(false);
     const spawnSession = useCallback(async () => {
       const term = termRef.current;
-      if (!term) return;
+      if (!term || spawnInFlightRef.current) return;
 
+      spawnInFlightRef.current = true;
       setSpawnState('spawning');
       setErrorMsg('');
 
@@ -321,42 +328,42 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         setSpawnState('error');
         setErrorMsg(msg);
         term.write(`\r\n\x1b[31m[Error] Failed to spawn shell: ${msg}\x1b[0m\r\n`);
+      } finally {
+        spawnInFlightRef.current = false;
       }
     }, [sessionId, workspacePath, shell, shellArgs]);
 
     // ── Search executor helper ───────────────────────────────────────────────
-    const executeSearch = useCallback(
-      (query: string, forward = true) => {
-        const addon = searchAddonRef.current;
-        if (!addon) return;
-        if (!query) {
-          addon.clearDecorations();
-          setSearchResults(null);
-          return;
-        }
+    const executeSearch = useCallback((query: string, forward = true) => {
+      const addon = searchAddonRef.current;
+      if (!addon) return;
+      if (!query) {
+        addon.clearDecorations();
+        setSearchResults(null);
+        return;
+      }
 
-        const options = {
-          caseSensitive: searchCaseSensitive,
-          wholeWord: searchWholeWord,
-          regex: searchRegex,
-          decorations: {
-            matchOverviewRuler: '#565d61',
-            activeMatchColorOverviewRuler: '#2f8f7a',
-          },
-        };
+      const { caseSensitive, wholeWord, regex } = searchOptionsRef.current;
+      const options = {
+        caseSensitive,
+        wholeWord,
+        regex,
+        decorations: {
+          matchOverviewRuler: '#565d61',
+          activeMatchColorOverviewRuler: '#2f8f7a',
+        },
+      };
 
-        if (forward) {
-          addon.findNext(query, options);
-        } else {
-          addon.findPrevious(query, options);
-        }
+      if (forward) {
+        addon.findNext(query, options);
+      } else {
+        addon.findPrevious(query, options);
+      }
 
-        if (!(addon as any).onDidChangeResults) {
-          setSearchResults({ index: 1, count: 1 });
-        }
-      },
-      [searchCaseSensitive, searchWholeWord, searchRegex]
-    );
+      if (!(addon as any).onDidChangeResults) {
+        setSearchResults({ index: 1, count: 1 });
+      }
+    }, []);
 
     // ── Main effect — creates xterm, wires listeners, spawns PTY ─────────
     useEffect(() => {
@@ -462,7 +469,11 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       const dataDispose = term.onData((data) => {
         flushWrites();
         if (data.length > 80) {
-          writePtyChunked(sessionId, data).catch((err) =>
+          // Large bursts (pastes) are chunked for ConPTY/readline tolerance,
+          // but at 1024 chars per chunk — the old 80-char default turned a
+          // 1MB paste into ~2 minutes of writes. Escape/surrogate-aware
+          // splitting in writePtyChunked keeps sequences intact.
+          writePtyChunked(sessionId, data, 1024, 8).catch((err) =>
             console.error('[TerminalTab] writePtyChunked failed:', err)
           );
         } else {
@@ -481,6 +492,10 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
         if (e.type !== 'keydown') return true;
 
+        // IME (CJK etc.) composition keys must reach xterm's composition
+        // machinery untouched, or half-typed characters get dropped.
+        if ((e as KeyboardEvent & { isComposing?: boolean }).isComposing) return true;
+
         // When search is open, Escape closes search and refocuses terminal
         if (searchVisibleRef.current) {
           if (e.key === 'Escape') {
@@ -494,22 +509,51 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           return false;
         }
 
-        // Ctrl+F / Cmd+F for search
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.shiftKey && !e.altKey) {
-          setSearchVisible(true);
-          requestAnimationFrame(() => {
-            const searchInput = document.querySelector(
-              `[data-search-input="true"]`
-            ) as HTMLInputElement;
-            searchInput?.focus();
-            searchInput?.select();
-          });
-          return false;
-        }
-
         // Escape closes context menu
         if (e.key === 'Escape' && contextMenuRef.current) {
           setContextMenu(null);
+          return false;
+        }
+
+        // ─ User-configured keybindings take precedence over every built-in ──
+        // intercept below. Without this, a combo like ctrl+f or ctrl+shift+v
+        // could never be rebound (send-text, passthrough, …) because the
+        // hardcoded handler swallowed it first.
+        const binding = resolveTerminalKey(buildCombo(e), keybindingsRef.current);
+        if (binding) {
+          if (binding.action === 'passthrough') {
+            // Explicit passthrough: skip built-ins, optionally kitty-encode.
+            const kittySeq = kittyEncodeKey(e, kitty.getFlags());
+            if (kittySeq) {
+              invoke('write_pty', { sessionId, data: kittySeq }).catch(() => {});
+              return false;
+            }
+            return true;
+          }
+          switch (binding.action) {
+            case 'clear':
+              term.clear();
+              break;
+            case 'scroll-top':
+              term.scrollToTop();
+              break;
+            case 'scroll-bottom':
+              term.scrollToBottom();
+              break;
+            case 'send-text':
+              invoke('write_pty', { sessionId, data: binding.text ?? '' }).catch(() => {});
+              break;
+            case 'copy':
+              if (term.hasSelection()) {
+                copyToClipboard(term.getSelection()).catch(() => {});
+              }
+              break;
+            case 'paste':
+              pasteFromClipboard().then((text) => {
+                if (text) safePaste(text);
+              });
+              break;
+          }
           return false;
         }
 
@@ -558,6 +602,19 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           return false;
         }
 
+        // Ctrl+F / Cmd+F opens search (only when not rebound above)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.shiftKey && !e.altKey) {
+          setSearchVisible(true);
+          requestAnimationFrame(() => {
+            const searchInput = document.querySelector(
+              `[data-search-input="true"]`
+            ) as HTMLInputElement;
+            searchInput?.focus();
+            searchInput?.select();
+          });
+          return false;
+        }
+
         // Cross-platform Page / Scroll navigation (Shift+PageUp/Down, Shift+Home/End)
         if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
           if (e.key === 'PageUp') {
@@ -590,47 +647,13 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
           }
         }
 
-        // Check for custom keybindings
-        const binding = resolveTerminalKey(buildCombo(e), keybindingsRef.current);
-
-        if (binding && binding.action !== 'passthrough') {
-          switch (binding.action) {
-            case 'clear':
-              term.clear();
-              break;
-            case 'scroll-top':
-              term.scrollToTop();
-              break;
-            case 'scroll-bottom':
-              term.scrollToBottom();
-              break;
-            case 'send-text':
-              invoke('write_pty', { sessionId, data: binding.text ?? '' }).catch(() => {});
-              break;
-            case 'copy':
-              if (term.hasSelection()) {
-                copyToClipboard(term.getSelection()).catch(() => {});
-              }
-              break;
-            case 'paste':
-              pasteFromClipboard().then((text) => {
-                if (text) safePaste(text);
-              });
-              break;
-          }
+        // Unbound → PTY (legacy encoding, or kitty CSI-u when enabled)
+        const kittySeq = kittyEncodeKey(e, kitty.getFlags());
+        if (kittySeq) {
+          invoke('write_pty', { sessionId, data: kittySeq }).catch(() => {});
           return false;
         }
-
-        // Unbound or explicit passthrough → PTY
-        if (!binding || binding.action === 'passthrough') {
-          const kittySeq = kittyEncodeKey(e, kitty.getFlags());
-          if (kittySeq) {
-            invoke('write_pty', { sessionId, data: kittySeq }).catch(() => {});
-            return false;
-          }
-          return true;
-        }
-        return false;
+        return true;
       });
 
       // ─ DA1 & DA2 Device Attributes Conformance ───────────────────────
@@ -857,6 +880,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         isSpawnedRef.current = false;
         lastPtyColsRowsRef.current = null;
         requestResizeRef.current = null;
+        // If the effect re-runs (prop change) mid-spawn, the new lifecycle
+        // must be able to spawn — don't inherit the old in-flight flag.
+        spawnInFlightRef.current = false;
         cancelled = true;
         flushWrites();
         if (writeRafRef.current !== null) {
@@ -970,7 +996,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       };
     }, [terminalConfig]);
 
-    const themeBg = terminalConfig.theme.background ?? '#070d14';
+    const themeBg = terminalConfig.theme.background ?? '#14171a';
 
     return (
       <div className={styles.wrapper} style={{ backgroundColor: themeBg }}>
@@ -1076,8 +1102,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
                 title="Match Case (Alt+C)"
                 onClick={() => {
                   const next = !searchCaseSensitive;
+                  searchOptionsRef.current.caseSensitive = next;
                   setSearchCaseSensitive(next);
-                  setTimeout(() => executeSearch(searchQuery, true), 0);
+                  executeSearch(searchQuery, true);
                 }}
               >
                 Aa
@@ -1092,8 +1119,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
                 title="Match Whole Word (Alt+W)"
                 onClick={() => {
                   const next = !searchWholeWord;
+                  searchOptionsRef.current.wholeWord = next;
                   setSearchWholeWord(next);
-                  setTimeout(() => executeSearch(searchQuery, true), 0);
+                  executeSearch(searchQuery, true);
                 }}
               >
                 \b
@@ -1105,8 +1133,9 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
                 title="Use Regular Expression (Alt+R)"
                 onClick={() => {
                   const next = !searchRegex;
+                  searchOptionsRef.current.regex = next;
                   setSearchRegex(next);
-                  setTimeout(() => executeSearch(searchQuery, true), 0);
+                  executeSearch(searchQuery, true);
                 }}
               >
                 .*

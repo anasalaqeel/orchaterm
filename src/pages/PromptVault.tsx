@@ -3,6 +3,7 @@ import { useDashboard } from '../context/DashboardContext';
 import { ConfirmDialog, Input, InfoTooltip, Select, MarkdownViewer } from '../components/ui';
 import { SavedPrompt, QuickAction } from '../types';
 import { DEFAULT_QUICK_ACTIONS } from '../utils/terminalThemes';
+import { WindowControls } from '../components/layout/WindowControls';
 import {
   Search,
   Copy,
@@ -250,7 +251,7 @@ export const PromptVaultView: React.FC = () => {
   return (
     <div className={styles.container}>
       {/* Header section */}
-      <div className={styles.header}>
+      <div className={styles.header} data-tauri-drag-region="deep">
         <div>
           <h2 className={styles.title}>Prompt Vault</h2>
           <p className={styles.description}>
@@ -258,17 +259,20 @@ export const PromptVaultView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            resetForm();
-            if (workspaces.length > 0) setPromptWorkspaceId(workspaces[0].id);
-            setShowAddModal(true);
-          }}
-          className={styles.savePromptBtn}
-        >
-          <Plus className={styles.iconSm} />
-          <span>Save Prompt</span>
-        </button>
+        <div className={styles.headerRightGroup}>
+          <button
+            onClick={() => {
+              resetForm();
+              if (workspaces.length > 0) setPromptWorkspaceId(workspaces[0].id);
+              setShowAddModal(true);
+            }}
+            className={styles.savePromptBtn}
+          >
+            <Plus className={styles.iconSm} />
+            <span>Save Prompt</span>
+          </button>
+          <WindowControls />
+        </div>
       </div>
 
       {/* Filters Area */}
@@ -804,6 +808,11 @@ const styles = {
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-md);
+  `,
+  headerRightGroup: css`
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
   `,
   title: css`
     font-size: var(--font-size-3xl);
