@@ -16,7 +16,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { copyToClipboard, readFromClipboard as pasteFromClipboard } from '../../utils/clipboard';
 import { css, cx } from '@emotion/css';
 import { Copy, Check, Search, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
@@ -66,49 +66,6 @@ interface TerminalTabProps {
 }
 
 type SpawnState = 'idle' | 'spawning' | 'running' | 'error';
-
-// ── Clipboard helpers with multi-tier fallback (Tauri plugin -> navigator.clipboard -> execCommand) ──
-async function copyToClipboard(text: string): Promise<boolean> {
-  if (!text) return false;
-  try {
-    await writeText(text);
-    return true;
-  } catch {
-    try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
-    } catch {
-      try {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-        return true;
-      } catch {}
-    }
-  }
-  return false;
-}
-
-async function pasteFromClipboard(): Promise<string> {
-  try {
-    const text = await readText();
-    if (text) return text;
-  } catch {
-    try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
-        return await navigator.clipboard.readText();
-      }
-    } catch {}
-  }
-  return '';
-}
 
 // ── Propose safe dimensions helper ──────────────────────────────────────────
 // Always probe proposeDimensions() before resizing. If the container has
