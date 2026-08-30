@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import logoDark from '../../assets/logos/icon-large-dark.svg';
 import logoLight from '../../assets/logos/icon-large-light.svg';
+import { DevBadge } from '../ui/DevBadge';
 
 const NAV_ITEMS = [
   { to: '/logs', label: 'Task Log', icon: History },
@@ -136,6 +137,13 @@ export function Sidebar() {
               className={s.logoIcon}
               alt="Orchaterm"
             />
+            {import.meta.env.DEV && (
+              <span
+                className={cx(s.devDot, !collapsed && s.devDotHidden)}
+                title="Development Build (DEV)"
+                aria-label="Development Build"
+              />
+            )}
           </div>
           <AnimatePresence initial={false}>
             {!collapsed && (
@@ -147,6 +155,7 @@ export function Sidebar() {
                 transition={{ duration: 0.18 }}
               >
                 <h1 className={s.title}>Orchaterm</h1>
+                {import.meta.env.DEV && <DevBadge size="sm" />}
               </motion.div>
             )}
           </AnimatePresence>
@@ -533,7 +542,7 @@ export function Sidebar() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
               >
-                v0.1
+                v0.1.1{import.meta.env.DEV ? '-dev' : ''}
               </motion.span>
             )}
           </AnimatePresence>
@@ -638,6 +647,21 @@ const s = {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    position: relative;
+  `,
+  devDot: css`
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--color-warning, #d0972f);
+    border: 1.5px solid var(--bg-secondary);
+    box-shadow: 0 0 6px rgba(208, 151, 47, 0.6);
+  `,
+  devDotHidden: css`
+    display: none;
   `,
   logoIcon: css`
     width: 30px;
