@@ -22,7 +22,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { copyToClipboard } from '../../utils/clipboard';
 import { css, cx } from '@emotion/css';
 import {
   Send,
@@ -1198,9 +1198,11 @@ const MessageRow: React.FC<{
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    writeText(msg.content).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+    copyToClipboard(msg.content).then((success) => {
+      if (success) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
     });
   };
 
