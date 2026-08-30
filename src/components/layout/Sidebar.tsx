@@ -125,8 +125,11 @@ export function Sidebar() {
           transition: `border-right-width 0.22s ease, visibility 0.22s`,
         }}
       >
-        {/* Brand */}
-        <div className={cx(s.brand, layoutCollapsed && s.brandCollapsed)}>
+        {/* Brand — top-left drag region for the frameless window */}
+        <div
+          className={cx(s.brand, layoutCollapsed && s.brandCollapsed)}
+          data-tauri-drag-region="deep"
+        >
           <div className={s.logo}>
             <img
               src={theme === 'dark' ? logoDark : logoLight}

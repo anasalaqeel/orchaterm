@@ -116,6 +116,17 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const selectedShellRef = useRef<ShellInfo | null>(null);
   selectedShellRef.current = selectedShell;
 
+  // Resolves once get_available_shells settles (success or failure) so the
+  // first-run default tab can wait briefly for the detected preferred shell
+  // instead of racing the detection and always falling back to settings.
+  const shellDetectionSettledRef = useRef<Promise<void> | null>(null);
+  const resolveShellDetectionRef = useRef<(() => void) | null>(null);
+  if (shellDetectionSettledRef.current === null) {
+    shellDetectionSettledRef.current = new Promise<void>((resolve) => {
+      resolveShellDetectionRef.current = resolve;
+    });
+  }
+
   useEffect(() => {
     invoke<ShellInfo[]>('get_available_shells')
       .then((shells) => {
@@ -131,7 +142,8 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         };
         setAvailableShells([fallback]);
         setSelectedShell(fallback);
-      });
+      })
+      .finally(() => resolveShellDetectionRef.current?.());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -313,20 +325,22 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const dragIdRef = useRef<string | null>(null);
 
+  // Single reset for every piece of drag state — called from drop handlers,
+  // dragend, and the window-level safety net so no path can miss a field.
+  const resetDragState = useCallback(() => {
+    dragIdRef.current = null;
+    draggingSessionIdRef.current = null;
+    setDragId(null);
+    setDragOverId(null);
+    setIsDraggingTab(false);
+    setHoveredDrop(null);
+  }, []);
+
   // Safety net: always clean up drag state when any drag ends on the window.
   useEffect(() => {
-    const cleanup = () => {
-      dragIdRef.current = null;
-      draggingSessionIdRef.current = null;
-      setDragId(null);
-      setDragOverId(null);
-      setIsDraggingTab(false);
-      setHoveredDrop(null);
-    };
-    window.addEventListener('dragend', cleanup);
-    return () => window.removeEventListener('dragend', cleanup);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    window.addEventListener('dragend', resetDragState);
+    return () => window.removeEventListener('dragend', resetDragState);
+  }, [resetDragState]);
 
   // ── Context sync ─────────────────────────────────────────────────────────
   const tabRefs = useRef<Map<string, React.RefObject<TerminalTabHandle | null>>>(new Map());
@@ -392,6 +406,30 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       const saved = allTabs[scopeKey];
       if (cancelled) return;
 
+      // Saved tabs carry their own shell, so restore immediately. Only a
+      // freshly created default tab needs to wait for shell detection —
+      // bounded, so a hung detection can't block the console forever.
+      const hasSavedTabs =
+        !!saved && (Array.isArray(saved) ? saved.length > 0 : saved.tabs.length > 0);
+      if (!hasSavedTabs) {
+        await Promise.race([
+          shellDetectionSettledRef.current ?? Promise.resolve(),
+          new Promise((r) => setTimeout(r, 500)),
+        ]);
+        if (cancelled) return;
+      }
+
+      // Re-read after the (possible) wait — detection may have resolved a
+      // preferred shell in the meantime.
+      const resolvedShell = selectedShellRef.current;
+      const resolvedPath = hasSavedTabs
+        ? shellPath
+        : (resolvedShell?.path ?? settings.shellPath ?? '');
+      const resolvedArgs = hasSavedTabs ? shellArgs : (resolvedShell?.args ?? []);
+      const resolvedName = hasSavedTabs
+        ? shellName
+        : (resolvedShell?.name ?? shellBasename(resolvedPath));
+
       if (saved) {
         const isLegacy = Array.isArray(saved);
         const tabsToRestore = isLegacy ? saved : saved.tabs;
@@ -412,7 +450,9 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
                 workspaceId,
                 color: tab.color,
                 order: i,
-                interruptPolicy: 'always' as const,
+                // Pre-persistence tabs have no policy — keep the historical
+                // 'always' default so an upgrade doesn't silently change behavior.
+                interruptPolicy: tab.interruptPolicy ?? 'always',
               };
             });
           setSessions(restored);
@@ -429,9 +469,9 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
           setSessions([
             {
               id: defaultId,
-              title: `${shellName} 1`,
-              shell: shellPath,
-              shellArgs,
+              title: `${resolvedName} 1`,
+              shell: resolvedPath,
+              shellArgs: resolvedArgs,
               workspaceId,
               color: null,
               order: 0,
@@ -447,9 +487,9 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         setSessions([
           {
             id: defaultId,
-            title: `${shellName} 1`,
-            shell: shellPath,
-            shellArgs,
+            title: `${resolvedName} 1`,
+            shell: resolvedPath,
+            shellArgs: resolvedArgs,
             workspaceId,
             color: null,
             order: 0,
@@ -491,6 +531,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
             shellArgs: s.shellArgs,
             color: s.color,
             order: s.order,
+            interruptPolicy: s.interruptPolicy,
           })),
           groups,
           activeGroupId,
@@ -678,12 +719,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
     e.stopPropagation();
     const fromId = dragIdRef.current;
     if (!fromId || fromId === targetId) {
-      dragIdRef.current = null;
-      draggingSessionIdRef.current = null;
-      setDragId(null);
-      setDragOverId(null);
-      setHoveredDrop(null);
-      setIsDraggingTab(false);
+      resetDragState();
       return;
     }
     const capturedFromId = fromId;
@@ -705,33 +741,18 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         return { ...s, order: i };
       });
     });
-    dragIdRef.current = null;
-    draggingSessionIdRef.current = null;
-    setDragId(null);
-    setDragOverId(null);
-    setHoveredDrop(null);
-    setIsDraggingTab(false);
+    resetDragState();
   };
 
   const handleDragEnd = () => {
-    dragIdRef.current = null;
-    draggingSessionIdRef.current = null;
-    setDragId(null);
-    setDragOverId(null);
-    setIsDraggingTab(false);
-    setHoveredDrop(null);
+    resetDragState();
   };
 
   const handleDropOnStrip = (e: React.DragEvent) => {
     e.preventDefault();
     const fromId = dragIdRef.current;
     if (!fromId) {
-      dragIdRef.current = null;
-      draggingSessionIdRef.current = null;
-      setDragId(null);
-      setDragOverId(null);
-      setHoveredDrop(null);
-      setIsDraggingTab(false);
+      resetDragState();
       return;
     }
     const capturedFromId = fromId;
@@ -750,12 +771,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         return { ...s, order: i };
       });
     });
-    dragIdRef.current = null;
-    draggingSessionIdRef.current = null;
-    setDragId(null);
-    setDragOverId(null);
-    setHoveredDrop(null);
-    setIsDraggingTab(false);
+    resetDragState();
   };
 
   // ── Pane drop (split via drag) ────────────────────────────────────────────
@@ -767,19 +783,14 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
       const before = edge === 'left' || edge === 'top';
       const direction = edge === 'left' || edge === 'right' ? 'h' : 'v';
       moveSession(sessionId, leafId, direction, before);
-      dragIdRef.current = null;
-      draggingSessionIdRef.current = null;
-      setDragId(null);
-      setDragOverId(null);
-      setHoveredDrop(null);
-      setIsDraggingTab(false);
+      resetDragState();
       requestAnimationFrame(() => {
         for (const sid of visibleSessionIdsRef.current) {
           tabRefs.current.get(sid)?.current?.fit();
         }
       });
     },
-    [moveSession]
+    [moveSession, resetDragState]
   );
 
   // ── Divider drag resize ───────────────────────────────────────────────────
@@ -841,9 +852,14 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
   return (
     <div className={styles.container}>
-      {/* Tab bar */}
+      {/* Tab bar — doubles as the window drag region (the native frame is
+          disabled). Bare `data-tauri-drag-region` on the containers only:
+          direct hits on empty strip areas drag the window, while tabs and
+          buttons (children) stay fully interactive; double-clicking an empty
+          area toggles maximize via Tauri's injected drag script. */}
       <div
         className={styles.header}
+        data-tauri-drag-region
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDropOnStrip}
       >
@@ -851,6 +867,7 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
           <div
             ref={tabsListRef}
             className={styles.tabsList}
+            data-tauri-drag-region
             onDragOver={(e) => e.preventDefault()}
             onWheel={(e) => {
               if (e.deltaY !== 0) {
@@ -1058,9 +1075,11 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
         </div>
 
         {headerRight ? (
-          <div className={styles.headerRight}>{headerRight}</div>
+          <div className={styles.headerRight} data-tauri-drag-region="deep">
+            {headerRight}
+          </div>
         ) : (
-          <div className={styles.headerSpacer} />
+          <div className={styles.headerSpacer} data-tauri-drag-region />
         )}
       </div>
 
@@ -1778,8 +1797,10 @@ const styles = {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    align-self: center;
-    padding-right: 4px;
+    align-self: stretch;
+    /* No right padding — the caption buttons inside must reach the window's
+       top-right corner flush. */
+    padding-right: 0;
     min-width: 0;
     overflow: hidden;
   `,
