@@ -50,12 +50,15 @@ vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
 vi.mock('@xterm/addon-search', () => ({
   SearchAddon: class {
     queries: string[] = [];
+    calls: { query: string; options: Record<string, unknown> }[] = [];
     cleared = 0;
-    findNext(q: string) {
+    findNext(q: string, options?: Record<string, unknown>) {
       this.queries.push(q);
+      this.calls.push({ query: q, options: options ?? {} });
     }
-    findPrevious(q: string) {
+    findPrevious(q: string, options?: Record<string, unknown>) {
       this.queries.push(q);
+      this.calls.push({ query: q, options: options ?? {} });
     }
     clearDecorations() {
       this.cleared++;
@@ -267,16 +270,55 @@ describe('TerminalTab PTY lifecycle', () => {
     expect(writtenPayloads()).toEqual(['x']);
 
     mockedInvoke.mockClear();
-    const big = 'a'.repeat(200);
+    // 80–1024 chars fits a single 1024-char chunk — one write, no delay.
+    await act(async () => {
+      getLastTerminal().fireData('a'.repeat(200));
+    });
+    expect(writtenPayloads()).toEqual(['a'.repeat(200)]);
+
+    // Larger bursts split into 1024-char chunks that reassemble exactly.
+    mockedInvoke.mockClear();
+    const big = 'b'.repeat(4000);
     await act(async () => {
       getLastTerminal().fireData(big);
     });
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 120));
     });
     const chunks = writtenPayloads();
-    expect(chunks.length).toBeGreaterThanOrEqual(3); // went through chunking
+    expect(chunks.length).toBeGreaterThanOrEqual(4);
+    expect(chunks.every((c) => c.length <= 1024)).toBe(true);
     expect(chunks.join('')).toBe(big);
+  });
+
+  it('ignores a second Retry while a spawn attempt is still in flight', async () => {
+    let attempts = 0;
+    let releaseSpawn: (() => void) | null = null;
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'spawn_pty') {
+        attempts++;
+        if (attempts === 1) throw 'shell not found';
+        // Second attempt hangs until the test releases it, so the double
+        // Retry below lands while spawnSession is still in flight.
+        await new Promise<void>((resolve) => {
+          releaseSpawn = resolve;
+        });
+        return undefined;
+      }
+      return cmd === 'windows_build_number' ? null : undefined;
+    });
+    await renderTerminalTab();
+
+    await act(async () => {
+      clickElementByText('Retry', 'button');
+      clickElementByText('Retry', 'button');
+    });
+    await act(async () => {
+      releaseSpawn?.();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    // 1 failed initial + exactly 1 retry — the in-flight guard ate the second click.
+    expect(attempts).toBe(2);
   });
 
   it('forwards grid changes to resize_pty only when dimensions actually change', async () => {
@@ -374,6 +416,38 @@ describe('TerminalTab keyboard handling', () => {
     // Ctrl+C (without shift) must pass through to PTY as \x03 (SIGINT)
     expect(await act(async () => term.fireKey({ ctrlKey: true, key: 'c' }))).toBe(true);
     expect(clipboardStub.writeText).not.toHaveBeenCalled();
+  });
+
+  it('user-rebound combos override the built-in copy intercept (binding resolves first)', async () => {
+    mockDashboard.settings.terminalConfig = {
+      ...DEFAULT_TERMINAL_CONFIG,
+      keybindings: [
+        { key: 'ctrl+shift+c', action: 'send-text', text: 'npm test\r' },
+        { key: 'ctrl+shift+v', action: 'passthrough' },
+      ],
+    };
+    await renderTerminalTab();
+    const term = getLastTerminal();
+    term.selectionText = 'selected';
+
+    // Rebound ctrl+shift+c sends text instead of the built-in copy.
+    expect(await act(async () => term.fireKey({ ctrlKey: true, shiftKey: true, key: 'c' }))).toBe(
+      false
+    );
+    expect(writtenPayloads()).toContain('npm test\r');
+    expect(clipboardStub.writeText).not.toHaveBeenCalled();
+  });
+
+  it('passthrough binding on ctrl+f forwards the key to the PTY instead of opening search', async () => {
+    mockDashboard.settings.terminalConfig = {
+      ...DEFAULT_TERMINAL_CONFIG,
+      keybindings: [{ key: 'ctrl+f', action: 'passthrough' }],
+    };
+    await renderTerminalTab();
+    const term = getLastTerminal();
+
+    expect(await act(async () => term.fireKey({ ctrlKey: true, key: 'f' }))).toBe(true);
+    expect(container.querySelector('[data-search-input="true"]')).toBeNull();
   });
 
   it('kitty protocol: answers flag queries and CSI-u encodes ambiguous keys once enabled', async () => {
@@ -574,5 +648,40 @@ describe('TerminalTab UI surfaces', () => {
       caseBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });
     expect(caseBtn?.getAttribute('data-active')).toBe('true');
+  });
+
+  it('applies a freshly toggled search option to the very next search (no stale closure)', async () => {
+    await renderTerminalTab();
+    const term = getLastTerminal();
+
+    await act(async () => {
+      term.fireKey({ ctrlKey: true, key: 'f' });
+    });
+
+    // Type an initial query (options all off).
+    const input = container.querySelector('[data-search-input="true"]') as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set;
+    await act(async () => {
+      setter!.call(input, 'error');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    // Toggling "match case" re-runs the search immediately — that re-run must
+    // already see caseSensitive=true. (The old version deferred through a
+    // setTimeout that captured the pre-toggle option state.)
+    const caseBtn = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Aa'
+    )!;
+    await act(async () => {
+      caseBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 10)); // flush any deferred re-search
+    });
+
+    const addon = term.loadedAddons.find((a) => 'findNext' in (a as object)) as {
+      calls: { query: string; options: Record<string, unknown> }[];
+    };
+    const last = addon.calls[addon.calls.length - 1];
+    expect(last.query).toBe('error');
+    expect(last.options.caseSensitive).toBe(true);
   });
 });
