@@ -14,3 +14,7 @@ export { InfoTooltip } from './InfoTooltip';
 export type { InfoTooltipProps } from './InfoTooltip';
 export { HelpModal } from './HelpModal';
 export { MarkdownViewer } from './MarkdownViewer';
+export { Badge } from './Badge';
+export type { BadgeProps, BadgeVariant, BadgeSize } from './Badge';
+export { DevBadge } from './DevBadge';
+export type { DevBadgeProps } from './DevBadge';

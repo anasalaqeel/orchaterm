@@ -507,7 +507,9 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
               <span className={s.footerHint}>
                 Press <kbd>Escape</kbd> or click outside to close
               </span>
-              <span className={s.footerVersion}>Orchaterm v0.1.0</span>
+              <span className={s.footerVersion}>
+                Orchaterm v0.1.1{import.meta.env.DEV ? ' (Development)' : ''}
+              </span>
             </div>
           </motion.div>
         </motion.div>
