@@ -408,6 +408,21 @@ describe('TerminalTab keyboard handling', () => {
     expect(clipboardStub.writeText).toHaveBeenCalledWith('selected text');
   });
 
+  it('paste binding reads the clipboard and calls term.paste exactly once with preventDefault', async () => {
+    await renderTerminalTab();
+    const term = getLastTerminal();
+    clipboardStub.readText.mockResolvedValueOnce('pasted command text');
+
+    const preventDefault = vi.fn();
+    const result = await act(async () =>
+      term.fireKey({ ctrlKey: true, shiftKey: true, key: 'v', preventDefault })
+    );
+
+    expect(result).toBe(false);
+    expect(preventDefault).toHaveBeenCalled();
+    expect(term.pasted).toEqual(['pasted command text']);
+  });
+
   it('Ctrl+C always passes through to PTY for SIGINT (not hijacked for copy)', async () => {
     await renderTerminalTab();
     const term = getLastTerminal();
