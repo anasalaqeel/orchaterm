@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { css, cx } from '@emotion/css';
 import { Copy, Check, ExternalLink } from 'lucide-react';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface MarkdownViewerProps {
   content: string;
@@ -32,11 +33,13 @@ interface CodeBlockProps {
 const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = (e: React.MouseEvent) => {
+  const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const success = await copyToClipboard(code);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (

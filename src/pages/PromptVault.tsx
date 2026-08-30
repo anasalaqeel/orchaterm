@@ -7,6 +7,7 @@ import { WindowControls } from '../components/layout/WindowControls';
 import {
   Search,
   Copy,
+  Check,
   Plus,
   Edit2,
   Trash2,
@@ -77,6 +78,7 @@ export const PromptVaultView: React.FC = () => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [pendingDeleteTitle, setPendingDeleteTitle] = useState('');
+  const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
 
   // Form states
   const [title, setTitle] = useState('');
@@ -198,9 +200,15 @@ export const PromptVaultView: React.FC = () => {
     setConfirmOpen(true);
   };
 
-  const handleCopyClick = (id: string, e: React.MouseEvent) => {
+  const handleCopyClick = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Avoid expanding card when clicking copy
-    copyPromptToClipboard(id);
+    const success = await copyPromptToClipboard(id);
+    if (success) {
+      setCopiedPromptId(id);
+      setTimeout(() => {
+        setCopiedPromptId((prev) => (prev === id ? null : prev));
+      }, 2000);
+    }
   };
 
   // Filter calculations
@@ -437,11 +445,26 @@ export const PromptVaultView: React.FC = () => {
 
                     <button
                       onClick={(e) => handleCopyClick(prompt.id, e)}
-                      className={styles.copyBtn}
-                      title="Copy Prompt Content"
+                      className={cx(
+                        styles.copyBtn,
+                        copiedPromptId === prompt.id && styles.copiedBtn
+                      )}
+                      title={
+                        copiedPromptId === prompt.id ? 'Copied to clipboard' : 'Copy Prompt Content'
+                      }
+                      type="button"
                     >
-                      <Copy className={styles.iconXs} />
-                      <span>Copy</span>
+                      {copiedPromptId === prompt.id ? (
+                        <>
+                          <Check className={styles.iconXs} />
+                          <span>Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className={styles.iconXs} />
+                          <span>Copy</span>
+                        </>
+                      )}
                     </button>
 
                     <button
@@ -518,10 +541,25 @@ export const PromptVaultView: React.FC = () => {
                           <pre className={styles.preContent}>{prompt.content}</pre>
                           <button
                             onClick={(e) => handleCopyClick(prompt.id, e)}
-                            className={styles.inlineCopyBtn}
-                            title="Copy block contents"
+                            className={cx(
+                              styles.inlineCopyBtn,
+                              copiedPromptId === prompt.id && styles.inlineCopiedBtn
+                            )}
+                            title={
+                              copiedPromptId === prompt.id
+                                ? 'Copied block contents'
+                                : 'Copy block contents'
+                            }
+                            type="button"
                           >
-                            <Copy className={styles.iconSm} />
+                            {copiedPromptId === prompt.id ? (
+                              <Check
+                                className={styles.iconSm}
+                                style={{ color: 'var(--color-success, #39c96f)' }}
+                              />
+                            ) : (
+                              <Copy className={styles.iconSm} />
+                            )}
                           </button>
                         </div>
                       )}
@@ -1174,6 +1212,10 @@ const styles = {
       filter: brightness(1.06);
     }
   `,
+  copiedBtn: css`
+    background-color: var(--color-success, #2d8f4f) !important;
+    color: #ffffff !important;
+  `,
   actionBtn: css`
     padding: 6px;
     border-radius: var(--border-radius-sm);
@@ -1273,6 +1315,10 @@ const styles = {
     &:hover {
       background-color: var(--bg-hover);
     }
+  `,
+  inlineCopiedBtn: css`
+    opacity: 1 !important;
+    border-color: var(--color-success, #39c96f) !important;
   `,
   statsBar: css`
     display: flex;
