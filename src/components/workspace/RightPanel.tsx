@@ -107,6 +107,25 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
     setPinnedSubTab('builder');
   }, []);
 
+  // Reassign a pending-plan task's terminal from the preview's dropdown.
+  const handlePendingSessionChange = useCallback(
+    (taskId: string, sessionId: string) => {
+      setPendingPlan((prev) => {
+        if (!prev) return prev;
+        const title = groupSessions.find((s) => s.id === sessionId)?.title ?? '';
+        return {
+          ...prev,
+          tasks: prev.tasks.map((t) =>
+            t.id === taskId
+              ? { ...t, assignedSessionId: sessionId, assignedSessionTitle: title }
+              : t
+          ),
+        };
+      });
+    },
+    [groupSessions]
+  );
+
   // ── Run pending plan (manual or chat-generated) ─────────────────────────────
   const runPlan = useCallback(
     (plan: PendingPlan) => {
@@ -117,10 +136,25 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
         return;
       }
 
-      const finalTasks = plan.tasks.map((t, idx) => ({
-        ...t,
-        dependsOn: executionMode === 'sequential' ? (idx > 0 ? [plan.tasks[idx - 1].id] : []) : [],
-      }));
+      // Preserve the dependency graph the plan generator (or builder) declared —
+      // it drives context relay between tasks. Only derive a chain from the
+      // execution mode when no task declares any dependency at all.
+      const declaresDeps = plan.tasks.some((t) => t.dependsOn.length > 0);
+      const finalTasks = declaresDeps
+        ? plan.tasks
+        : plan.tasks.map((t, idx) => ({
+            ...t,
+            dependsOn: executionMode === 'sequential' && idx > 0 ? [plan.tasks[idx - 1].id] : [],
+          }));
+
+      const unassigned = finalTasks.filter((t) => !t.assignedSessionId);
+      if (unassigned.length > 0) {
+        showToast(
+          `Assign a terminal to "${unassigned[0].title}"${unassigned.length > 1 ? ` (+${unassigned.length - 1} more)` : ''} before running`,
+          'error'
+        );
+        return;
+      }
 
       const orchPlan: OrchestratorPlan = {
         id: crypto.randomUUID(),
@@ -130,12 +164,13 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
         createdAt: Date.now(),
         workspaceId,
         spaceId: activeSpaceId ?? null,
-        executionMode,
+        // Only record the mode when it actually derived the graph; otherwise the
+        // graph came from the planner/builder and executionMode would be a lie.
+        executionMode: declaresDeps ? undefined : executionMode,
       };
 
       orchestratorEngine.updateConfig({
         relayProvider: llmProviders.relay,
-        planGenProvider: llmProviders.planGen,
         autoAnswerProvider: llmProviders.autoAnswer,
         taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
         interactionMode: settings.conductorInteractionMode,
@@ -232,7 +267,6 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
 
       orchestratorEngine.updateConfig({
         relayProvider: llmProviders.relay,
-        planGenProvider: llmProviders.planGen,
         autoAnswerProvider: llmProviders.autoAnswer,
         taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
         interactionMode: settings.conductorInteractionMode,
@@ -376,6 +410,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
             executionMode={executionMode}
             setExecutionMode={setExecutionMode}
             pendingPlan={pendingPlan}
+            onPendingSessionChange={handlePendingSessionChange}
             onRunPending={handleRunPending}
             onDiscardPending={handleDiscardPending}
             onRunBuild={handleRunBuild}

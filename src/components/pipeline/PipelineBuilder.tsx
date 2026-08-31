@@ -34,6 +34,8 @@ interface PipelineBuilderProps {
   sessions: SessionOption[];
   /** Pending plan (from chat-generated plan) shown above the builder. */
   pendingPlan: { goal: string; tasks: OrchestratorTask[] } | null;
+  /** Reassign a pending-plan task's terminal (fixes planner mismatches). */
+  onPendingSessionChange: (taskId: string, sessionId: string) => void;
   onRunPending: () => void;
   onDiscardPending: () => void;
   /** Run the manually-built pipeline. */
@@ -53,6 +55,7 @@ export const PipelineBuilder: React.FC<PipelineBuilderProps> = ({
   setExecutionMode,
   sessions,
   pendingPlan,
+  onPendingSessionChange,
   onRunPending,
   onDiscardPending,
   onRunBuild,
@@ -170,6 +173,8 @@ export const PipelineBuilder: React.FC<PipelineBuilderProps> = ({
           tasks={pendingPlan.tasks}
           executionMode={executionMode}
           onExecutionModeChange={setExecutionMode}
+          sessions={sessions}
+          onSessionChange={onPendingSessionChange}
           onRun={onRunPending}
           onDiscard={onDiscardPending}
         />

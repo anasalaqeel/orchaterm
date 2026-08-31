@@ -130,7 +130,6 @@ export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceI
 
     orchestratorEngine.updateConfig({
       relayProvider: llmProviders.relay,
-      planGenProvider: llmProviders.planGen,
       autoAnswerProvider: llmProviders.autoAnswer,
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
       interactionMode: settings.conductorInteractionMode,
