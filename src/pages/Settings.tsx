@@ -21,6 +21,7 @@ import {
 } from '../components/ui';
 import { createProvider } from '../services/llm';
 import type { ProviderConfig, UseCaseProviders } from '../services/llm/types';
+import { WindowControls } from '../components/layout/WindowControls';
 import {
   Sun,
   Moon,
@@ -676,11 +677,14 @@ export const SettingsView: React.FC = () => {
   return (
     <div className={styles.container}>
       {/* Header */}
-      <div>
-        <h2 className={styles.title}>System Settings</h2>
-        <p className={styles.description}>
-          Control data persistence, manage configuration resources, and UI modes.
-        </p>
+      <div className={styles.headerRow} data-tauri-drag-region="deep">
+        <div>
+          <h2 className={styles.title}>System Settings</h2>
+          <p className={styles.description}>
+            Control data persistence, manage configuration resources, and UI modes.
+          </p>
+        </div>
+        <WindowControls />
       </div>
 
       {/* Tabs */}
@@ -2725,6 +2729,12 @@ Explain this error:
 };
 
 const styles = {
+  headerRow: css`
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+  `,
   container: css`
     display: flex;
     flex-direction: column;
