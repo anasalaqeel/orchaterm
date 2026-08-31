@@ -29,6 +29,8 @@ interface PipelinePanelProps {
   executionMode: 'sequential' | 'parallel';
   setExecutionMode: (mode: 'sequential' | 'parallel') => void;
   pendingPlan: { goal: string; tasks: OrchestratorTask[] } | null;
+  /** Reassign a pending-plan task's terminal (fixes planner mismatches). */
+  onPendingSessionChange: (taskId: string, sessionId: string) => void;
   onRunPending: () => void;
   onDiscardPending: () => void;
   onRunBuild: () => void;
@@ -56,6 +58,7 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
   executionMode,
   setExecutionMode,
   pendingPlan,
+  onPendingSessionChange,
   onRunPending,
   onDiscardPending,
   onRunBuild,
@@ -143,6 +146,7 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
             setExecutionMode={setExecutionMode}
             sessions={sessionOpts}
             pendingPlan={pendingPlan}
+            onPendingSessionChange={onPendingSessionChange}
             onRunPending={onRunPending}
             onDiscardPending={onDiscardPending}
             onRunBuild={onRunBuild}

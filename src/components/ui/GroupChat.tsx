@@ -652,26 +652,29 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
                 const idMap = new Map<string, string>();
                 rawTasks.forEach((t) => idMap.set(t.title, crypto.randomUUID()));
 
-                const tasks: OrchestratorTask[] = rawTasks.map((t: RawPlanTask, idx: number) => {
-                  const session =
+                // Resolve each task's target session: exact title, then substring
+                // match, then the sole session when there is only one. Anything
+                // still unmatched stays unassigned — never silently rerouted to a
+                // random terminal — and is reported below.
+                const resolveSession = (title: string) => {
+                  const lc = title.toLowerCase();
+                  return (
+                    groupSessions.find((s) => s.title.toLowerCase() === lc) ??
                     groupSessions.find(
-                      (s) => s.title.toLowerCase() === t.assignedSessionTitle.toLowerCase()
-                    ) ?? groupSessions[0];
-                  let dependsOn = t.dependsOn
+                      (s) =>
+                        s.title.toLowerCase().includes(lc) || lc.includes(s.title.toLowerCase())
+                    ) ??
+                    (groupSessions.length === 1 ? groupSessions[0] : undefined)
+                  );
+                };
+
+                const unmatched: string[] = [];
+                const tasks: OrchestratorTask[] = rawTasks.map((t: RawPlanTask) => {
+                  const session = resolveSession(t.assignedSessionTitle);
+                  if (!session) unmatched.push(t.title);
+                  const dependsOn = t.dependsOn
                     .map((depTitle) => idMap.get(depTitle) ?? '')
                     .filter(Boolean);
-
-                  // If AI left dependsOn empty for step 2+ but user prompt implies sequential steps or answering, chain to prior step
-                  if (
-                    idx > 0 &&
-                    dependsOn.length === 0 &&
-                    /\b(then|after|next|second|follow|->|answer|reply|respond|afterwards)\b/i.test(
-                      text
-                    )
-                  ) {
-                    const prevId = idMap.get(rawTasks[idx - 1].title);
-                    if (prevId) dependsOn = [prevId];
-                  }
 
                   return {
                     id: idMap.get(t.title)!,
@@ -683,6 +686,17 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
                     status: 'pending' as const,
                   };
                 });
+
+                if (unmatched.length > 0) {
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: crypto.randomUUID(),
+                      role: 'system',
+                      content: `⚠ Could not match ${unmatched.length} task${unmatched.length > 1 ? 's' : ''} to a terminal (${unmatched.map((t) => `"${t}"`).join(', ')}) — assign a tab manually in the Pipeline builder before running.`,
+                    },
+                  ]);
+                }
 
                 if (onPendingPlan) {
                   onPendingPlan(extractedGoal, tasks);

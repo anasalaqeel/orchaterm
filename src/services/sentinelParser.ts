@@ -13,12 +13,6 @@
  *   files_modified: <comma list, or "none">
  *   needs: <what next agent needs, or "none">
  *   ###ORCHATERM_END###
- *
- * Plan-generation format (used only during plan creation from a capable agent):
- *
- *   ###ORCHATERM_PLAN_START###
- *   [...JSON array of tasks...]
- *   ###ORCHATERM_PLAN_END###
  */
 
 import { OrchestratorTaskOutput, AgentNeedsRequest } from '../types';
@@ -26,10 +20,6 @@ import { OrchestratorTaskOutput, AgentNeedsRequest } from '../types';
 // ── Sentinel markers ────────────────────────────────────────────────────────────
 export const SENTINEL_START = '###ORCHATERM_DONE###';
 export const SENTINEL_END = '###ORCHATERM_END###';
-
-// ── Plan markers ────────────────────────────────────────────────────────────────
-export const PLAN_START = '###ORCHATERM_PLAN_START###';
-export const PLAN_END = '###ORCHATERM_PLAN_END###';
 
 // ── Needs markers ────────────────────────────────────────────────────────────────
 export const NEEDS_START = '###ORCHATERM_NEEDS###';
@@ -144,74 +134,6 @@ export function parseSentinel(rawBuffer: string): OrchestratorTaskOutput | null 
   return { raw, taskId, summary, filesModified, needs };
 }
 
-// ── Plan JSON parsing ───────────────────────────────────────────────────────────
-
-/**
- * Scans a buffer for a complete plan JSON block (used during plan generation
- * from a capable agent). Returns the clean JSON string if found, or null if the
- * block is not yet complete.
- *
- * Design notes:
- * - Strip ANSI first — Claude's PTY output is heavily decorated.
- * - Use lastIndexOf for PLAN_END so we always pick up Claude's *actual*
- *   response rather than any markers that appear in the echoed prompt or in
- *   Claude's own preamble / commentary.
- */
-export function parsePlanBlock(buffer: string): string | null {
-  // Work on ANSI-clean text so escape codes don't disrupt marker detection.
-  const clean = stripAnsiCodes(buffer);
-
-  // Find the last complete END marker — this is always Claude's real output.
-  const endIdx = clean.lastIndexOf(PLAN_END);
-  if (endIdx === -1) return null;
-
-  // Find the last START marker that precedes this END.
-  const startIdx = clean.lastIndexOf(PLAN_START, endIdx);
-  if (startIdx === -1) return null;
-
-  const raw = clean.slice(startIdx + PLAN_START.length, endIdx).trim();
-
-  // Strip markdown code fences if present
-  let json = raw
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-
-  // Bracket-match backward from the last ] to find the last outermost array.
-  // Using indexOf+lastIndexOf fails when the agent outputs two arrays (e.g. due
-  // to a duplicate prompt) because it spans both: "[…][…]" → parse error.
-  // Scanning backward gives us only the last complete top-level array.
-  const lastClose = json.lastIndexOf(']');
-  if (lastClose !== -1) {
-    let depth = 0;
-    let outerOpen = -1;
-    for (let i = lastClose; i >= 0; i--) {
-      if (json[i] === ']') depth++;
-      else if (json[i] === '[') {
-        depth--;
-        if (depth === 0) {
-          outerOpen = i;
-          break;
-        }
-      }
-    }
-    if (outerOpen !== -1) {
-      json = json.slice(outerOpen, lastClose + 1);
-    } else {
-      // No matching [ found — the outer [ was consumed by a PTY ANSI artifact
-      // (e.g. the [ in \x1b[9m[ was treated as the CSI introducer, stripped,
-      // leaving only "9 {…}"). Reconstruct by wrapping first…last object in [].
-      const firstBrace = json.indexOf('{');
-      const lastBrace = json.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace >= firstBrace) {
-        json = '[' + json.slice(firstBrace, lastBrace + 1) + ']';
-      }
-    }
-  }
-
-  return json || null;
-}
-
 // ── Needs block parsing ─────────────────────────────────────────────────────────
 
 /**
@@ -241,90 +163,4 @@ export function parseNeedsBlock(buffer: string): AgentNeedsRequest | null {
 
   if (!ask) return null;
   return { ask, context };
-}
-
-/**
- * Validates that a string is a JSON array whose items have at minimum
- * the required task fields. Returns the parsed array or throws.
- */
-export function validatePlanJSON(rawJson: string): Array<{
-  id: string;
-  title: string;
-  description: string;
-  assignedSessionId: string;
-  dependsOn: string[];
-}> {
-  // Normalize PTY line-wrap sequences (\r\n injected every ~80 terminal columns).
-  // Remove \r\n entirely — when a wrap lands mid-token (e.g. "d\r\nependsOn")
-  // concatenating gives the correct token ("dependsOn"); when it lands between
-  // tokens the surrounding whitespace/comma still separates them correctly.
-  // Bare \r → remove. Bare \n → space (safe JSON whitespace between tokens).
-  let sanitised = rawJson.replace(/\r\n/g, '').replace(/\r/g, '').replace(/\n/g, ' ');
-
-  // Strip trailing commas before } or ] — common in LLM output, invalid in JSON
-  sanitised = sanitised.replace(/,\s*([}\]])/g, '$1');
-
-  // Strip PTY-injected characters between the opening [ and the first { or nested [.
-  // Incomplete ANSI escape sequences leave digit/symbol residue, e.g. "[9 {..." from
-  // \x1b[ being consumed by the lone-ESC stripper leaving the "9" behind.
-  sanitised = sanitised.replace(/^\[\s*[^{\[]*(?=[{\[])/, '[');
-
-  // If the outer [ is still missing (consumed entirely by a PTY ANSI artifact),
-  // reconstruct by wrapping from the first { to the last }.
-  if (!sanitised.trimStart().startsWith('[')) {
-    const firstBrace = sanitised.indexOf('{');
-    const lastBrace = sanitised.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace >= firstBrace) {
-      sanitised = '[' + sanitised.slice(firstBrace, lastBrace + 1) + ']';
-    }
-  }
-
-  // Fix missing opening quotes on property names — a PTY artifact where ANSI sequences
-  // around keys eat the opening " character, producing:  ,title":  instead of  ,"title":
-  // Pattern: after , or { (with optional whitespace), an unquoted identifier, then "  :
-  sanitised = sanitised.replace(/([,{]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)("\s*:)/g, '$1"$2$3');
-
-  // Fix unescaped backslashes in string values — common when the agent embeds
-  // Windows paths (e.g. C:\Users\foo). Valid JSON escape sequences after \ are:
-  // " \ / b f n r t u — anything else is illegal. Escape bare backslashes.
-  sanitised = sanitised.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
-
-  const parsed = JSON.parse(sanitised);
-  if (!Array.isArray(parsed)) throw new Error('Plan JSON must be an array');
-
-  return parsed.map((item: any, i: number) => {
-    if (typeof item.id !== 'string') throw new Error(`Task ${i}: missing id`);
-    if (typeof item.title !== 'string') throw new Error(`Task ${i}: missing title`);
-    if (typeof item.description !== 'string') throw new Error(`Task ${i}: missing description`);
-    if (typeof item.assignedSessionId !== 'string')
-      throw new Error(`Task ${i}: missing assignedSessionId`);
-
-    // dependsOn: normalize defensively — PTY artifacts can corrupt the key name
-    // (e.g. "ependsOn", "d ependsOn") or the agent may output a string instead
-    // of an array ("none", "[]", "task-1, task-2"). Default to [] when unresolvable.
-    const rawDep =
-      item.dependsOn ?? // correct key
-      item.ependsOn ?? // PTY drop of first char: "dependsOn" → "ependsOn"
-      item['d ependsOn'] ?? // PTY mid-token space: "d\r\nependsOn" → "d ependsOn"
-      [];
-    const dependsOn: string[] = Array.isArray(rawDep)
-      ? rawDep.map(String)
-      : typeof rawDep === 'string'
-        ? rawDep.toLowerCase() === 'none' || rawDep === ''
-          ? []
-          : rawDep
-              .replace(/[\[\]"]/g, '')
-              .split(',')
-              .map((s: string) => s.trim())
-              .filter(Boolean)
-        : [];
-
-    return {
-      id: item.id,
-      title: item.title,
-      description: item.description,
-      assignedSessionId: item.assignedSessionId,
-      dependsOn,
-    };
-  });
 }
