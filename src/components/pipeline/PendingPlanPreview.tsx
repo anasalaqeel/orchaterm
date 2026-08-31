@@ -15,6 +15,10 @@ interface PendingPlanPreviewProps {
   tasks: OrchestratorTask[];
   executionMode: 'sequential' | 'parallel';
   onExecutionModeChange: (mode: 'sequential' | 'parallel') => void;
+  /** Available sessions for per-task agent assignment. */
+  sessions: Array<{ id: string; title: string }>;
+  /** Reassign a task's target terminal (fixes tasks the planner couldn't match). */
+  onSessionChange: (taskId: string, sessionId: string) => void;
   onRun: () => void;
   onDiscard: () => void;
 }
@@ -24,9 +28,16 @@ export const PendingPlanPreview: React.FC<PendingPlanPreviewProps> = ({
   tasks,
   executionMode,
   onExecutionModeChange,
+  sessions,
+  onSessionChange,
   onRun,
   onDiscard,
 }) => {
+  // When the plan generator declared a dependency graph, that graph is what
+  // runs — the execution-mode toggle only applies when nothing declared deps,
+  // so don't show a control that would do nothing.
+  const declaresDeps = tasks.some((t) => t.dependsOn.length > 0);
+
   return (
     <div className={s.preview}>
       <div className={s.header}>
@@ -39,21 +50,33 @@ export const PendingPlanPreview: React.FC<PendingPlanPreviewProps> = ({
 
       <div className={s.taskList}>
         {tasks.map((task, i) => {
-          const depNames =
-            executionMode === 'sequential'
-              ? i > 0
-                ? [tasks[i - 1].title]
-                : []
-              : task.dependsOn
-                  .map((id) => tasks.find((t) => t.id === id)?.title)
-                  .filter((t): t is string => Boolean(t));
+          const depNames = declaresDeps
+            ? task.dependsOn
+                .map((id) => tasks.find((t) => t.id === id)?.title)
+                .filter((t): t is string => Boolean(t))
+            : executionMode === 'sequential' && i > 0
+              ? [tasks[i - 1].title]
+              : [];
+          const assigned = sessions.find((sess) => sess.id === task.assignedSessionId);
           return (
             <div key={task.id} className={s.task}>
               <span className={s.taskNum}>{i + 1}</span>
               <div className={s.taskBody}>
                 <div className={s.taskTitle}>{task.title}</div>
                 <div className={s.taskMeta}>
-                  <span className={s.taskAgent}>{task.assignedSessionTitle}</span>
+                  <select
+                    className={cx(s.taskAgent, !assigned && s.taskAgentMissing)}
+                    value={task.assignedSessionId}
+                    onChange={(e) => onSessionChange(task.id, e.target.value)}
+                    title="Terminal this task runs in"
+                  >
+                    {!assigned && <option value="">(assign tab)</option>}
+                    {sessions.map((sess) => (
+                      <option key={sess.id} value={sess.id}>
+                        {sess.title}
+                      </option>
+                    ))}
+                  </select>
                   {depNames.length > 0 && (
                     <span className={s.taskDeps}>after: {depNames.join(', ')}</span>
                   )}
@@ -64,27 +87,29 @@ export const PendingPlanPreview: React.FC<PendingPlanPreviewProps> = ({
         })}
       </div>
 
-      <div className={s.modeBar}>
-        <span className={s.modeLabel}>Execution Mode</span>
-        <div className={s.modeToggle}>
-          <button
-            className={cx(s.modeBtn, executionMode === 'sequential' && s.modeBtnActive)}
-            onClick={() => onExecutionModeChange('sequential')}
-            title="Run steps one after another (Step 1 → Step 2)"
-          >
-            <ListOrdered size={12} />
-            Sequential
-          </button>
-          <button
-            className={cx(s.modeBtn, executionMode === 'parallel' && s.modeBtnActive)}
-            onClick={() => onExecutionModeChange('parallel')}
-            title="Run all steps concurrently at the same time"
-          >
-            <Zap size={12} />
-            Parallel
-          </button>
+      {!declaresDeps && (
+        <div className={s.modeBar}>
+          <span className={s.modeLabel}>Execution Mode</span>
+          <div className={s.modeToggle}>
+            <button
+              className={cx(s.modeBtn, executionMode === 'sequential' && s.modeBtnActive)}
+              onClick={() => onExecutionModeChange('sequential')}
+              title="Run steps one after another (Step 1 → Step 2)"
+            >
+              <ListOrdered size={12} />
+              Sequential
+            </button>
+            <button
+              className={cx(s.modeBtn, executionMode === 'parallel' && s.modeBtnActive)}
+              onClick={() => onExecutionModeChange('parallel')}
+              title="Run all steps concurrently at the same time"
+            >
+              <Zap size={12} />
+              Parallel
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className={s.actions}>
         <button className={s.runBtn} onClick={onRun} title="Start running this plan">
@@ -177,6 +202,15 @@ const s = {
     background: rgba(var(--color-brand-rgb), 0.1);
     padding: 1px 6px;
     border-radius: 99px;
+    border: 1px solid transparent;
+    font-family: inherit;
+    cursor: pointer;
+    max-width: 140px;
+  `,
+  taskAgentMissing: css`
+    color: var(--color-warning);
+    background: rgba(var(--color-warning-rgb), 0.1);
+    border-color: rgba(var(--color-warning-rgb), 0.3);
   `,
   taskDeps: css`
     font-size: 10px;

@@ -3,12 +3,11 @@
  *
  * Subscribes to `pty-data-{sessionId}` Tauri events for any number of
  * terminal sessions simultaneously. Accumulates raw output per session and
- * scans for either a task completion sentinel or a plan-generation JSON block,
- * depending on the mode the session is in.
+ * scans for a task completion sentinel, depending on the mode the session
+ * is in.
  *
  * Modes per session:
  *   'sentinel' — watches for ###ORCHATERM_DONE### / ###ORCHATERM_END###
- *   'plan'     — watches for ###ORCHATERM_PLAN_START### / ###ORCHATERM_PLAN_END###
  *   'idle'     — listening and accumulating but not triggering callbacks
  *
  * Each session can only be in one mode at a time. Switching modes clears the
@@ -17,13 +16,7 @@
 
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { OrchestratorTaskOutput, SessionBuffer, BufferWatchMode } from '../types';
-import {
-  parseSentinel,
-  parsePlanBlock,
-  validatePlanJSON,
-  parseNeedsBlock,
-  stripAnsiCodes,
-} from './sentinelParser';
+import { parseSentinel, parseNeedsBlock, stripAnsiCodes } from './sentinelParser';
 
 // ── Shell "back-to-prompt" detection regex ────────────────────────────────────
 // Fires after 2s idle when a terminal session returns to a shell prompt.
@@ -34,6 +27,9 @@ const SHELL_PROMPT_REGEX = /[$%#>❯]\s*$/;
 
 // ── Interactive prompt detection regex ─────────────────────────────────────────
 // Compiled once at module load — used by checkInteractivePrompt on every idle tick.
+// NOTE: only patterns that unambiguously indicate a waiting prompt live here.
+// Anything loose (a bare "?", a plain numbered list) must NOT be added — agents
+// print those constantly mid-output and auto-answer would inject stray keystrokes.
 const INTERACTIVE_PROMPT_REGEX = new RegExp(
   [
     // y/n bracket markers — any casing
@@ -42,17 +38,13 @@ const INTERACTIVE_PROMPT_REGEX = new RegExp(
     String.raw`↑\s*\/\s*↓`,
     // "esc to cancel" footer (appears in all Claude Code interactive dialogs)
     String.raw`esc\s+to\s+cancel`,
-    // Numbered option with leading cursor marker: "> 1." or "• 1."
+    // Selection cursor marker: "> 1." or "• 1."
     String.raw`^[>•]\s*\d+\.`,
-    // Numbered option list: standalone "1." / "2." lines (option menus)
-    String.raw`^\s*\d+\.\s+\S`,
     // Claude Code permission header
     String.raw`Requesting permission for:`,
     // Generic proceed / confirm / allow / deny patterns
     String.raw`Do you want|Press Enter to|Proceed\?|Are you sure|Overwrite\?|Allow\?|Deny\?`,
     String.raw`Select an option|Type a number|Choose an option`,
-    // Bare question at end of a line (agent asking something directly)
-    String.raw`\?\s*$`,
   ].join('|'),
   'im'
 );
@@ -65,7 +57,6 @@ const INTERACTIVE_PROMPT_REGEX = new RegExp(
 const MAX_BUFFER_CHARS = 256 * 1024;
 const NEEDS_SCAN_TAIL = 8 * 1024; // runs on EVERY chunk — keep small
 const SENTINEL_SCAN_TAIL = 32 * 1024;
-const PLAN_SCAN_TAIL = 96 * 1024; // plan JSON arrays can be large
 
 // ── Scan throttle windows ────────────────────────────────────────────────────────
 // Caps how often each mode's (bounded but non-trivial) ANSI-strip + marker scan
@@ -73,7 +64,6 @@ const PLAN_SCAN_TAIL = 96 * 1024; // plan JSON arrays can be large
 // windows below, so they add no perceptible detection latency.
 const NEEDS_SCAN_THROTTLE_MS = 30;
 const SENTINEL_SCAN_THROTTLE_MS = 40;
-const PLAN_SCAN_THROTTLE_MS = 60;
 
 // ── Internal entry ─────────────────────────────────────────────────────────────
 
@@ -81,8 +71,6 @@ interface WatchEntry {
   buffer: SessionBuffer;
   unlisten: UnlistenFn;
   onSentinel?: (output: OrchestratorTaskOutput) => void;
-  onPlan?: (rawJson: string) => void;
-  onPlanError?: (err: string) => void;
   onNeedsRequest?: (request: import('../types').AgentNeedsRequest) => void;
   onInteractivePrompt?: (promptText: string) => void;
   /** Fires once per 10 s when the terminal returns to a shell prompt (non-conductor sessions). */
@@ -108,8 +96,6 @@ interface WatchEntry {
   // burst that never fully quiesces still gets scanned periodically.
   lastSentinelScanAt?: number;
   sentinelScanTimer?: ReturnType<typeof setTimeout>;
-  lastPlanScanAt?: number;
-  planScanTimer?: ReturnType<typeof setTimeout>;
   lastNeedsScanAt?: number;
   needsScanTimer?: ReturnType<typeof setTimeout>;
 }
@@ -193,9 +179,6 @@ class BufferWatcher {
       case 'sentinel':
         this.checkSentinel(entry);
         break;
-      case 'plan':
-        this.checkPlan(entry);
-        break;
       case 'summary':
         this.checkSummary(entry);
         break;
@@ -222,21 +205,31 @@ class BufferWatcher {
     if (now - lastFired < 6000) return;
 
     const tail = stripAnsiCodes(entry.buffer.buffer.slice(-3000));
+    const lines = tail.split('\n').filter((l) => l.trim() !== '');
+    if (lines.length === 0) return;
+    const lastLine = lines[lines.length - 1].trim();
+    // The terminal must be asking something RIGHT NOW. Dialog markers can sit
+    // a line or two above the cursor (option/footer lines rendered after the
+    // header), so those are scanned in the last few lines — but a bare question
+    // only counts when it is on the very last line. Questions on earlier lines
+    // are ordinary output the agent already moved past; firing on those made
+    // auto-answer inject stray keystrokes mid-run.
+    const recent = lines.slice(-3).join('\n');
 
-    if (INTERACTIVE_PROMPT_REGEX.test(tail)) {
-      (entry as any)._lastPromptFiredAt = now;
-      entry.onInteractivePrompt(tail.trim());
-    }
+    if (!/\?\s*$/.test(lastLine) && !INTERACTIVE_PROMPT_REGEX.test(recent)) return;
+
+    (entry as any)._lastPromptFiredAt = now;
+    entry.onInteractivePrompt(tail.trim());
   }
 
   // ── Internal: idle shell-prompt check ─────────────────────────────────────
   // Fires onIdleShell when the terminal returns to a shell prompt after being
   // idle for 2 s. Only active in 'idle' or 'summary' modes — conductor-managed
-  // sessions (sentinel / plan) are intentionally excluded.
+  // sessions (sentinel) are intentionally excluded.
 
   private checkIdleShell(entry: WatchEntry): void {
     if (!entry.onIdleShell) return;
-    if (entry.buffer.mode === 'sentinel' || entry.buffer.mode === 'plan') return;
+    if (entry.buffer.mode === 'sentinel') return;
     if (!entry.hasNewOutputSinceIdle) return;
 
     const tail = stripAnsiCodes(entry.buffer.buffer.slice(-600));
@@ -284,56 +277,6 @@ class BufferWatcher {
     entry.buffer.buffer = '';
 
     if (cb) cb(result);
-  }
-
-  // ── Internal: plan JSON check ──────────────────────────────────────────────
-
-  private checkPlan(entry: WatchEntry): void {
-    // Echo-suppress window: wipe data until the delay has elapsed.
-    if (entry.ignoreUntil !== undefined) {
-      if (Date.now() < entry.ignoreUntil) {
-        // Still suppressing — discard echo so markers in the prompt body
-        // can never create a false-positive match.
-        entry.buffer.buffer = '';
-        return;
-      }
-      // Suppress window expired. Every chunk during the window was already
-      // wiped, so the buffer holds only the *current* incoming chunk — which
-      // is the first real response data from the agent (not echo residue).
-      // Clear the flag and fall through so this chunk is scanned immediately;
-      // the old "final wipe + return" was silently discarding the agent's
-      // first response chunk (often the one containing PLAN_START).
-      entry.ignoreUntil = undefined;
-    }
-
-    const now = Date.now();
-    if (now - (entry.lastPlanScanAt ?? 0) < PLAN_SCAN_THROTTLE_MS) {
-      if (!entry.planScanTimer) {
-        entry.planScanTimer = setTimeout(() => {
-          entry.planScanTimer = undefined;
-          if (entry.buffer.mode === 'plan') this.checkPlan(entry);
-        }, PLAN_SCAN_THROTTLE_MS);
-      }
-      return;
-    }
-    entry.lastPlanScanAt = now;
-
-    const rawJson = parsePlanBlock(entry.buffer.buffer.slice(-PLAN_SCAN_TAIL));
-    if (rawJson === null) return;
-
-    const onPlan = entry.onPlan;
-    const onError = entry.onPlanError;
-    entry.onPlan = undefined;
-    entry.onPlanError = undefined;
-    entry.buffer.mode = 'idle';
-    entry.buffer.buffer = '';
-
-    try {
-      validatePlanJSON(rawJson); // throws on invalid
-      if (onPlan) onPlan(rawJson);
-    } catch (err: any) {
-      if (onError) onError(err?.message ?? String(err));
-    }
   }
 
   // ── Internal: summary check ────────────────────────────────────────────────
@@ -410,42 +353,10 @@ class BufferWatcher {
     entry.buffer.mode = 'sentinel';
     entry.onSentinel = onSentinel;
     entry.onInteractivePrompt = onInteractivePrompt;
-    entry.onPlan = undefined;
-    entry.onPlanError = undefined;
     entry.ignoreUntil = echoSuppressMs > 0 ? Date.now() + echoSuppressMs : undefined;
     if (entry.sentinelScanTimer) clearTimeout(entry.sentinelScanTimer);
     entry.sentinelScanTimer = undefined;
     entry.lastSentinelScanAt = undefined;
-  }
-
-  /**
-   * Switch a session into plan-detection mode. Any previous mode and buffer
-   * is cleared. onPlan fires with the raw JSON string when complete.
-   * onPlanError fires if the JSON is malformed.
-   *
-   * @param echoSuppressMs - milliseconds to discard incoming data before
-   *   starting real detection (default 400). Covers PTY echo latency (~200 ms
-   *   with chunked writes) while expiring well before Claude CLI starts
-   *   streaming its response (typically > 500 ms after receiving the prompt).
-   *   1500 ms was too long: fast agents (Claude CLI) start streaming within
-   *   the old window, causing PLAN_START chunks to be wiped before detection.
-   */
-  async watchForPlan(
-    sessionId: string,
-    onPlan: (rawJson: string) => void,
-    onPlanError: (err: string) => void,
-    echoSuppressMs = 400
-  ): Promise<void> {
-    const entry = await this.ensureListening(sessionId);
-    entry.buffer.buffer = '';
-    entry.buffer.mode = 'plan';
-    entry.onPlan = onPlan;
-    entry.onPlanError = onPlanError;
-    entry.onSentinel = undefined;
-    entry.ignoreUntil = echoSuppressMs > 0 ? Date.now() + echoSuppressMs : undefined;
-    if (entry.planScanTimer) clearTimeout(entry.planScanTimer);
-    entry.planScanTimer = undefined;
-    entry.lastPlanScanAt = undefined;
   }
 
   /**
@@ -460,8 +371,6 @@ class BufferWatcher {
     const entry = await this.ensureListening(sessionId);
     entry.buffer.mode = 'summary';
     entry.onSentinel = undefined;
-    entry.onPlan = undefined;
-    entry.onPlanError = undefined;
     if (!entry.summarySubscribers.includes(onChunk)) {
       entry.summarySubscribers.push(onChunk);
     }
@@ -497,7 +406,7 @@ class BufferWatcher {
    * to a shell prompt after being idle for 2 s (10 s cooldown per session).
    * Returns an unsubscribe function.
    *
-   * Skipped automatically for sessions in sentinel / plan mode so Conductor-
+   * Skipped automatically for sessions in sentinel mode so Conductor-
    * managed tasks do not generate spurious "done" notifications.
    */
   async watchForIdle(sessionId: string, onIdle: () => void): Promise<() => void> {
@@ -550,16 +459,11 @@ class BufferWatcher {
     entry.buffer.buffer = '';
     entry.buffer.mode = 'idle';
     entry.onSentinel = undefined;
-    entry.onPlan = undefined;
-    entry.onPlanError = undefined;
     entry.ignoreUntil = undefined;
     entry.hasNewOutputSinceIdle = false;
     if (entry.sentinelScanTimer) clearTimeout(entry.sentinelScanTimer);
-    if (entry.planScanTimer) clearTimeout(entry.planScanTimer);
     entry.sentinelScanTimer = undefined;
-    entry.planScanTimer = undefined;
     entry.lastSentinelScanAt = undefined;
-    entry.lastPlanScanAt = undefined;
   }
 
   /**
@@ -571,7 +475,6 @@ class BufferWatcher {
     if (!entry) return;
     entry.unlisten();
     if (entry.sentinelScanTimer) clearTimeout(entry.sentinelScanTimer);
-    if (entry.planScanTimer) clearTimeout(entry.planScanTimer);
     if (entry.needsScanTimer) clearTimeout(entry.needsScanTimer);
     this.entries.delete(sessionId);
     // Also remove any in-flight pending promise for this session so a future

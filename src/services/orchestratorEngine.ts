@@ -41,7 +41,6 @@ import { SENTINEL_START, SENTINEL_END, NEEDS_START, NEEDS_END } from './sentinel
 
 export interface EngineConfig {
   relayProvider: LLMProvider;
-  planGenProvider: LLMProvider;
   autoAnswerProvider: LLMProvider;
   /** Minutes a task can run before being auto-failed. 0 = no timeout. */
   taskTimeoutMinutes: number;
@@ -155,7 +154,10 @@ export class OrchestratorEngine {
           .then(() => new Promise((r) => setTimeout(r, 100)))
           .then(() => writePtyChunked(task.assignedSessionId, '\x03\r'))
           .catch(() => {});
-        bufferWatcher.unwatch(task.assignedSessionId);
+        // Reset the watch state but KEEP the pty-data listener — unwatch() would
+        // destroy the listener other features (live feed, NEEDS broker, idle
+        // detection) depend on for this session.
+        bufferWatcher.clearBuffer(task.assignedSessionId);
         task.status = 'failed';
       }
     }
@@ -455,6 +457,8 @@ ${task.description}${buildAgentProtocol(task.id)}`;
     try {
       await writePtyChunked(task.assignedSessionId, prompt + '\r');
     } catch (err: unknown) {
+      // Reset the watch state so the session is not left stuck in sentinel mode.
+      bufferWatcher.clearBuffer(task.assignedSessionId);
       this.log(
         'error',
         `Failed to inject task "${task.title}" into session: ${err}`,
@@ -604,7 +608,6 @@ const _defaultProvider = createProvider({ provider: 'ollama', model: 'llama3.2' 
 
 export const orchestratorEngine = new OrchestratorEngine({
   relayProvider: _defaultProvider,
-  planGenProvider: _defaultProvider,
   autoAnswerProvider: _defaultProvider,
   taskTimeoutMinutes: 0,
   interactionMode: 'auto',
