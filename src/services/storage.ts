@@ -1,5 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
-import { AppData, AppSettings, OrchestratorPlan, PipelineTemplate } from '../types';
+import {
+  AppData,
+  AppSettings,
+  OrchestratorPlan,
+  PipelineTemplate,
+  InterruptPolicy,
+} from '../types';
 
 const FILE_DATA = 'orchaterm_data.json';
 const FILE_PLANS = 'orchaterm_plans.json';
@@ -153,6 +159,8 @@ export interface PersistedTab {
   shellArgs: string[];
   color: string | null;
   order: number;
+  /** Auto-inject policy; absent in pre-persistence saves (caller backfills). */
+  interruptPolicy?: InterruptPolicy;
 }
 
 export interface PersistedTerminalState {
