@@ -352,7 +352,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className={s.root}>
-      <div className={s.tabs}>
+      {/* Tab strip doubles as a window drag region when the chat panel reaches
+          the window's top edge (native frame is disabled). Bare attribute —
+          the tab buttons themselves stay interactive. */}
+      <div className={s.tabs} data-tauri-drag-region>
         <div className={s.tabsInner}>
           <button
             className={cx(s.tab, activeTab === 'chat' && s.tabActive)}

@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { css, cx } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useDashboard, DEFAULT_TERMINAL_WORKSPACE } from '../context/DashboardContext';
 import { WorkspaceConsole } from '../components/workspace/WorkspaceConsole';
+import { WindowControls } from '../components/layout/WindowControls';
 import { Input } from '../components/ui';
 import {
   Plus,
@@ -95,8 +96,6 @@ export const DashboardView: React.FC = () => {
     }
     onLoaded(await readImageAsDataUrl(file));
   };
-
-  const handleBackToGrid = useCallback(() => setViewMode('grid'), [setViewMode]);
 
   // Tracks which workspaces have ever had their console opened this session.
   // Once mounted, a WorkspaceConsole stays mounted (PTY sessions survive workspace switches).
@@ -196,7 +195,6 @@ export const DashboardView: React.FC = () => {
               project={workspace}
               space={thisSpace}
               panelKey={`${workspace.id}::${thisSpace?.id ?? 'workspace'}`}
-              onBack={handleBackToGrid}
             />
           );
         })}
@@ -213,7 +211,7 @@ export const DashboardView: React.FC = () => {
             exit="exit"
           >
             {/* Header */}
-            <div className={s.gridHeader}>
+            <div className={s.gridHeader} data-tauri-drag-region="deep">
               <div>
                 <h1 className={s.gridTitle}>Workspaces</h1>
                 <p className={s.gridSubtitle}>
@@ -222,15 +220,18 @@ export const DashboardView: React.FC = () => {
                     : `${workspaces.length} workspace${workspaces.length !== 1 ? 's' : ''}`}
                 </p>
               </div>
-              <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => setShowAddProj(true)}
-                className={s.createBtn}
-              >
-                <Plus size={15} />
-                <span>New Workspace</span>
-              </motion.button>
+              <div className={s.gridHeaderRight}>
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setShowAddProj(true)}
+                  className={s.createBtn}
+                >
+                  <Plus size={15} />
+                  <span>New Workspace</span>
+                </motion.button>
+                <WindowControls />
+              </div>
             </div>
 
             {/* Empty state */}
@@ -587,6 +588,11 @@ const s = {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
+  `,
+  gridHeaderRight: css`
+    display: flex;
+    align-items: flex-start;
+    flex-shrink: 0;
   `,
   gridTitle: css`
     font-size: 26px;

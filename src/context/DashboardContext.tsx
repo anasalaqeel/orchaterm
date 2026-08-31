@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { copyToClipboard } from '../utils/clipboard';
 import {
   Workspace,
   Space,
@@ -124,7 +124,7 @@ export interface DashboardContextType {
   addSavedPrompt: (prompt: Omit<SavedPrompt, 'id' | 'createdAt' | 'usedAt'>) => Promise<void>;
   updateSavedPrompt: (id: string, updates: Partial<SavedPrompt>) => Promise<void>;
   deleteSavedPrompt: (id: string) => Promise<void>;
-  copyPromptToClipboard: (promptId: string) => Promise<void>;
+  copyPromptToClipboard: (promptId: string) => Promise<boolean>;
 
   // ── Settings ────────────────────────────────────────────────────────────────
   settings: AppSettings;
@@ -667,22 +667,24 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     showToast('Prompt removed', 'info');
   };
 
-  const copyPromptToClipboard = async (promptId: string) => {
+  const copyPromptToClipboard = async (promptId: string): Promise<boolean> => {
     const pr = savedPrompts.find((p) => p.id === promptId);
     if (!pr) {
       showToast('Prompt not found', 'error');
-      return;
+      return false;
     }
-    try {
-      await writeText(pr.content);
+    const success = await copyToClipboard(pr.content);
+    if (success) {
       const next = savedPrompts.map((p) =>
         p.id === promptId ? { ...p, usedAt: new Date().toISOString() } : p
       );
       setSavedPrompts(next);
       await persist(workspaces, spaces, taskLogs, next);
       showToast('Prompt copied to clipboard!', 'success');
-    } catch {
+      return true;
+    } else {
       showToast('Failed to copy to clipboard', 'error');
+      return false;
     }
   };
 

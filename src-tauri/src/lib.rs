@@ -548,9 +548,28 @@ fn spawn_pty(
     // platform shell (same priority order as get_available_shells).
     let shell_to_use = shell
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| platform_default_shell());
+        .unwrap_or_else(platform_default_shell);
 
     let mut cmd = CommandBuilder::new(&shell_to_use);
+
+    // Only set cwd when the directory actually exists — a deleted/renamed
+    // workspace would otherwise fail BOTH the primary and the fallback spawn
+    // below (portable_pty errors when cwd is missing), leaving the terminal
+    // unable to start at all. Falling back to the default cwd keeps a shell
+    // alive until the user fixes the workspace path.
+    let workspace_dir: Option<std::path::PathBuf> = {
+        let trimmed = workspace_path.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            let p = Path::new(trimmed);
+            if p.is_dir() {
+                Some(p.to_path_buf())
+            } else {
+                None
+            }
+        }
+    };
 
     // Make shell a login shell on macOS/Linux so it sources .zprofile/.bash_profile
     // This ensures PATH and aliases like 'code' are available.
@@ -573,8 +592,8 @@ fn spawn_pty(
             cmd.arg(arg);
         }
     }
-    if !workspace_path.trim().is_empty() {
-        cmd.cwd(&workspace_path);
+    if let Some(dir) = &workspace_dir {
+        cmd.cwd(dir);
     }
     cmd.env("TERM_PROGRAM", "orchaterm");
     cmd.env("TERM_PROGRAM_VERSION", "0.1.0");
@@ -589,8 +608,8 @@ fn spawn_pty(
             // Add login flag for fallback shell too (POSIX only)
             #[cfg(not(target_os = "windows"))]
             fallback.arg("-l");
-            if !workspace_path.trim().is_empty() {
-                fallback.cwd(&workspace_path);
+            if let Some(dir) = &workspace_dir {
+                fallback.cwd(dir);
             }
             fallback.env("TERM_PROGRAM", "orchaterm");
             fallback.env("TERM_PROGRAM_VERSION", "0.1.0");
@@ -813,10 +832,12 @@ fn spawn_pty(
                 // Remove the session so its master/writer drop and the reader
                 // thread unblocks — otherwise a naturally-exited shell leaks a
                 // PTY handle + blocked reader thread until the tab is closed.
-                if let Ok(mut sessions) =
-                    lock_sessions(&app_handle_monitor.state::<PtyState>())
-                {
-                    sessions.remove(&sid_monitor);
+                // try_state: during app teardown the managed state may already
+                // be gone, and panicking from this thread would abort the exit.
+                if let Some(state) = app_handle_monitor.try_state::<PtyState>() {
+                    if let Ok(mut sessions) = lock_sessions(&state) {
+                        sessions.remove(&sid_monitor);
+                    }
                 }
                 break;
             }
@@ -838,7 +859,12 @@ fn write_pty(session_id: String, data: String, state: State<'_, PtyState>) -> Re
             .ok_or_else(|| format!("Session not found: {session_id}"))?
     };
 
-    let mut writer = writer_arc.lock().map_err(|_| "Writer lock poisoned")?;
+    // Recover from a poisoned lock (a previous writer panicked mid-write):
+    // the underlying PTY writer is still perfectly usable, and erroring here
+    // forever would brick all input to this session.
+    let mut writer = writer_arc
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     writer
         .write_all(data.as_bytes())
         .map_err(|e| format!("Write failed: {e}"))?;

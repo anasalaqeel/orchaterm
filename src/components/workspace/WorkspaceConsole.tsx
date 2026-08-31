@@ -15,8 +15,8 @@
 import { memo } from 'react';
 import { css } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft } from 'lucide-react';
 import { TerminalContainer } from '../terminal/TerminalContainer';
+import { WindowControls } from '../layout/WindowControls';
 import { RightPanel } from './RightPanel';
 import { ConsoleSplit } from './ConsoleSplit';
 import type { Workspace, Space } from '../../types/workspace.types';
@@ -30,8 +30,6 @@ interface WorkspaceConsoleProps {
   active: boolean;
   /** Stable key tying the terminal + chat to the active workspace/space. */
   panelKey: string;
-  /** Invoked by the "Workspaces" back button. */
-  onBack: () => void;
 }
 
 export const WorkspaceConsole = memo(function WorkspaceConsole({
@@ -39,7 +37,6 @@ export const WorkspaceConsole = memo(function WorkspaceConsole({
   space,
   active,
   panelKey,
-  onBack,
 }: WorkspaceConsoleProps) {
   const headerRight = (
     <div className={s.consoleHeaderRight}>
@@ -63,10 +60,10 @@ export const WorkspaceConsole = memo(function WorkspaceConsole({
         )}
       </AnimatePresence>
 
-      <motion.button whileHover={{ x: -2 }} onClick={onBack} className={s.backBtn}>
-        <ArrowLeft size={13} />
-        <span>Workspaces</span>
-      </motion.button>
+      {/* Window caption buttons — the native frame is disabled; these replace
+          the old "← Workspaces" back button in this spot. The sidebar's
+          Workspaces section covers grid navigation. */}
+      <WindowControls flush />
     </div>
   );
 
@@ -123,6 +120,9 @@ const s = {
     min-width: 0;
     overflow: hidden;
     user-select: none;
+    /* Stretch the cluster to the tab strip's full height so the caption
+       buttons sit flush against the window's top edge. */
+    align-self: stretch;
   `,
   consoleDot: css`
     width: 9px;
@@ -160,25 +160,5 @@ const s = {
     font-size: 10px;
     font-weight: 600;
     white-space: nowrap;
-  `,
-  backBtn: css`
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    background: transparent;
-    color: var(--text-tertiary);
-    padding: 5px 10px;
-    border-radius: var(--radius-xl);
-    font-size: 11px;
-    font-weight: 600;
-    border: 1px solid var(--border-color);
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: all 0.15s;
-    &:hover {
-      border-color: var(--border-color-hover);
-      color: var(--text-primary);
-      background: var(--bg-hover);
-    }
   `,
 };
