@@ -45,6 +45,7 @@ import {
   NEEDS_END,
   stripAnsiCodes,
 } from './sentinelParser';
+import { writeBlackboard, BLACKBOARD_AGENT_INSTRUCTION } from './blackboard';
 
 // ── Engine configuration ────────────────────────────────────────────────────────
 
@@ -60,16 +61,22 @@ export interface EngineConfig {
   interactionMode: 'auto' | 'manual';
   /** Maps sessionId → terminal tab title (for display in logs and relay prompts). */
   sessionTitles: Map<string, string>;
+  /**
+   * Local directory of the workspace the plan runs in. When set, the shared
+   * blackboard (ORCHATERM_BOARD.md) is written there after every state change
+   * and dispatch prompts point agents at it. Empty = blackboard disabled.
+   */
+  workspacePath: string;
 }
 
 // ── Agent protocol template (injected with every task — no CLAUDE.md needed) ───
 
-function buildAgentProtocol(taskId: string): string {
+function buildAgentProtocol(taskId: string, boardActive: boolean): string {
   return `
 
 ---
 ORCHATERM PROTOCOL
-
+${boardActive ? `\n${BLACKBOARD_AGENT_INSTRUCTION}\n` : ''}
 When this task is fully done, output this block exactly on its own lines:
 
 ${SENTINEL_START}
@@ -189,6 +196,8 @@ export class OrchestratorEngine {
       this.stop();
     }
     this.plan = null;
+    // A future plan must be able to write its board from scratch.
+    this.lastBoardSig = undefined;
     this.emitState();
   }
 
@@ -414,13 +423,13 @@ CONTEXT FROM PREVIOUS WORK:
 ${contextBrief}
 
 YOUR TASK:
-${task.description}${buildAgentProtocol(task.id)}`
+${task.description}${buildAgentProtocol(task.id, !!this.config.workspacePath)}`
         : `TASK ID: ${task.id}
 AGENT: ${task.assignedSessionTitle}
 PROJECT: ${this.plan.goal}
 
 YOUR TASK:
-${task.description}${buildAgentProtocol(task.id)}`;
+${task.description}${buildAgentProtocol(task.id, !!this.config.workspacePath)}`;
 
     // Start watching for sentinel before writing prompt so PTY echo is cleanly
     // suppressed. The prompt text anchors echo suppression: the moment its tail
@@ -683,6 +692,44 @@ ${task.description}${buildAgentProtocol(task.id)}`;
       tasks: this.plan.tasks.map((t) => ({ ...t })),
     };
     for (const cb of this.stateListeners) cb(snapshot);
+    this.updateBlackboard();
+  }
+
+  // ── Private: shared blackboard ──────────────────────────────────────────────
+
+  /** Signature of the plan state at the last board write (skip identical writes). */
+  private lastBoardSig?: string;
+  /** Whether the board's location has been announced in the log. */
+  private boardPathLogged = false;
+
+  /**
+   * Rewrites ORCHATERM_BOARD.md whenever the plan state actually changed. A
+   * write failure is logged, never swallowed — agents following the board
+   * instruction would otherwise be reading a stale file without anyone knowing.
+   */
+  private updateBlackboard(): void {
+    const plan = this.plan;
+    if (!plan || !this.config.workspacePath) return;
+
+    const sig =
+      plan.status +
+      '|' +
+      plan.tasks.map((t) => `${t.id}:${t.status}:${t.output?.summary ?? ''}`).join('|');
+    if (sig === this.lastBoardSig) return;
+    this.lastBoardSig = sig;
+
+    const announcePath = !this.boardPathLogged;
+    writeBlackboard(plan, this.config.workspacePath)
+      .then((path) => {
+        if (announcePath) {
+          this.boardPathLogged = true;
+          this.log('info', `📋 Blackboard active: ${path}`);
+        }
+      })
+      .catch((err: unknown) => {
+        // Mark as un-announced so a later successful write still reports the path.
+        this.log('error', `Blackboard write failed: ${err}`);
+      });
   }
 
   private log(
@@ -720,4 +767,5 @@ export const orchestratorEngine = new OrchestratorEngine({
   taskTimeoutMinutes: 0,
   interactionMode: 'auto',
   sessionTitles: new Map(),
+  workspacePath: '',
 });

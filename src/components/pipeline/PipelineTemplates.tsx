@@ -134,6 +134,7 @@ export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceI
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
       interactionMode: settings.conductorInteractionMode,
       sessionTitles: new Map(sessionsInScope.map((s) => [s.id, s.title])),
+      workspacePath: workspace.path,
     });
 
     orchestratorEngine.start(plan);

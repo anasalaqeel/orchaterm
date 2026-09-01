@@ -50,6 +50,7 @@ Orchaterm is a next-generation terminal built for the AI era of software develop
 ### B. Ambient Intelligence & Sentinel Protocol (`src/services/`)
 - **Buffer Watcher**: Retains a rolling buffer tail per session to detect status changes without intercepting or breaking native interactive CLI sessions.
 - **Sentinel Parsing**: Structured markers (`###ORCHATERM_DONE###`, `###ORCHATERM_NEEDS###`) allow CLI agents or scripts to cleanly emit task summaries and next-step requirements.
+- **Shared Blackboard**: The orchestrator rewrites `ORCHATERM_BOARD.md` at the workspace root after every task state change; each dispatch prompt tells the agent to read it first, so the whole team coordinates through one inspectable artifact instead of pairwise briefs alone.
 - **Soft Completion (idle fallback)**: When a dispatched task's terminal returns to its prompt and goes quiet without printing the sentinel block, a small judge model evaluates the terminal output against the task's goal and can complete the task with a synthesized summary — so non-compliant agents and plain shell commands finish pipelines instead of hanging. Echo suppression is content-anchored on the dispatched prompt's tail: the moment the echo completes, detection starts, so output from instant commands is never lost to a fixed time window.
 - **Autonomous Relay**: When a task completes in one session, the ambient LLM summarizes output and injects context into dependent sessions.
 

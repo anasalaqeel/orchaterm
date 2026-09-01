@@ -36,6 +36,7 @@ interface PendingPlan {
 
 export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
   const {
+    workspaces,
     spaces,
     terminalSessions,
     activeSpaceId,
@@ -49,6 +50,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
   } = useDashboard();
 
   const aiEnabled = settings.aiEnabled !== false;
+
+  const workspacePath = workspaces.find((w) => w.id === workspaceId)?.path ?? '';
 
   const activeSpace = spaces.find((g) => g.id === activeSpaceId);
   const allSessions = terminalSessions.filter((s) => s.workspaceId === workspaceId);
@@ -175,6 +178,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
         taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
         interactionMode: settings.conductorInteractionMode,
         sessionTitles: new Map(groupSessions.map((s) => [s.id, s.title])),
+        workspacePath,
       });
 
       orchestratorEngine.start(orchPlan);
@@ -188,6 +192,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
       executionMode,
       activeSpaceId,
       workspaceId,
+      workspacePath,
       groupSessions,
       settings,
       addPlan,
@@ -271,6 +276,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
         taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
         interactionMode: settings.conductorInteractionMode,
         sessionTitles: new Map(groupSessions.map((s) => [s.id, s.title])),
+        workspacePath,
       });
 
       orchestratorEngine.start(orchPlan);
@@ -287,6 +293,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
     [
       aiEnabled,
       workspaceId,
+      workspacePath,
       activeSpaceId,
       groupSessions,
       settings,
