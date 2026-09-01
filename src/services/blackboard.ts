@@ -1,8 +1,8 @@
 /**
  * blackboard.ts
  *
- * The shared project blackboard: a single Markdown file (ORCHATERM_BOARD.md at
- * the workspace root) that the orchestrator rewrites after every plan state
+ * The shared project blackboard: a single Markdown file (.orchaterm/ORCHATERM_BOARD.md
+ * in the workspace) that the orchestrator rewrites after every plan state
  * change and every dispatched agent is told to read first. Instead of relying
  * solely on pairwise relay briefs (A tells B what it needs to know), all
  * agents coordinate through one inspectable, always-current artifact — the
@@ -12,11 +12,13 @@
 import { invoke } from '@tauri-apps/api/core';
 import { OrchestratorPlan, OrchestratorTask } from '../types';
 
+/** Directory for OrchaTerm runtime artifacts inside a workspace. */
+export const ORCHATERM_DIR = '.orchaterm';
 export const BLACKBOARD_FILENAME = 'ORCHATERM_BOARD.md';
 
 /** Instruction appended to dispatch prompts when the board is active. */
 export const BLACKBOARD_AGENT_INSTRUCTION =
-  'Before starting, read ORCHATERM_BOARD.md in the repository root — it holds the live status of every agent on this project, including results from tasks already completed.';
+  'Before starting, read .orchaterm/ORCHATERM_BOARD.md in the repository root — it holds the live status of every agent on this project, including results from tasks already completed.';
 
 const STATUS_LABEL: Record<OrchestratorTask['status'], string> = {
   pending: '⏳ Pending',
@@ -42,6 +44,13 @@ function taskSection(task: OrchestratorTask): string {
     if (files.length > 0) lines.push(`Files modified: ${files.join(', ')}`);
     if (task.output.needs && task.output.needs.toLowerCase() !== 'none') {
       lines.push(`Handoff to next agent: ${task.output.needs}`);
+    }
+    if (task.output.verification) {
+      lines.push(
+        task.output.verification.passed
+          ? `Verification: PASSED (${task.output.verification.command})`
+          : `Verification: FAILED (${task.output.verification.command}) — treat this task's claims with caution`
+      );
     }
   }
 
@@ -78,7 +87,7 @@ export function buildBlackboardMd(plan: OrchestratorPlan): string {
 export function blackboardPath(workspacePath: string): string {
   // Normalize separators so the path works with the Rust backend on Windows.
   const base = workspacePath.replace(/[\\/]+$/, '').replace(/\\/g, '/');
-  return `${base}/${BLACKBOARD_FILENAME}`;
+  return `${base}/${ORCHATERM_DIR}/${BLACKBOARD_FILENAME}`;
 }
 
 /**

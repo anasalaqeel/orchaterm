@@ -34,6 +34,8 @@ import {
   buildAutoAnswerPrompt,
   buildCompletionJudgePrompt,
   parseCompletionJudgeResponse,
+  buildReplanPrompt,
+  parsePlanGenResponse,
   CompletedTaskContext,
   CompletionJudgeVerdict,
 } from './orchestratorPrompts';
@@ -46,15 +48,22 @@ import {
   stripAnsiCodes,
 } from './sentinelParser';
 import { writeBlackboard, BLACKBOARD_AGENT_INSTRUCTION } from './blackboard';
+import { runVerifyCommand } from './verifyRunner';
+import { recordAgentEvent, AgentStatEvent } from './agentStats';
 
 // ── Engine configuration ────────────────────────────────────────────────────────
 
 /** Minimum time between soft-completion judge calls for the same task. */
 const SOFT_JUDGE_COOLDOWN_MS = 45_000;
 
+/** Max auto-replans per plan run — replanning loops must terminate. */
+const MAX_AUTO_REPLANS = 1;
+
 export interface EngineConfig {
   relayProvider: LLMProvider;
   autoAnswerProvider: LLMProvider;
+  /** Plans new tasks — used by auto-replan when a failure blocks the plan. */
+  plannerProvider: LLMProvider;
   /** Minutes a task can run before being auto-failed. 0 = no timeout. */
   taskTimeoutMinutes: number;
   /** 'auto' = LLM answers prompts. 'manual' = user must INJECT. */
@@ -113,6 +122,10 @@ export class OrchestratorEngine {
   // taskIds with a soft-completion judge call currently in flight
   private softJudgeInFlight = new Set<string>();
 
+  // auto-replan bookkeeping
+  private replansUsed = 0;
+  private replanInFlight = false;
+
   // subscribers
   private stateListeners: Array<(plan: OrchestratorPlan) => void> = [];
   private logListeners: Array<(entry: ConductorLogEntry) => void> = [];
@@ -142,6 +155,8 @@ export class OrchestratorEngine {
       tasks: plan.tasks.map((t) => ({ ...t })),
     };
     this.isPaused = false;
+    this.replansUsed = 0;
+    this.replanInFlight = false;
     this.log('info', `Orchestration started — goal: "${plan.goal}"`);
     this.emitState();
     this.dispatchReady();
@@ -174,6 +189,12 @@ export class OrchestratorEngine {
     // Send two Ctrl+C interrupts with a brief delay so stuck/streaming agents stop reliably
     for (const task of this.plan.tasks) {
       if (task.status === 'running') {
+        // A user gate is waiting on a chat answer, not on a terminal — nothing
+        // to interrupt, so it just goes back to pending for the next run.
+        if (task.askUserQuestion) {
+          task.status = 'pending';
+          continue;
+        }
         writePtyChunked(task.assignedSessionId, '\x03')
           .then(() => new Promise((r) => setTimeout(r, 100)))
           .then(() => writePtyChunked(task.assignedSessionId, '\x03\r'))
@@ -183,6 +204,7 @@ export class OrchestratorEngine {
         // detection) depend on for this session.
         bufferWatcher.clearBuffer(task.assignedSessionId);
         task.status = 'failed';
+        this.stat(task, 'failed');
       }
     }
     this.mutatePlan({ status: 'stopped' });
@@ -216,6 +238,7 @@ export class OrchestratorEngine {
       bufferWatcher.clearBuffer(task.assignedSessionId);
     }
     this.updateTask(taskId, { status: 'failed' });
+    this.stat(task, 'failed');
     this.log('error', `Task "${task.title}" manually marked as failed`, taskId);
     this.emitState();
     this.checkPlanCompletion();
@@ -280,6 +303,79 @@ export class OrchestratorEngine {
     );
   }
 
+  /**
+   * Resolves a waiting user gate with the user's answer. The answer becomes
+   * the task's output (`needs`), so downstream relays hand it to the next
+   * agent automatically.
+   */
+  answerUserGate(taskId: string, answer: string): void {
+    const task = this.getTask(taskId);
+    if (!task || task.status !== 'running' || !task.askUserQuestion) return;
+
+    const trimmed = answer.trim();
+    if (!trimmed) return;
+
+    const output: OrchestratorTaskOutput = {
+      raw: '',
+      taskId,
+      summary: `User gate answered: ${trimmed}`,
+      filesModified: [],
+      needs: trimmed,
+    };
+    this.clearTaskTimer(taskId);
+    this.updateTask(taskId, { status: 'done', completedAt: Date.now(), output });
+    this.log('user-override', `✅ Gate "${task.title}" answered — continuing`, taskId);
+    this.emitState();
+    this.dispatchReady();
+    this.checkPlanCompletion();
+  }
+
+  /**
+   * Rewind: resets the given task AND every downstream task that (transitively)
+   * depends on it back to pending, then resumes the plan from there. Completed
+   * upstream tasks keep their outputs — their relays are reused as-is. Only
+   * valid on a failed or stopped plan.
+   */
+  retryFromTask(taskId: string): void {
+    if (!this.plan) return;
+    if (this.plan.status !== 'failed' && this.plan.status !== 'stopped') return;
+    const start = this.getTask(taskId);
+    if (!start) return;
+
+    // Transitive closure of dependents.
+    const downstream = new Set<string>([taskId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const t of this.plan.tasks) {
+        if (downstream.has(t.id)) continue;
+        if (t.dependsOn.some((dep) => downstream.has(dep))) {
+          downstream.add(t.id);
+          changed = true;
+        }
+      }
+    }
+
+    for (const id of downstream) {
+      this.clearTaskTimer(id);
+      this.updateTask(id, {
+        status: 'pending',
+        startedAt: undefined,
+        completedAt: undefined,
+        output: undefined,
+      });
+    }
+    this.isPaused = false;
+    this.mutatePlan({ status: 'running', completedAt: undefined });
+    this.log(
+      'info',
+      `⏪ Rewound to "${start.title}" — ${downstream.size} task${downstream.size !== 1 ? 's' : ''} reset, resuming`,
+      taskId
+    );
+    this.emitState();
+    this.dispatchReady();
+  }
+
   // ── Public: subscriptions ───────────────────────────────────────────────────
 
   /** Subscribe to plan state changes. Returns an unsubscribe function. */
@@ -312,10 +408,13 @@ export class OrchestratorEngine {
       );
       if (!allDepsDone) continue;
 
-      // One task per session at a time
-      const sessionBusy = this.plan.tasks.some(
-        (t) => t.assignedSessionId === task.assignedSessionId && t.status === 'running'
-      );
+      // One task per session at a time — user gates never touch a terminal, so
+      // they must not wait behind (or block) terminal work on their session.
+      const sessionBusy =
+        !task.askUserQuestion &&
+        this.plan.tasks.some(
+          (t) => t.assignedSessionId === task.assignedSessionId && t.status === 'running'
+        );
       if (sessionBusy) continue;
 
       // Mark running immediately so concurrent loop iterations or async dispatches see sessionBusy or status !== 'pending'
@@ -331,6 +430,19 @@ export class OrchestratorEngine {
 
   private async dispatch(task: OrchestratorTask): Promise<void> {
     if (!this.plan) return;
+
+    // User gate: no terminal work — pause and ask in the chat. The task stays
+    // 'running' until answerUserGate() resolves it; no PTY watch, no timeout.
+    if (task.askUserQuestion) {
+      this.log('ask-user', `❓ ${task.askUserQuestion}`, task.id, undefined, undefined);
+      this.log(
+        'info',
+        `Task "${task.title}" is a user gate — pipeline continues when answered.`,
+        task.id
+      );
+      this.emitState();
+      return;
+    }
 
     // Collect parent tasks that have output
     const parentTasks: OrchestratorTask[] = task.dependsOn
@@ -496,6 +608,7 @@ ${task.description}${buildAgentProtocol(task.id, !!this.config.workspacePath)}`;
         task.assignedSessionId
       );
       this.updateTask(task.id, { status: 'failed' });
+      this.stat(task, 'failed');
       this.emitState();
       this.checkPlanCompletion();
       return;
@@ -520,10 +633,12 @@ ${task.description}${buildAgentProtocol(task.id, !!this.config.workspacePath)}`;
 
     this.clearTaskTimer(taskId);
     this.updateTask(taskId, { status: 'done', completedAt: Date.now(), output });
+    this.stat(task, 'sentinel-done');
     this.log('sentinel', `Task "${task.title}" complete`, taskId, task.assignedSessionId, {
       taskOutput: output,
       agentTitle: task.assignedSessionTitle,
     });
+    void this.runVerification(taskId);
     this.emitState();
     this.dispatchReady();
     this.checkPlanCompletion();
@@ -603,6 +718,7 @@ ${task.description}${buildAgentProtocol(task.id, !!this.config.workspacePath)}`;
     bufferWatcher.clearBuffer(task.assignedSessionId);
     this.clearTaskTimer(taskId);
     this.updateTask(taskId, { status: 'done', completedAt: Date.now(), output });
+    this.stat(current, 'soft-done');
     this.log(
       'sentinel',
       `Task "${task.title}" complete (soft completion — no sentinel block was output)`,
@@ -610,9 +726,77 @@ ${task.description}${buildAgentProtocol(task.id, !!this.config.workspacePath)}`;
       task.assignedSessionId,
       { taskOutput: output, agentTitle: task.assignedSessionTitle }
     );
+    void this.runVerification(taskId);
     this.emitState();
     this.dispatchReady();
     this.checkPlanCompletion();
+  }
+
+  // ── Private: verification (post-completion receipts) ───────────────────────
+
+  /**
+   * Runs the task's verify command in a hidden PTY in the workspace directory
+   * and records the result on the task output. A failed verification does NOT
+   * fail the task — the agent's claim stands, but the board, logs, and agent
+   * stats all show it unverified. Requires workspacePath (the hidden shell
+   * must run where the agents' work lives).
+   */
+  private async runVerification(taskId: string): Promise<void> {
+    const task = this.getTask(taskId);
+    if (!task || task.status !== 'done' || !task.verifyCommand || !task.output) return;
+    if (!this.config.workspacePath) {
+      this.log(
+        'info',
+        `Verification skipped for "${task.title}" — no workspace path configured.`,
+        taskId
+      );
+      return;
+    }
+
+    const command = task.verifyCommand;
+    // The hidden PTY can fail to spawn (e.g. an invalid workspace path). This
+    // method is fire-and-forget at its call sites, so it must never reject —
+    // log the failure; the task simply stays unverified.
+    let result;
+    try {
+      result = await runVerifyCommand(this.config.workspacePath, command);
+    } catch (err) {
+      this.log('error', `🧪 Verification could not run for "${task.title}": ${err}`, taskId);
+      return;
+    }
+
+    // The task may have been reset (rewind) while verification ran.
+    const current = this.getTask(taskId);
+    if (!current || current.status !== 'done' || !current.output) return;
+
+    this.updateTask(taskId, {
+      output: {
+        ...current.output,
+        verification: { passed: result.passed, command, output: result.output },
+      },
+    });
+    this.stat(current, result.passed ? 'verify-passed' : 'verify-failed');
+    this.log(
+      result.passed ? 'sentinel' : 'error',
+      result.passed
+        ? `🧪 Verified "${task.title}" — \`${command}\` passed`
+        : `🧪 Verification FAILED for "${task.title}" — \`${command}\` exited non-zero${result.output ? `: ${result.output.slice(-300)}` : ''}`,
+      taskId,
+      task.assignedSessionId
+    );
+    this.emitState();
+  }
+
+  // ── Private: agent reputation bookkeeping ──────────────────────────────────
+
+  private stat(task: OrchestratorTask, event: AgentStatEvent): void {
+    if (!this.plan || !task.assignedSessionId) return;
+    recordAgentEvent(
+      this.plan.workspaceId,
+      task.assignedSessionId,
+      task.assignedSessionTitle,
+      event
+    );
   }
 
   // ── Private: timeout ────────────────────────────────────────────────────────
@@ -623,6 +807,7 @@ ${task.description}${buildAgentProtocol(task.id, !!this.config.workspacePath)}`;
 
     bufferWatcher.clearBuffer(task.assignedSessionId);
     this.updateTask(taskId, { status: 'failed' });
+    this.stat(task, 'timed-out');
     this.log(
       'timeout',
       `Task "${task.title}" timed out after ${this.config.taskTimeoutMinutes} minutes. Use "Force Complete" or "Retry".`,
@@ -636,7 +821,7 @@ ${task.description}${buildAgentProtocol(task.id, !!this.config.workspacePath)}`;
   // ── Private: plan completion check ─────────────────────────────────────────
 
   private checkPlanCompletion(): void {
-    if (!this.plan) return;
+    if (!this.plan || this.replanInFlight) return;
 
     const allDone = this.plan.tasks.every((t) => t.status === 'done');
     const anyRunning = this.plan.tasks.some((t) => t.status === 'running');
@@ -649,14 +834,137 @@ ${task.description}${buildAgentProtocol(task.id, !!this.config.workspacePath)}`;
       return;
     }
 
-    // If nothing is running and nothing can run (all blocked by failures)
+    // Nothing running and nothing pending → every remaining task is blocked by
+    // a failure. Before declaring the plan dead, try one auto-replan.
     if (!anyRunning && !anyPending) {
+      const failedTask = this.plan.tasks.find((t) => t.status === 'failed');
+      if (failedTask && this.replansUsed < MAX_AUTO_REPLANS && this.plan.status === 'running') {
+        void this.attemptReplan(failedTask);
+        return;
+      }
       this.mutatePlan({ status: 'failed' });
       this.log(
         'error',
-        'Orchestration failed — remaining tasks are blocked by failed dependencies.'
+        'Orchestration failed — remaining tasks are blocked by failed dependencies. Use "Rewind from task" on the Live board to retry.'
       );
       this.emitState();
+    }
+  }
+
+  // ── Private: auto-replan ───────────────────────────────────────────────────
+
+  /**
+   * Asks the planner for 1-2 replacement tasks for a failed task, splices them
+   * into the DAG (inheriting the failed task's upstream deps; downstream tasks
+   * are re-pointed onto the replacements), and resumes dispatching. On any
+   * planner failure the plan fails exactly as it would have without replanning.
+   */
+  private async attemptReplan(failedTask: OrchestratorTask): Promise<void> {
+    if (!this.plan) return;
+    this.replanInFlight = true;
+    this.replansUsed++;
+    this.log(
+      'info',
+      `♻️ Task "${failedTask.title}" failed and blocked the plan — asking the planner for a fix…`
+    );
+
+    try {
+      const failureTail = failedTask.output
+        ? stripAnsiCodes(failedTask.output.raw).slice(-1500).trim()
+        : '(no output captured — the task timed out or was interrupted)';
+
+      const remaining = this.plan.tasks
+        .filter((t) => t.id !== failedTask.id && t.status === 'pending')
+        .map((t) => ({
+          title: t.title,
+          description: t.description,
+          agentTitle: t.assignedSessionTitle,
+        }));
+
+      const { system, userContent } = buildReplanPrompt(
+        this.plan.goal,
+        {
+          title: failedTask.title,
+          description: failedTask.description,
+          agentTitle: failedTask.assignedSessionTitle,
+          failureTail,
+        },
+        remaining,
+        Array.from(new Set(this.plan.tasks.map((t) => t.assignedSessionTitle)))
+      );
+      const response = await this.config.plannerProvider.complete(
+        [{ role: 'user', content: userContent }],
+        system
+      );
+      const { tasks: rawTasks } = parsePlanGenResponse(response, this.plan.goal);
+      if (rawTasks.length === 0) throw new Error('planner returned no tasks');
+
+      if (!this.plan || this.plan.status !== 'running') return; // stopped meanwhile
+
+      // Title→id lookup across existing tasks and the new replacements.
+      const idByTitle = new Map<string, string>();
+      for (const t of this.plan.tasks) idByTitle.set(t.title.toLowerCase(), t.id);
+
+      // Reverse title lookup for session assignment.
+      const sessionByTitle = new Map<string, string>();
+      for (const [sid, title] of this.config.sessionTitles)
+        sessionByTitle.set(title.toLowerCase(), sid);
+
+      const replacements: OrchestratorTask[] = rawTasks.map((raw) => {
+        const id = crypto.randomUUID();
+        idByTitle.set(raw.title.toLowerCase(), id);
+        return {
+          id,
+          title: raw.title,
+          description: raw.description,
+          assignedSessionId:
+            sessionByTitle.get(raw.assignedSessionTitle.toLowerCase()) ??
+            failedTask.assignedSessionId,
+          assignedSessionTitle:
+            this.config.sessionTitles.get(
+              sessionByTitle.get(raw.assignedSessionTitle.toLowerCase()) ??
+                failedTask.assignedSessionId
+            ) ?? raw.assignedSessionTitle,
+          dependsOn: raw.dependsOn
+            .map((depTitle) => idByTitle.get(depTitle.toLowerCase()) ?? '')
+            .filter(Boolean),
+          status: 'pending' as const,
+          verifyCommand:
+            typeof raw.verify === 'string' && raw.verify.trim() ? raw.verify.trim() : undefined,
+          askUserQuestion:
+            typeof raw.askUser === 'string' && raw.askUser.trim() ? raw.askUser.trim() : undefined,
+        };
+      });
+      const replacementIds = replacements.map((r) => r.id);
+
+      // Re-point everything that depended on the failed task onto the
+      // replacements (all of them — merge semantics for split replacements).
+      const tasks = this.plan.tasks
+        .filter((t) => t.id !== failedTask.id)
+        .map((t) => ({
+          ...t,
+          dependsOn: Array.from(
+            new Set(t.dependsOn.flatMap((dep) => (dep === failedTask.id ? replacementIds : [dep])))
+          ),
+        }));
+
+      this.mutatePlan({ tasks: [...tasks, ...replacements] });
+      this.log(
+        'relay',
+        `♻️ Replanned — "${failedTask.title}" replaced with ${replacements.map((r) => `"${r.title}"`).join(' + ')}; downstream re-pointed`
+      );
+      this.emitState();
+      this.dispatchReady();
+      this.checkPlanCompletion();
+    } catch (err) {
+      this.log('error', `Auto-replan failed: ${err}`);
+      if (this.plan && this.plan.status === 'running') {
+        this.mutatePlan({ status: 'failed' });
+        this.log('error', 'Orchestration failed — remaining tasks are blocked.');
+      }
+      this.emitState();
+    } finally {
+      this.replanInFlight = false;
     }
   }
 
@@ -763,6 +1071,7 @@ const _defaultProvider = createProvider({ provider: 'ollama', model: 'llama3.2' 
 
 export const orchestratorEngine = new OrchestratorEngine({
   relayProvider: _defaultProvider,
+  plannerProvider: _defaultProvider,
   autoAnswerProvider: _defaultProvider,
   taskTimeoutMinutes: 0,
   interactionMode: 'auto',

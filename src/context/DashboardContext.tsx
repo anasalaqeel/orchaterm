@@ -418,6 +418,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // map at launch. updateConfig is a partial merge, so we don't clobber it.
     orchestratorEngine.updateConfig({
       relayProvider: p.relay,
+      plannerProvider: p.planGen,
       autoAnswerProvider: p.autoAnswer,
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
       interactionMode: settings.conductorInteractionMode,

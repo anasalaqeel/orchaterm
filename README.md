@@ -82,7 +82,7 @@ Orchaterm eliminates that friction:
 
 - 🖥️ **High-Performance Terminal Grid**: Powered by `@xterm/xterm` and `portable-pty` with WebGL rendering, split panes, customizable themes, search, and native keybindings.
 - 🤖 **Terminal Spaces & Grouping**: Group related processes and shells into focused workspaces.
-- ⚡ **Visual Pipelines & Task Dispatch**: Design structured workflows with dependency graphs, execute tasks in parallel or sequential mode, and monitor live progress.
+- ⚡ **Visual Pipelines & Task Dispatch**: Design structured workflows with dependency graphs, execute tasks in parallel or sequential mode, and monitor live progress. Failed tasks trigger automatic re-planning, per-task verification commands prove completions, and user-approval gates pause the flow for your input.
 - 💬 **Live Chat & Relay Feed**: Observe what each terminal process is working on via real-time summaries and route messages directly between sessions.
 - 🛡️ **Sentinel Protocol & State Detection**: Non-intrusively monitors buffer outputs to determine whether a process or CLI agent is idle, thinking, invoking tools, or awaiting input. When an agent finishes without printing the completion marker, an LLM judge evaluates its terminal output against the task goal so pipelines keep moving (soft completion).
 - 💾 **Session Continuation & Checkpoints**: Detect context window exhaustion or rate limits and generate structured continuation summaries ready for the next session.

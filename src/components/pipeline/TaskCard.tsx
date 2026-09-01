@@ -7,7 +7,7 @@
  */
 import React, { useState } from 'react';
 import { css, cx } from '@emotion/css';
-import { ChevronDown, ChevronRight, FileText } from 'lucide-react';
+import { ChevronDown, ChevronRight, FileText, Play } from 'lucide-react';
 import type { OrchestratorTask } from '../../types';
 import { TASK_STATUS_COLORS, TASK_STATUS_ICONS } from './pipelineConstants';
 
@@ -25,6 +25,8 @@ interface TaskCardProps {
   now?: number;
   /** Default-expanded (e.g. failed or completed sentinel events). */
   defaultExpanded?: boolean;
+  /** When provided, done tasks with captured output get a "replay" button. */
+  onReplay?: (task: OrchestratorTask) => void;
 }
 
 export const TaskCard: React.FC<TaskCardProps> = ({
@@ -34,6 +36,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   agentColor,
   now,
   defaultExpanded = false,
+  onReplay,
 }) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [filesHover, setFilesHover] = useState(false);
@@ -94,6 +97,28 @@ export const TaskCard: React.FC<TaskCardProps> = ({
           {task.assignedSessionTitle}
         </span>
         {elapsed && <span className={s.elapsed}>{elapsed}</span>}
+        {task.askUserQuestion && (
+          <span className={s.gatePill} title={task.askUserQuestion}>
+            ❓ gate
+          </span>
+        )}
+        {task.output?.verification && (
+          <span
+            className={cx(s.verifyPill, !task.output.verification.passed && s.verifyPillFailed)}
+            title={`Verify command: ${task.output.verification.command}\n\n${task.output.verification.output.slice(-500)}`}
+          >
+            🧪 {task.output.verification.passed ? 'verified' : 'unverified'}
+          </span>
+        )}
+        {onReplay && task.output?.raw && task.status === 'done' && (
+          <button
+            className={s.replayBtn}
+            onClick={() => onReplay(task)}
+            title="Replay this task's terminal output"
+          >
+            <Play size={10} />
+          </button>
+        )}
         {files.length > 0 && (
           <span
             className={s.filesPill}
@@ -136,6 +161,18 @@ export const TaskCard: React.FC<TaskCardProps> = ({
           )}
           {task.output.needs && task.output.needs !== 'none' && (
             <Section label="Handoff">{task.output.needs}</Section>
+          )}
+          {task.output.verification && (
+            <Section
+              label={task.output.verification.passed ? 'Verification ✅' : 'Verification ⚠️'}
+            >
+              <span style={{ fontFamily: 'var(--font-family-mono)', fontSize: 10 }}>
+                $ {task.output.verification.command}
+              </span>
+              {task.output.verification.output && (
+                <pre className={s.raw}>{task.output.verification.output.slice(-1500)}</pre>
+              )}
+            </Section>
           )}
           {task.output.raw && (
             <Section label="Output">
@@ -302,6 +339,48 @@ const s = {
     font-size: 10px;
     color: var(--text-secondary);
     word-break: break-all;
+  `,
+  gatePill: css`
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--color-warning);
+    padding: 1px 6px;
+    border-radius: 99px;
+    background: rgba(var(--color-warning-rgb), 0.1);
+    border: 1px solid rgba(var(--color-warning-rgb), 0.3);
+    flex-shrink: 0;
+  `,
+  verifyPill: css`
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--color-success);
+    padding: 1px 6px;
+    border-radius: 99px;
+    background: rgba(var(--color-success-rgb), 0.1);
+    flex-shrink: 0;
+    cursor: default;
+  `,
+  verifyPillFailed: css`
+    color: var(--color-error);
+    background: rgba(var(--color-error-rgb), 0.1);
+  `,
+  replayBtn: css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+    &:hover {
+      color: var(--color-brand);
+      border-color: var(--color-brand);
+    }
   `,
   deps: css`
     font-size: 10px;

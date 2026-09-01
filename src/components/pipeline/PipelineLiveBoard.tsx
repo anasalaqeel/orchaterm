@@ -6,11 +6,18 @@
  */
 import React, { useEffect, useState } from 'react';
 import { css, cx } from '@emotion/css';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Rewind } from 'lucide-react';
 import { orchestratorEngine } from '../../services/orchestratorEngine';
-import type { OrchestratorPlan, OrchestratorTaskStatus, TerminalSession } from '../../types';
+import { getAgentStats, trustScore } from '../../services/agentStats';
+import type {
+  OrchestratorPlan,
+  OrchestratorTask,
+  OrchestratorTaskStatus,
+  TerminalSession,
+} from '../../types';
 import { DependencyGraph } from './DependencyGraph';
 import { TaskCard } from './TaskCard';
+import { TaskOutputReplay } from './TaskOutputReplay';
 import { PLAN_STATUS_COLORS, PLAN_STATUS_ICONS, ExecutionModeBadge } from './index';
 
 interface PipelineLiveBoardProps {
@@ -30,6 +37,7 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({
 }) => {
   // Tick once a second while a task is running so elapsed times update.
   const [, setTick] = useState(0);
+  const [replayTask, setReplayTask] = useState<OrchestratorTask | null>(null);
   useEffect(() => {
     if (!plan || plan.status !== 'running') return;
     const i = setInterval(() => setTick((t) => t + 1), 1000);
@@ -77,6 +85,25 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({
     return t && idx !== undefined ? { title: t.title, index: idx } : undefined;
   };
   const sessionColor = (sid: string) => sessions.find((s) => s.id === sid)?.color ?? null;
+
+  // Agent reputation chips: one per distinct session in the plan, backed by the
+  // persistent per-workspace stats the engine records on every outcome.
+  const agents = Array.from(new Map(plan.tasks.map((t) => [t.assignedSessionId, t])).values()).map(
+    (t) => {
+      const stats = getAgentStats(plan.workspaceId, t.assignedSessionId);
+      return {
+        sessionId: t.assignedSessionId,
+        title: t.assignedSessionTitle,
+        color: sessionColor(t.assignedSessionId),
+        score: stats ? trustScore(stats) : null,
+        detail: stats
+          ? `✅ ${stats.sentinelDone} sentinel · ✨ ${stats.softDone} soft · 🧪 ${stats.verifyPassed}/${stats.verifyPassed + stats.verifyFailed} verified · ❌ ${stats.failed + stats.timedOut} failed`
+          : 'no history yet',
+      };
+    }
+  );
+
+  const firstFailed = plan.tasks.find((t) => t.status === 'failed');
 
   return (
     <div className={s.root}>
@@ -153,6 +180,16 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({
           )}
           {(status === 'done' || status === 'failed' || status === 'stopped') && (
             <>
+              {status !== 'done' && firstFailed && (
+                <button
+                  title={`Reset "${firstFailed.title}" and everything downstream to pending, keep completed tasks' results, and resume`}
+                  onClick={() => orchestratorEngine.retryFromTask(firstFailed.id)}
+                  className={cx(s.controlBtn, s.controlWarn)}
+                >
+                  <Rewind size={11} />
+                  Retry from failed
+                </button>
+              )}
               <button
                 title="Re-run this pipeline with fresh task IDs (same goal + deps)"
                 onClick={() => onRerun(plan)}
@@ -167,6 +204,39 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({
             </>
           )}
         </div>
+      </div>
+
+      {/* Agent reputation chips */}
+      <div className={s.agentStrip}>
+        {agents.map((a) => (
+          <span
+            key={a.sessionId}
+            className={s.agentChip}
+            style={{
+              color: a.color ?? 'var(--color-brand)',
+              borderColor: (a.color ?? 'var(--color-brand)') + '44',
+              backgroundColor: (a.color ?? 'var(--color-brand)') + '0d',
+            }}
+            title={a.detail}
+          >
+            {a.title}
+            <span
+              className={s.agentScore}
+              style={{
+                color:
+                  a.score === null
+                    ? 'var(--text-tertiary)'
+                    : a.score >= 70
+                      ? 'var(--color-success)'
+                      : a.score >= 40
+                        ? 'var(--color-warning)'
+                        : 'var(--color-error)',
+              }}
+            >
+              {a.score === null ? 'new' : a.score}
+            </span>
+          </span>
+        ))}
       </div>
 
       {/* Progress bar */}
@@ -212,9 +282,12 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({
             resolveDependency={resolveDependency}
             agentColor={sessionColor(task.assignedSessionId) ?? undefined}
             defaultExpanded={task.status === 'failed' || (task.status === 'done' && !!task.output)}
+            onReplay={setReplayTask}
           />
         ))}
       </div>
+
+      {replayTask && <TaskOutputReplay task={replayTask} onClose={() => setReplayTask(null)} />}
     </div>
   );
 };
@@ -398,6 +471,31 @@ const s = {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-xl);
     padding: 8px 10px;
+  `,
+
+  agentStrip: css`
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+  `,
+  agentChip: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 99px;
+    border: 1px solid;
+    cursor: default;
+  `,
+  agentScore: css`
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    padding: 0 4px;
+    border-radius: 99px;
+    background: rgba(0, 0, 0, 0.18);
   `,
 
   taskList: css`

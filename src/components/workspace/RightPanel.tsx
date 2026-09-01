@@ -150,7 +150,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
             dependsOn: executionMode === 'sequential' && idx > 0 ? [plan.tasks[idx - 1].id] : [],
           }));
 
-      const unassigned = finalTasks.filter((t) => !t.assignedSessionId);
+      // User gates never touch a terminal, so they don't need a session.
+      const unassigned = finalTasks.filter((t) => !t.assignedSessionId && !t.askUserQuestion);
       if (unassigned.length > 0) {
         showToast(
           `Assign a terminal to "${unassigned[0].title}"${unassigned.length > 1 ? ` (+${unassigned.length - 1} more)` : ''} before running`,
@@ -174,6 +175,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
 
       orchestratorEngine.updateConfig({
         relayProvider: llmProviders.relay,
+        plannerProvider: llmProviders.planGen,
         autoAnswerProvider: llmProviders.autoAnswer,
         taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
         interactionMode: settings.conductorInteractionMode,
@@ -244,12 +246,14 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
       }
 
       const newIds = sourcePlan.tasks.map(() => crypto.randomUUID());
+      // Spread the source task so capability fields (verifyCommand,
+      // askUserQuestion) survive the re-run; only identity/run-state is reset.
       const freshTasks: OrchestratorTask[] = sourcePlan.tasks.map((t, i) => ({
+        ...t,
         id: newIds[i],
-        title: t.title,
-        description: t.description,
-        assignedSessionId: t.assignedSessionId,
-        assignedSessionTitle: t.assignedSessionTitle,
+        startedAt: undefined,
+        completedAt: undefined,
+        output: undefined,
         dependsOn: t.dependsOn
           .map((oldId) => {
             const idx = sourcePlan.tasks.findIndex((tt) => tt.id === oldId);
@@ -272,6 +276,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
 
       orchestratorEngine.updateConfig({
         relayProvider: llmProviders.relay,
+        plannerProvider: llmProviders.planGen,
         autoAnswerProvider: llmProviders.autoAnswer,
         taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
         interactionMode: settings.conductorInteractionMode,

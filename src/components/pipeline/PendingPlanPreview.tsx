@@ -64,19 +64,26 @@ export const PendingPlanPreview: React.FC<PendingPlanPreviewProps> = ({
               <div className={s.taskBody}>
                 <div className={s.taskTitle}>{task.title}</div>
                 <div className={s.taskMeta}>
-                  <select
-                    className={cx(s.taskAgent, !assigned && s.taskAgentMissing)}
-                    value={task.assignedSessionId}
-                    onChange={(e) => onSessionChange(task.id, e.target.value)}
-                    title="Terminal this task runs in"
-                  >
-                    {!assigned && <option value="">(assign tab)</option>}
-                    {sessions.map((sess) => (
-                      <option key={sess.id} value={sess.id}>
-                        {sess.title}
-                      </option>
-                    ))}
-                  </select>
+                  {task.askUserQuestion ? (
+                    // Gates ask you, not a terminal — no session assignment needed.
+                    <span className={s.taskGate} title={task.askUserQuestion}>
+                      ❓ user gate
+                    </span>
+                  ) : (
+                    <select
+                      className={cx(s.taskAgent, !assigned && s.taskAgentMissing)}
+                      value={task.assignedSessionId}
+                      onChange={(e) => onSessionChange(task.id, e.target.value)}
+                      title="Terminal this task runs in"
+                    >
+                      {!assigned && <option value="">(assign tab)</option>}
+                      {sessions.map((sess) => (
+                        <option key={sess.id} value={sess.id}>
+                          {sess.title}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   {depNames.length > 0 && (
                     <span className={s.taskDeps}>after: {depNames.join(', ')}</span>
                   )}
@@ -211,6 +218,15 @@ const s = {
     color: var(--color-warning);
     background: rgba(var(--color-warning-rgb), 0.1);
     border-color: rgba(var(--color-warning-rgb), 0.3);
+  `,
+  taskGate: css`
+    font-size: 10px;
+    color: var(--color-warning);
+    font-weight: 600;
+    background: rgba(var(--color-warning-rgb), 0.1);
+    padding: 1px 6px;
+    border-radius: 99px;
+    border: 1px solid rgba(var(--color-warning-rgb), 0.3);
   `,
   taskDeps: css`
     font-size: 10px;

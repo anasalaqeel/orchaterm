@@ -87,12 +87,47 @@ describe('buildBlackboardMd', () => {
     );
     expect(md).toContain('Depends on: t1');
   });
+
+  it('shows the verification outcome on completed tasks', () => {
+    const withVerify = plan({
+      tasks: [
+        task({
+          status: 'done',
+          output: {
+            raw: '',
+            taskId: 't1',
+            summary: 'Done.',
+            filesModified: [],
+            needs: 'none',
+            verification: { passed: true, command: 'npm test', output: 'ok' },
+          },
+        }),
+        task({
+          id: 't2',
+          title: 'Write docs',
+          status: 'done',
+          output: {
+            raw: '',
+            taskId: 't2',
+            summary: 'Done.',
+            filesModified: [],
+            needs: 'none',
+            verification: { passed: false, command: 'npm test', output: 'fail' },
+          },
+        }),
+      ],
+    });
+    const md = buildBlackboardMd(withVerify);
+    expect(md).toContain('Verification: PASSED (npm test)');
+    expect(md).toContain('Verification: FAILED (npm test)');
+    expect(md).toContain('treat this task');
+  });
 });
 
 describe('blackboardPath', () => {
-  it('joins the workspace path with the board filename, normalising separators', () => {
-    expect(blackboardPath('C:\\repos\\app')).toBe('C:/repos/app/ORCHATERM_BOARD.md');
-    expect(blackboardPath('C:\\repos\\app\\')).toBe('C:/repos/app/ORCHATERM_BOARD.md');
-    expect(blackboardPath('/home/u/app')).toBe('/home/u/app/ORCHATERM_BOARD.md');
+  it('places the board inside the .orchaterm directory, normalising separators', () => {
+    expect(blackboardPath('C:\\repos\\app')).toBe('C:/repos/app/.orchaterm/ORCHATERM_BOARD.md');
+    expect(blackboardPath('C:\\repos\\app\\')).toBe('C:/repos/app/.orchaterm/ORCHATERM_BOARD.md');
+    expect(blackboardPath('/home/u/app')).toBe('/home/u/app/.orchaterm/ORCHATERM_BOARD.md');
   });
 });

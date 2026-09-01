@@ -14,8 +14,20 @@ export interface OrchestratorTask {
   /** IDs of tasks that must be 'done' before this task is dispatched. Empty = no deps. */
   dependsOn: string[];
   status: OrchestratorTaskStatus;
+  /**
+   * Optional shell command that proves completion (e.g. a test invocation).
+   * The engine runs it in a hidden PTY after the task completes and records
+   * the result on the task output. Undefined = no verification.
+   */
+  verifyCommand?: string;
+  /**
+   * When set, this task is a user gate: instead of dispatching to a terminal,
+   * the engine pauses and asks this question in the chat; the answer becomes
+   * this task's output for downstream tasks.
+   */
+  askUserQuestion?: string;
   startedAt?: number; // Unix ms — set when write_pty is called
-  completedAt?: number; // Unix ms — set when sentinel is detected
+  completedAt?: number; // Unix ms — set when the sentinel is detected
   output?: OrchestratorTaskOutput;
 }
 
@@ -28,6 +40,8 @@ export interface OrchestratorTaskOutput {
   needs: string;
   /** The brief Ollama generated for the next agent. Stored for display in conductor log. */
   relayedBrief?: string;
+  /** Result of the post-completion verify command, when the task declared one. */
+  verification?: { passed: boolean; command: string; output: string };
 }
 
 export type OrchestratorPlanStatus =
@@ -79,6 +93,7 @@ export interface ConductorLogEntry {
     | 'error'
     | 'info'
     | 'user-override'
+    | 'ask-user'
     | 'checkpoint';
   message: string;
   taskId?: string;

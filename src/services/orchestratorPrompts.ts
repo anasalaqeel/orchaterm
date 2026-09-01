@@ -26,6 +26,10 @@ export interface RawPlanTask {
   description: string;
   assignedSessionTitle: string;
   dependsOn: string[];
+  /** Optional post-completion verification command (see PLAN_GEN_SYSTEM_PROMPT). */
+  verify?: string;
+  /** Optional user gate question (see PLAN_GEN_SYSTEM_PROMPT). */
+  askUser?: string;
 }
 
 // ── System prompts ────────────────────────────────────────────────────────────
@@ -55,10 +59,17 @@ JSON format:
       "title": "Short task name",
       "description": "Precise, self-contained instructions for the agent — ONLY the actual work to perform. Be specific and direct.",
       "assignedSessionTitle": "<MUST match one of the available agent names exactly>",
-      "dependsOn": []
+      "dependsOn": [],
+      "verify": "<optional: one shell command that PROVES this task succeeded, run automatically after the agent finishes. Omit if no meaningful check exists.>",
+      "askUser": "<optional: the exact question to ask the user before this task runs, when their input/approval is required mid-flow. Omit for normal tasks.>"
     }
   ]
 }
+
+Verification rules ("verify"):
+- Prefer a command whose EXIT CODE is 0 exactly when the task succeeded, e.g. "npm test -- --runTestsByPath tests/auth.test.ts", "node -e \\"require('./src/api')\\"", "git diff --name-only -- src/ | grep -q login".
+- Keep it side-effect-free where possible (tests/builds fine; never deploy or mutate remote state).
+- Omit "verify" entirely when no such command exists — do not invent weak checks.
 
 CRITICAL — description must contain ONLY the work itself, never routing/meta language:
 The description is typed directly into the assigned agent's terminal as its instructions. It must read like a task you'd hand a person, NOT like a sentence about the orchestration system. Routing information (which tab/agent handles this) already lives in "assignedSessionTitle" — never repeat it inside "description".
@@ -86,7 +97,8 @@ Other rules:
 - Specify enough in each task description that the agent can work without waiting — include interface shapes, file paths, function signatures if known.
 - Each task description must stand alone — the agent receives nothing else about the plan.
 - Assign tasks based on agent names/roles when they suggest specialization.
-- dependsOn values must exactly match the "title" field of another task in the tasks array.`;
+- dependsOn values must exactly match the "title" field of another task in the tasks array.
+- User gates ("askUser"): when the flow genuinely cannot continue without the user's decision (approval to deploy, choosing between options, providing a secret), emit a task whose only fields are "title", "askUser" (the exact question), "assignedSessionTitle" (any agent — it runs no terminal work) and "dependsOn". The orchestrator asks the user and feeds their answer to downstream tasks. Never use gates for anything an agent can decide itself.`;
 
 // ── Prompt builders ───────────────────────────────────────────────────────────
 
@@ -354,6 +366,54 @@ export function parseCompletionJudgeResponse(response: string): CompletionJudgeV
     complete: true,
     summary:
       summary || 'Task finished (terminal returned to its prompt; no completion block was output).',
+  };
+}
+
+// ── Auto-replan (invoked when a task failure blocks the plan) ───────────────
+
+export interface ReplanFailedTask {
+  title: string;
+  description: string;
+  agentTitle: string;
+  /** Last terminal output before the failure — evidence of what went wrong. */
+  failureTail: string;
+}
+
+/**
+ * Asks the planner to replace a failed task with one or two tasks that
+ * actually finish the failed work, in the same JSON schema as plan generation.
+ */
+export function buildReplanPrompt(
+  goal: string,
+  failedTask: ReplanFailedTask,
+  remainingTasks: Array<{ title: string; description: string; agentTitle: string }>,
+  availableAgents: string[]
+): { system: string; userContent: string } {
+  return {
+    system: PLAN_GEN_SYSTEM_PROMPT,
+    userContent: `A task in an in-flight pipeline FAILED and blocked everything downstream. Replace it.
+
+Overall goal: ${goal}
+
+FAILED TASK:
+Title: ${failedTask.title}
+Instructions given: ${failedTask.description}
+Agent: ${failedTask.agentTitle}
+Last terminal output before failure (may show the error):
+"""
+${failedTask.failureTail}
+"""
+
+REMAINING TASKS (do NOT include these again — only produce replacements for the failed task):
+${remainingTasks.map((t) => `• ${t.title} (agent ${t.agentTitle})`).join('\n') || '(none)'}
+
+Available agents: ${availableAgents.join(', ')}
+
+Produce 1-2 replacement tasks that finish the failed work despite the error (split it, simplify it, or reassign it to a better-suited agent).
+- Replacement tasks' dependsOn must reference the SAME upstream task titles the failed task depended on (or other replacement titles).
+- The orchestrator will re-point downstream tasks onto your replacements automatically.
+
+Return ONLY the JSON object with a "tasks" array. No prose.`,
   };
 }
 
