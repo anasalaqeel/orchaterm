@@ -22,8 +22,11 @@ import { parseSentinel, parseNeedsBlock, stripAnsiCodes } from './sentinelParser
 // Fires after 2s idle when a terminal session returns to a shell prompt.
 // Covers bash ($), zsh/tcsh (%), zsh-arrow (❯), root (#), cmd/PowerShell (>).
 // Kept in sync with PROMPT_PATTERNS in utils/interruptPolicy.ts.
-// Only fires in 'idle' / 'summary' modes so conductor-managed sessions are skipped.
+// Only fires in 'idle' / 'summary' modes so pipeline-managed sessions are skipped.
 const SHELL_PROMPT_REGEX = /[$%#>❯]\s*$/;
+
+/** Per-session cooldown between idle-shell notifications. */
+const IDLE_SHELL_COOLDOWN_MS = 10_000;
 
 // ── Interactive prompt detection regex ─────────────────────────────────────────
 // Compiled once at module load — used by checkInteractivePrompt on every idle tick.
@@ -286,10 +289,12 @@ class BufferWatcher {
 
   // ── Internal: idle shell-prompt check ─────────────────────────────────────
   // Fires when the terminal returns to a shell prompt after being idle for
-  // 2 s. In 'idle' / 'summary' modes this notifies (onIdleShell). In 'sentinel'
-  // mode it routes to the engine's soft-completion check (onAgentIdle) instead
-  // — the generic notification would be premature when a task may still be
-  // unfinished.
+  // 2 s. In 'idle' / 'summary' modes this notifies subscribers (with a 10 s
+  // per-session cooldown so a session that keeps printing and re-showing its
+  // prompt doesn't spam "agent finished" notifications). In 'sentinel' mode it
+  // routes to the engine's soft-completion check (onAgentIdle) instead — the
+  // generic notification would be premature when a task may still be
+  // unfinished, and the engine rate-limits its judge calls itself.
 
   private checkIdleShell(entry: WatchEntry): void {
     if (entry.buffer.mode === 'sentinel') {
@@ -306,6 +311,13 @@ class BufferWatcher {
 
     if (entry.idleShellSubscribers.length === 0) return;
     if (!entry.hasNewOutputSinceIdle) return;
+    // Documented 10 s cooldown — previously the timestamp was recorded but
+    // never checked, so the cooldown existed in name only.
+    if (
+      entry._lastIdleShellAt !== undefined &&
+      Date.now() - entry._lastIdleShellAt < IDLE_SHELL_COOLDOWN_MS
+    )
+      return;
 
     const tail = stripAnsiCodes(entry.buffer.buffer.slice(-600));
     if (!SHELL_PROMPT_REGEX.test(tail)) return;

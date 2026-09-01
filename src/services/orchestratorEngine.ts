@@ -261,10 +261,11 @@ export class OrchestratorEngine {
       output: undefined,
     });
     this.log('info', `Task "${task.title}" reset for retry`, taskId);
-    // Also reset any tasks that were blocked by this failure (downstream pending tasks
-    // that depended on this task are already pending — nothing to do for them).
-    if (this.plan?.status === 'failed') {
-      this.mutatePlan({ status: 'running' });
+    // Retrying means resuming the run: a 'stopped' or 'failed' plan must go
+    // back to 'running', otherwise the task dispatches while the plan (and the
+    // UI) still claims the run is over.
+    if (this.plan?.status === 'failed' || this.plan?.status === 'stopped') {
+      this.mutatePlan({ status: 'running', completedAt: undefined });
     }
     this.emitState();
     this.dispatchReady();
