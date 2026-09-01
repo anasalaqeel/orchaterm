@@ -64,6 +64,7 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({
   const total = plan.tasks.length;
   const done = plan.tasks.filter((t) => t.status === 'done').length;
   const failed = plan.tasks.filter((t) => t.status === 'failed').length;
+  const cancelled = plan.tasks.filter((t) => t.status === 'cancelled').length;
   const running = plan.tasks.filter((t) => t.status === 'running').length;
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
 
@@ -103,7 +104,7 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({
     }
   );
 
-  const firstFailed = plan.tasks.find((t) => t.status === 'failed');
+  const firstFailed = plan.tasks.find((t) => t.status === 'failed' || t.status === 'cancelled');
 
   return (
     <div className={s.root}>
@@ -147,6 +148,7 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({
                 {failed} failed
               </span>
             )}
+            {cancelled > 0 && <span className={s.metaItem}>{cancelled} cancelled</span>}
           </div>
         </div>
 

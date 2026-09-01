@@ -5,6 +5,7 @@ export const TASK_STATUS_COLORS: Record<OrchestratorTaskStatus, string> = {
   running: 'var(--color-brand)',
   done: 'var(--color-success)',
   failed: 'var(--color-error)',
+  cancelled: 'var(--text-tertiary)',
 };
 
 export const TASK_STATUS_ICONS: Record<OrchestratorTaskStatus, string> = {
@@ -12,6 +13,7 @@ export const TASK_STATUS_ICONS: Record<OrchestratorTaskStatus, string> = {
   running: '▶',
   done: '✓',
   failed: '✗',
+  cancelled: '⊘',
 };
 
 export const PLAN_STATUS_COLORS: Record<OrchestratorPlan['status'] | 'unknown', string> = {

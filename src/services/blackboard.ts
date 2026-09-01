@@ -25,6 +25,7 @@ const STATUS_LABEL: Record<OrchestratorTask['status'], string> = {
   running: '▶ Running',
   done: '✅ Done',
   failed: '❌ Failed',
+  cancelled: '⊘ Cancelled',
 };
 
 function taskSection(task: OrchestratorTask): string {

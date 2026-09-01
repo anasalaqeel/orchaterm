@@ -667,24 +667,37 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
       // ── Intent Classification & Autonomous Routing ──────────────────────────
+      // "/plan …" and "/chat …" force the mode and skip the classifier — one
+      // small model's word shouldn't be the only say in where a message goes.
+      const forced = text.startsWith('/plan ') ? 'plan' : text.startsWith('/chat ') ? 'chat' : null;
+      const messageText = forced ? text.replace(/^\/(?:plan|chat)\s+/, '') : text;
+      if (!messageText) return;
+
       setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: text }]);
       setClassifying(true);
 
       const planAbort = new AbortController();
       planAbortRef.current = planAbort;
 
-      const { system: intentSystem, userContent: intentContent } = buildIntentClassifyPrompt(text);
-      llmProviders.planGen
-        .complete([{ role: 'user', content: intentContent }], intentSystem)
-        .then((res) => {
+      const classify: Promise<'plan' | 'chat'> = forced
+        ? Promise.resolve(forced)
+        : (() => {
+            const { system: intentSystem, userContent: intentContent } =
+              buildIntentClassifyPrompt(messageText);
+            return llmProviders.planGen
+              .complete([{ role: 'user', content: intentContent }], intentSystem)
+              .then((res) => (/\bplan\b/.test(res.toLowerCase().trim()) ? 'plan' : 'chat'));
+          })();
+
+      classify
+        .then((intent) => {
           if (planAbort.signal.aborted) return;
-          const intent = /\bplan\b/.test(res.toLowerCase().trim()) ? 'plan' : 'chat';
           if (intent === 'plan') {
             setClassifying(false);
             setGeneratingPlan(true);
             // Plan generation mode — hand off to the parent (RightPanel) via onPendingPlan.
             const { system: planSystem, userContent: planContent } = buildPlanGenPrompt(
-              text,
+              messageText,
               groupSessions.map((s) => ({ title: s.title }))
             );
             llmProviders.planGen
@@ -802,7 +815,10 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
             };
 
             setMessages((prev) => [...prev, assistantMsg]);
-            const newHistory: ChatMessage[] = [...apiHistory, { role: 'user', content: text }];
+            const newHistory: ChatMessage[] = [
+              ...apiHistory,
+              { role: 'user', content: messageText },
+            ];
             setApiHistory(newHistory);
             setStreaming(true);
             setProviderOnline(true); // optimistic

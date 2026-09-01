@@ -126,6 +126,11 @@ export class OrchestratorEngine {
   private replansUsed = 0;
   private replanInFlight = false;
 
+  // pre-warmed relay briefs per taskId (computed while a ready task waited on
+  // a busy session, so dispatch doesn't block on the relay LLM call)
+  private relayBriefs = new Map<string, string>();
+  private relayPrewarmInFlight = new Set<string>();
+
   // subscribers
   private stateListeners: Array<(plan: OrchestratorPlan) => void> = [];
   private logListeners: Array<(entry: ConductorLogEntry) => void> = [];
@@ -157,6 +162,7 @@ export class OrchestratorEngine {
     this.isPaused = false;
     this.replansUsed = 0;
     this.replanInFlight = false;
+    this.relayBriefs.clear();
     this.log('info', `Orchestration started — goal: "${plan.goal}"`);
     this.emitState();
     this.dispatchReady();
@@ -203,8 +209,9 @@ export class OrchestratorEngine {
         // destroy the listener other features (live feed, NEEDS broker, idle
         // detection) depend on for this session.
         bufferWatcher.clearBuffer(task.assignedSessionId);
-        task.status = 'failed';
-        this.stat(task, 'failed');
+        // User-initiated stop is not an agent failure — 'cancelled' keeps
+        // history honest and keeps the interruption out of reputation stats.
+        task.status = 'cancelled';
       }
     }
     this.mutatePlan({ status: 'stopped' });
@@ -246,7 +253,7 @@ export class OrchestratorEngine {
 
   retryTask(taskId: string): void {
     const task = this.getTask(taskId);
-    if (!task || task.status !== 'failed') return;
+    if (!task || (task.status !== 'failed' && task.status !== 'cancelled')) return;
     this.updateTask(taskId, {
       status: 'pending',
       startedAt: undefined,
@@ -358,6 +365,7 @@ export class OrchestratorEngine {
 
     for (const id of downstream) {
       this.clearTaskTimer(id);
+      this.relayBriefs.delete(id);
       this.updateTask(id, {
         status: 'pending',
         startedAt: undefined,
@@ -415,7 +423,13 @@ export class OrchestratorEngine {
         this.plan.tasks.some(
           (t) => t.assignedSessionId === task.assignedSessionId && t.status === 'running'
         );
-      if (sessionBusy) continue;
+      if (sessionBusy) {
+        // Ready but waiting on a busy session — start the relay brief now so
+        // the LLM call (up to 90s on slow local models) overlaps the wait
+        // instead of delaying dispatch on top of it.
+        void this.prewarmRelay(task);
+        continue;
+      }
 
       // Mark running immediately so concurrent loop iterations or async dispatches see sessionBusy or status !== 'pending'
       this.updateTask(task.id, { status: 'running', startedAt: Date.now() });
@@ -423,6 +437,106 @@ export class OrchestratorEngine {
 
       // Fire and forget — async dispatch runs independently
       this.dispatch(task);
+    }
+  }
+
+  // ── Private: relay brief computation ───────────────────────────────────────
+
+  /**
+   * Computes the context brief handed to a task from its completed parents:
+   * instant pass-through when a single parent declared "needs: none", an LLM
+   * relay otherwise, and a deterministic pass-through fallback if the provider
+   * fails. Shared by dispatch and the pre-warm path.
+   */
+  private async buildContextBrief(
+    task: OrchestratorTask,
+    parentTasks: OrchestratorTask[]
+  ): Promise<string> {
+    if (!this.plan || parentTasks.length === 0) return '';
+
+    const completedContexts: CompletedTaskContext[] = parentTasks.map((t) => ({
+      taskTitle: t.title,
+      taskDescription: t.description,
+      agentName: this.config.sessionTitles.get(t.assignedSessionId) ?? t.assignedSessionTitle,
+      agentBestUsedFor: '',
+      output: t.output!,
+    }));
+
+    const nextSessionTitle =
+      this.config.sessionTitles.get(task.assignedSessionId) ?? task.assignedSessionTitle;
+
+    const allNeedsNoneOrSimple = parentTasks.every(
+      (t) => !t.output?.needs || t.output.needs.trim().toLowerCase() === 'none'
+    );
+
+    if (allNeedsNoneOrSimple && parentTasks.length === 1) {
+      // Skip slow LLM relay when previous task explicitly stated needs: none — pass through instantly (<50ms)!
+      const p = parentTasks[0];
+      const pAgent = this.config.sessionTitles.get(p.assignedSessionId) ?? p.assignedSessionTitle;
+      const brief = `Task "${p.title}" completed by ${pAgent}.\nSummary: ${p.output?.summary || 'Completed as requested.'}\nPrerequisites needed: none.`;
+      this.log('relay', `Instant relay (needs: none) for "${task.title}"`, task.id);
+
+      if (p.output) {
+        this.updateTask(p.id, { output: { ...p.output, relayedBrief: brief } });
+      }
+      return brief;
+    }
+
+    try {
+      const { system, userContent } =
+        parentTasks.length === 1
+          ? buildRelayPrompt(
+              this.plan.goal,
+              completedContexts[0],
+              task.description,
+              nextSessionTitle
+            )
+          : buildMergeRelayPrompt(
+              this.plan.goal,
+              completedContexts,
+              task.description,
+              nextSessionTitle
+            );
+      const brief = await this.config.relayProvider.complete(
+        [{ role: 'user', content: userContent }],
+        system
+      );
+
+      this.log('relay', `Relay complete for task "${task.title}"`, task.id);
+
+      const lastParent = parentTasks[parentTasks.length - 1];
+      if (lastParent.output) {
+        this.updateTask(lastParent.id, { output: { ...lastParent.output, relayedBrief: brief } });
+      }
+      return brief;
+    } catch {
+      const fallback = buildPassThroughBrief(completedContexts, task.description);
+      this.log(
+        'info',
+        `Provider unavailable — pass-through relay used for "${task.title}"`,
+        task.id
+      );
+      return fallback;
+    }
+  }
+
+  /** Pre-computes a ready-but-waiting task's relay brief in the background. */
+  private async prewarmRelay(task: OrchestratorTask): Promise<void> {
+    if (!this.plan || this.relayBriefs.has(task.id) || this.relayPrewarmInFlight.has(task.id))
+      return;
+    const parentTasks = task.dependsOn
+      .map((depId) => this.plan!.tasks.find((t) => t.id === depId))
+      .filter((t): t is OrchestratorTask => !!t && !!t.output);
+    if (parentTasks.length === 0) return;
+
+    this.relayPrewarmInFlight.add(task.id);
+    try {
+      const brief = await this.buildContextBrief(task, parentTasks);
+      // Task may have been reset/rewound while the brief computed.
+      const current = this.getTask(task.id);
+      if (current && current.status === 'pending') this.relayBriefs.set(task.id, brief);
+    } finally {
+      this.relayPrewarmInFlight.delete(task.id);
     }
   }
 
@@ -449,79 +563,17 @@ export class OrchestratorEngine {
       .map((depId) => this.plan!.tasks.find((t) => t.id === depId))
       .filter((t): t is OrchestratorTask => !!t && !!t.output);
 
-    let contextBrief = '';
+    let contextBrief: string;
 
-    if (parentTasks.length > 0) {
-      const completedContexts: CompletedTaskContext[] = parentTasks.map((t) => ({
-        taskTitle: t.title,
-        taskDescription: t.description,
-        agentName: this.config.sessionTitles.get(t.assignedSessionId) ?? t.assignedSessionTitle,
-        agentBestUsedFor: '',
-        output: t.output!,
-      }));
-
-      const nextSessionTitle =
-        this.config.sessionTitles.get(task.assignedSessionId) ?? task.assignedSessionTitle;
-
-      const allNeedsNoneOrSimple = parentTasks.every(
-        (t) => !t.output?.needs || t.output.needs.trim().toLowerCase() === 'none'
-      );
-
-      if (allNeedsNoneOrSimple && parentTasks.length === 1) {
-        // Skip slow LLM relay when previous task explicitly stated needs: none — pass through instantly (<50ms)!
-        const p = parentTasks[0];
-        const pAgent = this.config.sessionTitles.get(p.assignedSessionId) ?? p.assignedSessionTitle;
-        contextBrief = `Task "${p.title}" completed by ${pAgent}.\nSummary: ${p.output?.summary || 'Completed as requested.'}\nPrerequisites needed: none.`;
-        this.log('relay', `Instant relay (needs: none) for "${task.title}"`, task.id);
-
-        if (p.output) {
-          this.updateTask(p.id, {
-            output: { ...p.output, relayedBrief: contextBrief },
-          });
-        }
-      } else {
-        try {
-          if (parentTasks.length === 1) {
-            const { system, userContent } = buildRelayPrompt(
-              this.plan.goal,
-              completedContexts[0],
-              task.description,
-              nextSessionTitle
-            );
-            contextBrief = await this.config.relayProvider.complete(
-              [{ role: 'user', content: userContent }],
-              system
-            );
-          } else {
-            const { system, userContent } = buildMergeRelayPrompt(
-              this.plan.goal,
-              completedContexts,
-              task.description,
-              nextSessionTitle
-            );
-            contextBrief = await this.config.relayProvider.complete(
-              [{ role: 'user', content: userContent }],
-              system
-            );
-          }
-
-          this.log('relay', `Relay complete for task "${task.title}"`, task.id);
-
-          const lastParent = parentTasks[parentTasks.length - 1];
-          if (lastParent.output) {
-            this.updateTask(lastParent.id, {
-              output: { ...lastParent.output, relayedBrief: contextBrief },
-            });
-          }
-        } catch {
-          contextBrief = buildPassThroughBrief(completedContexts, task.description);
-          this.log(
-            'info',
-            `Provider unavailable — pass-through relay used for "${task.title}"`,
-            task.id
-          );
-        }
-      }
+    // A pre-warmed brief (computed while this task waited on a busy session)
+    // makes dispatch instant instead of blocking on the relay LLM call.
+    const prewarmed = this.relayBriefs.get(task.id);
+    if (prewarmed !== undefined) {
+      this.relayBriefs.delete(task.id);
+      contextBrief = prewarmed;
+      this.log('relay', `Relay pre-warmed for "${task.title}"`, task.id);
+    } else {
+      contextBrief = await this.buildContextBrief(task, parentTasks);
     }
 
     // Build the full dispatch prompt

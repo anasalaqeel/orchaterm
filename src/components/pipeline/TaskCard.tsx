@@ -186,6 +186,13 @@ export const TaskCard: React.FC<TaskCardProps> = ({
               </span>
             </Section>
           )}
+          {task.status === 'cancelled' && (
+            <Section label="Status">
+              <span style={{ color: 'var(--text-tertiary)' }}>
+                Task cancelled — the pipeline was stopped by the user.
+              </span>
+            </Section>
+          )}
         </div>
       )}
     </div>

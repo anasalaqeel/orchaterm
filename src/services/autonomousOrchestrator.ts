@@ -19,7 +19,7 @@
 
 import { InterruptPolicy, RoutingEvent } from '../types';
 import { bufferWatcher } from './bufferWatcher';
-import { buildRoutingPrompt } from './orchestratorPrompts';
+import { buildRoutingPrompt, parseRoutingDecision, RoutingDecision } from './orchestratorPrompts';
 import { LLMProvider, createProvider } from './llm';
 import { canInjectNow } from '../utils/interruptPolicy';
 import { writePtyChunked } from '../utils/ptyUtils';
@@ -137,7 +137,7 @@ export class AutonomousOrchestrator {
     const siblings = active.config.sessions.filter((s) => s.id !== fromSession.id);
     if (siblings.length === 0) return;
 
-    let decision: { type: 'no_relay' | 'inject'; targetTitle?: string; message?: string };
+    let decision: RoutingDecision | null;
     try {
       const { system, userContent } = buildRoutingPrompt(
         fromSession.title,
@@ -151,25 +151,27 @@ export class AutonomousOrchestrator {
         [{ role: 'user', content: userContent }],
         system
       );
-      const trimmed = response.trim();
-
-      if (trimmed === 'NO_RELAY' || !trimmed.includes('INJECT')) {
-        decision = { type: 'no_relay' };
-      } else {
-        const match = trimmed.match(/INJECT\s*→\s*([^:\n]+):\s*(.+)/i);
-        decision = match
-          ? { type: 'inject', targetTitle: match[1].trim(), message: match[2].trim() }
-          : { type: 'no_relay' };
-      }
-    } catch {
+      decision = parseRoutingDecision(response);
+    } catch (err) {
+      console.error('[autonomousOrchestrator] routing call failed:', err);
       return;
     }
 
-    if (decision.type === 'no_relay' || !decision.targetTitle || !decision.message) return;
+    // An unparseable reply must be visible, not a silent no-op — otherwise a
+    // drifting model quietly disables auto-relay with nobody noticing.
+    if (!decision) {
+      this.emit({
+        type: 'relay-skipped',
+        reason: 'unparseable-reply',
+        target: fromSession.title,
+      });
+      return;
+    }
+    if (decision.type === 'no_relay') return;
 
     // Find the target session
     const target = siblings.find((s) =>
-      s.title.toLowerCase().includes(decision.targetTitle!.toLowerCase())
+      s.title.toLowerCase().includes(decision.targetTitle.toLowerCase())
     );
     if (!target) return;
 

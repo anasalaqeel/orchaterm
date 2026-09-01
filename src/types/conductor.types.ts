@@ -1,6 +1,6 @@
 // ── Orchestrator / Conductor types ────────────────────────────────────────────
 
-export type OrchestratorTaskStatus = 'pending' | 'running' | 'done' | 'failed';
+export type OrchestratorTaskStatus = 'pending' | 'running' | 'done' | 'failed' | 'cancelled'; // interrupted by a user-initiated plan stop — NOT an agent failure
 
 export interface OrchestratorTask {
   id: string;

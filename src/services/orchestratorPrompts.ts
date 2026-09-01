@@ -185,15 +185,15 @@ Signs it IS waiting: a selection cursor ("> 1."), a [y/N] bracket, a permission 
 Signs it is NOT waiting: the question appears mid-output, the agent is still writing (more lines follow the question), or it is just status/log text that contains a "?".
 If NOT waiting → return UNKNOWN immediately.
 
-STEP 2 — Identify the prompt and answer it using these rules (apply in order):
+STEP 2 — Identify the prompt and answer it using these rules (apply in order). The default posture is CAUTIOUS: grant only what a careful developer would grant unattended.
 1. Navigation footer lines ("↑/↓ Navigate", "tab Amend", "esc to cancel", "e edit command") are UI hints — NOT answer options. Ignore them when choosing.
 2. "Press Enter to continue" / "press any key" / empty-input continue prompts → ENTER
 3. Yes/no question ([y/N], [Y/n], "Do you want to", "Would you like to", "Shall we", etc.) → y
 4. Numbered option menu where option 1 is "Yes", "Allow", "Proceed", "Continue", or any affirmative/permissive action → 1
-5. Permission to read a file, execute a command, install a package, write a file, or run bash in the project → 1 (always allow for project work)
-6. "Always allow" option exists (persist permission) → pick that option number over a one-time allow
+5. Permission to READ files, run non-destructive project commands (tests, builds, lint), or run bash in the project → pick the ONE-TIME allow option.
+6. Permission to WRITE/modify files or install packages → pick the ONE-TIME allow option. NEVER pick an "always allow" / "don't ask again" option — persistent grants must come from a human.
 7. The agent is directly asking a question that requires specific factual input (e.g. "What is the database name?", "Enter your API key:", "Enter filename:") → UNKNOWN
-8. The prompt would permanently destroy data, force-push to production, or drop a live database → UNKNOWN
+8. The prompt would permanently destroy data, push to a remote, deploy, drop a database, change permissions, or anything irreversible → UNKNOWN
 
 Return ONLY the answer token. No quotes, no explanation.
 Valid tokens: single character (y/n/1/2/3/4), the word ENTER, or UNKNOWN.
@@ -201,7 +201,8 @@ Examples:
   "Do you want to proceed?  > 1. Yes  2. No" → 1
   "[y/N]" → y
   "Press Enter to continue" → ENTER
-  "Requesting permission for: npm install …  1. Yes  2. Yes, and always allow  3. No" → 2
+  "Requesting permission for: npm install …  1. Yes  2. Yes, and always allow  3. No" → 1
+  "Requesting permission for: rm -rf node_modules …  1. Yes  2. No" → UNKNOWN
   "Enter your commit message:" → UNKNOWN
   (agent mid-output that mentions "should we do X?") → UNKNOWN`,
   };
@@ -218,7 +219,7 @@ export function buildRoutingPrompt(
 
   return {
     system:
-      'You are a routing agent for a multi-agent coding team. Be decisive. Output exactly one line.',
+      'You are a routing agent for a multi-agent coding team. Be decisive. Output ONLY valid JSON — no prose, no markdown fences.',
     userContent: `You are monitoring a team of AI coding agents.
 
 Agent "${fromTitle}" just produced this output:
@@ -235,9 +236,40 @@ Rules:
 3. Keep any injected message under 80 words. Be direct — no filler.
 4. Do NOT relay if the agents are working on completely independent tasks.
 
-If nothing should be relayed, output exactly: NO_RELAY
-If relaying, output exactly one line: INJECT → <exact-terminal-title>: <message>`,
+Respond with ONLY one of these JSON objects:
+{"relay": false}
+{"relay": true, "target": "<exact terminal title of the receiving agent>", "message": "<the message to inject, under 80 words>"}`,
   };
+}
+
+export type RoutingDecision =
+  { type: 'no_relay' } | { type: 'inject'; targetTitle: string; message: string };
+
+/**
+ * Parses the routing model's JSON reply. Free-text contracts ("INJECT → …")
+ * silently degraded to no-ops whenever the model drifted off format; JSON with
+ * strict validation lets the caller surface unparseable replies instead of
+ * swallowing them. Returns null when the reply is not a valid decision.
+ */
+export function parseRoutingDecision(response: string): RoutingDecision | null {
+  const match = response.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[0]);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const obj = parsed as Record<string, unknown>;
+
+  if (obj.relay === false) return { type: 'no_relay' };
+  if (obj.relay !== true) return null;
+
+  const target = typeof obj.target === 'string' ? obj.target.trim() : '';
+  const message = typeof obj.message === 'string' ? obj.message.trim() : '';
+  if (!target || !message) return null;
+  return { type: 'inject', targetTitle: target, message };
 }
 
 export function buildSummarisePrompt(
