@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
 import { Workspace, TaskLog, OrchestratorPlan } from '../../types';
-import { orchestratorEngine } from '../../services/orchestratorEngine';
+import { workspaceEngines } from '../../services/engineRegistry';
 
 interface WorkspacePanelProps {
   workspace: Workspace;
@@ -123,8 +123,10 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    return orchestratorEngine.onStateChange((p) => setLivePlan({ ...p }));
-  }, []);
+    const engine = workspaceEngines.get(workspace.id);
+    setLivePlan(engine.getCurrentPlan());
+    return engine.onStateChange((p) => setLivePlan({ ...p }));
+  }, [workspace.id]);
   useEffect(() => {
     if (editing) textareaRef.current?.focus();
   }, [editing]);

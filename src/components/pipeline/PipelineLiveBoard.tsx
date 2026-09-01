@@ -7,7 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import { css, cx } from '@emotion/css';
 import { RotateCcw, Rewind } from 'lucide-react';
-import { orchestratorEngine } from '../../services/orchestratorEngine';
+import { workspaceEngines } from '../../services/engineRegistry';
 import { getAgentStats, trustScore } from '../../services/agentStats';
 import type {
   OrchestratorPlan,
@@ -156,7 +156,7 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({
           {status === 'running' && (
             <button
               title="Pause orchestration"
-              onClick={() => orchestratorEngine.pause()}
+              onClick={() => workspaceEngines.get(plan.workspaceId).pause()}
               className={cx(s.controlBtn, s.controlWarn)}
             >
               ⏸ Pause
@@ -165,7 +165,7 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({
           {status === 'paused' && (
             <button
               title="Resume orchestration"
-              onClick={() => orchestratorEngine.resume()}
+              onClick={() => workspaceEngines.get(plan.workspaceId).resume()}
               className={cx(s.controlBtn, s.controlBrand)}
             >
               ▶ Resume
@@ -174,7 +174,7 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({
           {(status === 'running' || status === 'paused') && (
             <button
               title="Stop orchestration"
-              onClick={() => orchestratorEngine.stop()}
+              onClick={() => workspaceEngines.get(plan.workspaceId).stop()}
               className={cx(s.controlBtn, s.controlError)}
             >
               ■ Stop
@@ -185,7 +185,9 @@ export const PipelineLiveBoard: React.FC<PipelineLiveBoardProps> = ({
               {status !== 'done' && firstFailed && (
                 <button
                   title={`Reset "${firstFailed.title}" and everything downstream to pending, keep completed tasks' results, and resume`}
-                  onClick={() => orchestratorEngine.retryFromTask(firstFailed.id)}
+                  onClick={() =>
+                    workspaceEngines.get(plan.workspaceId).retryFromTask(firstFailed.id)
+                  }
                   className={cx(s.controlBtn, s.controlWarn)}
                 >
                   <Rewind size={11} />

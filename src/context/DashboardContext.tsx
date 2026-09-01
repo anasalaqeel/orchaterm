@@ -23,7 +23,7 @@ import {
 } from '../services/storage';
 import { createProvider, LLMProvider } from '../services/llm';
 import type { UseCaseProviders } from '../services/llm/types';
-import { orchestratorEngine } from '../services/orchestratorEngine';
+import { workspaceEngines } from '../services/engineRegistry';
 import { autonomousOrchestrator } from '../services/autonomousOrchestrator';
 import { needsBroker } from '../services/needsBroker';
 import { sessionContinuationService } from '../services/sessionContinuationService';
@@ -414,7 +414,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // NOTE: sessionTitles is intentionally omitted here — the run paths
     // (handleApproveAndRun / handleRunPlan) populate it with the live session
     // map at launch. updateConfig is a partial merge, so we don't clobber it.
-    orchestratorEngine.updateConfig({
+    workspaceEngines.syncConfig({
       relayProvider: p.relay,
       plannerProvider: p.planGen,
       autoAnswerProvider: p.autoAnswer,

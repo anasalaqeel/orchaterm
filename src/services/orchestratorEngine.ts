@@ -6,8 +6,9 @@
  * handoffs, and exposes a subscription-based API for UI components to react to
  * state and log changes.
  *
- * This is a plain class — no React, no hooks. UI components interact with the
- * singleton instance exported at the bottom of this file.
+ * This is a plain class — no React, no hooks. UI components obtain the
+ * instance for a workspace from the registry (engineRegistry.ts); one engine
+ * per workspace, so pipelines in different workspaces run concurrently.
  *
  * Lifecycle:
  *   engine.start(plan)         → begin orchestration
@@ -39,7 +40,7 @@ import {
   CompletedTaskContext,
   CompletionJudgeVerdict,
 } from './orchestratorPrompts';
-import { LLMProvider, createProvider } from './llm';
+import { LLMProvider } from './llm';
 import {
   SENTINEL_START,
   SENTINEL_END,
@@ -126,10 +127,9 @@ export class OrchestratorEngine {
   private replansUsed = 0;
   private replanInFlight = false;
 
-  // pre-warmed relay briefs per taskId (computed while a ready task waited on
-  // a busy session, so dispatch doesn't block on the relay LLM call)
-  private relayBriefs = new Map<string, string>();
-  private relayPrewarmInFlight = new Set<string>();
+  // pre-warmed relay brief promises per taskId (started while a ready task
+  // waited on a busy session, so dispatch doesn't block on the relay LLM call)
+  private relayBriefs = new Map<string, Promise<string>>();
 
   // subscribers
   private stateListeners: Array<(plan: OrchestratorPlan) => void> = [];
@@ -427,7 +427,7 @@ export class OrchestratorEngine {
         // Ready but waiting on a busy session — start the relay brief now so
         // the LLM call (up to 90s on slow local models) overlaps the wait
         // instead of delaying dispatch on top of it.
-        void this.prewarmRelay(task);
+        this.prewarmRelay(task);
         continue;
       }
 
@@ -520,24 +520,22 @@ export class OrchestratorEngine {
     }
   }
 
-  /** Pre-computes a ready-but-waiting task's relay brief in the background. */
-  private async prewarmRelay(task: OrchestratorTask): Promise<void> {
-    if (!this.plan || this.relayBriefs.has(task.id) || this.relayPrewarmInFlight.has(task.id))
-      return;
+  /**
+   * Pre-computes a ready-but-waiting task's relay brief in the background.
+   * The promise is cached immediately, so a dispatch that starts while the
+   * brief is still computing awaits the SAME call instead of firing a
+   * duplicate LLM request.
+   */
+  private prewarmRelay(task: OrchestratorTask): void {
+    if (!this.plan || this.relayBriefs.has(task.id)) return;
     const parentTasks = task.dependsOn
       .map((depId) => this.plan!.tasks.find((t) => t.id === depId))
       .filter((t): t is OrchestratorTask => !!t && !!t.output);
     if (parentTasks.length === 0) return;
 
-    this.relayPrewarmInFlight.add(task.id);
-    try {
-      const brief = await this.buildContextBrief(task, parentTasks);
-      // Task may have been reset/rewound while the brief computed.
-      const current = this.getTask(task.id);
-      if (current && current.status === 'pending') this.relayBriefs.set(task.id, brief);
-    } finally {
-      this.relayPrewarmInFlight.delete(task.id);
-    }
+    // buildContextBrief never rejects (provider errors fall back to a
+    // deterministic pass-through brief), so the cached promise is safe to await.
+    this.relayBriefs.set(task.id, this.buildContextBrief(task, parentTasks));
   }
 
   // ── Private: dispatch a single task ────────────────────────────────────────
@@ -565,12 +563,13 @@ export class OrchestratorEngine {
 
     let contextBrief: string;
 
-    // A pre-warmed brief (computed while this task waited on a busy session)
-    // makes dispatch instant instead of blocking on the relay LLM call.
+    // A pre-warmed brief (started while this task waited on a busy session)
+    // makes dispatch instant — or at least shares the in-flight LLM call —
+    // instead of blocking on a fresh one.
     const prewarmed = this.relayBriefs.get(task.id);
     if (prewarmed !== undefined) {
       this.relayBriefs.delete(task.id);
-      contextBrief = prewarmed;
+      contextBrief = await prewarmed;
       this.log('relay', `Relay pre-warmed for "${task.title}"`, task.id);
     } else {
       contextBrief = await this.buildContextBrief(task, parentTasks);
@@ -1115,18 +1114,3 @@ ${task.description}${buildAgentProtocol(task.id, !!this.config.workspacePath)}`;
     for (const cb of this.logListeners) cb(entry);
   }
 }
-
-// ── Singleton export ────────────────────────────────────────────────────────────
-// One engine instance for the whole app. Config is updated when settings change.
-
-const _defaultProvider = createProvider({ provider: 'ollama', model: 'llama3.2' });
-
-export const orchestratorEngine = new OrchestratorEngine({
-  relayProvider: _defaultProvider,
-  plannerProvider: _defaultProvider,
-  autoAnswerProvider: _defaultProvider,
-  taskTimeoutMinutes: 0,
-  interactionMode: 'auto',
-  sessionTitles: new Map(),
-  workspacePath: '',
-});

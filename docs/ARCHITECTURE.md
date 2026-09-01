@@ -60,6 +60,7 @@ Orchaterm is a next-generation terminal built for the AI era of software develop
 - **Autonomous Relay**: When a task completes in one session, the ambient LLM summarizes output and injects context into dependent sessions.
 
 ### C. Visual Task Pipelines (`src/components/pipeline/`)
+- **Per-Workspace Engines**: One orchestrator engine per workspace (`engineRegistry.ts`) — pipelines in different workspaces run concurrently, each with its own live plan, logs, and blackboard.
 - **Dependency Graphs (DAG)**: Build task dependency trees with sequential or parallel execution waves.
 - **Live Board & Manual Override**: Monitor execution across all active sessions with live task cards, real-time logs, and manual intervention controls (Force Done, Retry, Fail).
 - **Reusable Templates**: Save common multi-session workflows as templates.

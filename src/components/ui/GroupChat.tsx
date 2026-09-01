@@ -55,7 +55,7 @@ import { bufferWatcher } from '../../services/bufferWatcher';
 import { stripAnsiCodes } from '../../services/sentinelParser';
 import { needsBroker } from '../../services/needsBroker';
 import { autonomousOrchestrator } from '../../services/autonomousOrchestrator';
-import { orchestratorEngine } from '../../services/orchestratorEngine';
+import { workspaceEngines } from '../../services/engineRegistry';
 import type { OrchestratorTask, ConductorLogEntry } from '../../types';
 
 // ── Props ──────────────────────────────────────────────────────────────────────
@@ -86,6 +86,8 @@ interface DisplayMessage {
   agentTitle?: string;
   /** Present on 'ask-user' gate messages — the engine task awaiting the answer. */
   gateTaskId?: string;
+  /** Workspace whose engine owns the gate task — gates are answered there. */
+  gateWorkspaceId?: string;
   /** Set when the gate has been answered (locally, for immediate feedback). */
   gateAnswered?: boolean;
 }
@@ -593,6 +595,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
             role: 'ask-user',
             content: entry.message,
             gateTaskId: entry.taskId,
+            gateWorkspaceId: entry.workspaceId,
           },
         ]);
         return;
@@ -631,17 +634,26 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
   }, [workspaceId]);
 
   // ── User gate answer → engine ─────────────────────────────────────────────
-  const handleGateAnswer = useCallback((messageId: string, taskId: string, answer: string) => {
-    if (!answer.trim()) return;
-    orchestratorEngine.answerUserGate(taskId, answer);
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === messageId
-          ? { ...m, gateAnswered: true, content: `${m.content}\n→ You answered: ${answer.trim()}` }
-          : m
-      )
-    );
-  }, []);
+  const handleGateAnswer = useCallback(
+    (messageId: string, taskId: string, gateWorkspaceId: string | undefined, answer: string) => {
+      if (!answer.trim()) return;
+      // Gate tasks belong to the workspace whose pipeline asked — route there,
+      // falling back to this panel's workspace for older persisted messages.
+      workspaceEngines.get(gateWorkspaceId ?? workspaceId).answerUserGate(taskId, answer);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? {
+                ...m,
+                gateAnswered: true,
+                content: `${m.content}\n→ You answered: ${answer.trim()}`,
+              }
+            : m
+        )
+      );
+    },
+    [workspaceId]
+  );
 
   // ── Send message ──────────────────────────────────────────────────────────
 
@@ -1334,7 +1346,12 @@ const GateRow: React.FC<{
 const MessageRow: React.FC<{
   msg: DisplayMessage;
   onSaveToVault: () => void;
-  onGateAnswer: (messageId: string, taskId: string, answer: string) => void;
+  onGateAnswer: (
+    messageId: string,
+    taskId: string,
+    gateWorkspaceId: string | undefined,
+    answer: string
+  ) => void;
 }> = ({ msg, onSaveToVault, onGateAnswer }) => {
   const [hovered, setHovered] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -1352,7 +1369,9 @@ const MessageRow: React.FC<{
     return (
       <GateRow
         msg={msg}
-        onAnswer={(answer) => msg.gateTaskId && onGateAnswer(msg.id, msg.gateTaskId, answer)}
+        onAnswer={(answer) =>
+          msg.gateTaskId && onGateAnswer(msg.id, msg.gateTaskId, msg.gateWorkspaceId, answer)
+        }
       />
     );
   }
