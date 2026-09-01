@@ -303,8 +303,6 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [lastCheckpoint, setLastCheckpoint] = useState<CheckpointSnapshot | null>(null);
   const [pendingInjectionSnapshot, setPendingInjectionSnapshot] =
     useState<CheckpointSnapshot | null>(null);
-  /** Sessions currently running agents under autonomous orchestration (the agent tabs). */
-  const [agentSessionIds, setAgentSessionIds] = useState<string[]>([]);
   const [llmProviders, setLlmProviders] = useState(() =>
     makeProviders({
       relay: { ...DEFAULT_OLLAMA_CONFIG },
@@ -469,19 +467,28 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, [settings.continuation]);
 
-  // ── Track which sessions are running agents (autonomous orchestration) ───────
-  // Continuation only watches these — never bare interactive terminals, whose
-  // returning shell prompt the detector would otherwise misread as "stopped".
+  // ── Track which sessions are running agents ──────────────────────────────────
+  // Continuation watches "agent sessions": members of a Space (the app's
+  // explicit notion of an agent team) plus sessions under ambient auto-route.
+  // Bare interactive terminals stay excluded — their returning shell prompt
+  // would otherwise be misread as an agent stopping.
+  const [agentSessionTick, setAgentSessionTick] = useState(0);
+  // Auto-route's active set changes through callbacks, not React state — tick
+  // to re-run the monitoring effect below when it changes.
   useEffect(() => {
-    const sync = () => setAgentSessionIds(autonomousOrchestrator.getActiveSessionIds());
-    sync();
-    return autonomousOrchestrator.onActiveChange(sync);
+    return autonomousOrchestrator.onActiveChange(() => setAgentSessionTick((t) => t + 1));
   }, []);
 
   // ── Start/stop session continuation monitoring (scoped to agent sessions) ────
   useEffect(() => {
     const enabled = settings.aiEnabled !== false && (settings.continuation?.enabled ?? false);
-    const agentSet = new Set(agentSessionIds);
+    // "Agent sessions": members of a Space (the app's explicit notion of an
+    // agent team) plus sessions under ambient auto-route. Derived inline — no
+    // memo needed, this is the only consumer.
+    const agentSet = new Set(
+      spaces.filter((g) => g.workspaceId === activeWorkspaceId).flatMap((g) => g.sessionIds)
+    );
+    for (const id of autonomousOrchestrator.getActiveSessionIds()) agentSet.add(id);
 
     // Stop monitoring anything that is no longer an active agent session
     // (covers the feature being disabled, a space stopping, or a tab closing).
@@ -509,7 +516,9 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     }
   }, [
-    agentSessionIds,
+    spaces,
+    activeWorkspaceId,
+    agentSessionTick,
     terminalSessions,
     settings.aiEnabled,
     settings.continuation,

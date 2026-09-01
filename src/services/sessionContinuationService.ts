@@ -1,5 +1,5 @@
 import { bufferWatcher } from './bufferWatcher';
-import { buildDetectionPrompt } from './continuationPrompts';
+import { buildDetectionPrompt, parseDetectionLabel } from './continuationPrompts';
 import { generateCheckpoint } from './checkpointGenerator';
 import type { LLMProvider } from './llm';
 import type {
@@ -123,9 +123,15 @@ export class SessionContinuationService {
     const entry = this.sessions.get(sessionId);
     if (!entry || entry.checkpointInProgress) return;
 
-    // Periodic snapshot
+    // Periodic snapshot. The watcher's buffer is capped and trimmed to its
+    // tail, so length can DROP — reset the baseline instead of accumulating a
+    // negative delta that would stall snapshots for another whole interval.
     const buffer = bufferWatcher.getBuffer(sessionId);
-    const charsSinceLast = buffer.length - entry.lastPeriodicSnapshotLength;
+    let charsSinceLast = buffer.length - entry.lastPeriodicSnapshotLength;
+    if (charsSinceLast < 0) {
+      entry.lastPeriodicSnapshotLength = buffer.length;
+      charsSinceLast = 0;
+    }
     if (charsSinceLast >= entry.config.snapshotIntervalChars) {
       entry.lastPeriodicSnapshotLength = buffer.length;
       void this.doCheckpoint(entry, 'periodic', 'PROGRESS');
@@ -139,11 +145,11 @@ export class SessionContinuationService {
         [{ role: 'user', content: userContent }],
         system
       );
-      const trimmed = response.trim() as DetectionLabel;
-      if (['PROGRESS', 'STALLED', 'LIMIT_HIT', 'STOPPED', 'TASK_COMPLETE'].includes(trimmed)) {
-        label = trimmed;
-      }
-    } catch {
+      label = parseDetectionLabel(response);
+    } catch (err) {
+      // A detector that is down must be visible, not silent — but it should
+      // not block periodic snapshots or later detections.
+      console.error('[sessionContinuation] detection failed:', err);
       return;
     }
 

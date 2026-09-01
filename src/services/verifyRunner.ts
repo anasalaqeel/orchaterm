@@ -79,11 +79,17 @@ export async function runVerifyCommand(
       await sleep(100);
     }
 
+    // The exit-code marker must match the hidden shell's language: PowerShell
+    // on Windows (spawn_pty's default there), POSIX sh elsewhere. $? semantics:
+    // PS's $? is a bool, so it is converted to 0/1 via [int](-not $?).
+    const isWindows = typeof navigator !== 'undefined' && /^Win/i.test(navigator.platform);
+    const wrappedCommand = isWindows
+      ? `${command}; Write-Output ('${EXIT_MARKER}' + [int](-not $?))`
+      : `${command}; printf '\\n${EXIT_MARKER}%s\\n' "$?"`;
+
     await invoke('write_pty', {
       sessionId,
-      // The marker echoes the command's true exit code; printf is used so the
-      // marker text itself cannot collide with command output.
-      data: `${command}; printf '\\n${EXIT_MARKER}%s\\n' "$?"\r`,
+      data: `${wrappedCommand}\r`,
     });
     commandSent = true;
 

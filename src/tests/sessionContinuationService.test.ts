@@ -9,7 +9,8 @@ vi.mock('../services/bufferWatcher', () => ({
   },
 }));
 
-vi.mock('../services/continuationPrompts', () => ({
+vi.mock('../services/continuationPrompts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/continuationPrompts')>()),
   buildDetectionPrompt: vi.fn().mockReturnValue({ system: '', userContent: 'detect?' }),
 }));
 

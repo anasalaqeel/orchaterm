@@ -108,8 +108,13 @@ interface WatchEntry {
   onSentinel?: (output: OrchestratorTaskOutput) => void;
   onNeedsRequest?: (request: import('../types').AgentNeedsRequest) => void;
   onInteractivePrompt?: (promptText: string) => void;
-  /** Fires once per 10 s when the terminal returns to a shell prompt (non-conductor sessions). */
-  onIdleShell?: () => void;
+  /**
+   * Idle shell subscribers — multiple features (GroupChat's agent-done
+   * notifications, session continuation) watch the same session's idle
+   * prompt. A single-slot callback meant the last registration silently
+   * unregistered everyone else.
+   */
+  idleShellSubscribers: Array<() => void>;
   /**
    * Soft-completion signal for sentinel-managed sessions: fires when the
    * terminal returns to a shell prompt after being idle for 2s while a task is
@@ -193,7 +198,12 @@ class BufferWatcher {
         this.onData(sessionId, event.payload.data);
       });
 
-      const entry: WatchEntry = { buffer, unlisten, summarySubscribers: [] };
+      const entry: WatchEntry = {
+        buffer,
+        unlisten,
+        summarySubscribers: [],
+        idleShellSubscribers: [],
+      };
       this.entries.set(sessionId, entry);
       this.pending.delete(sessionId);
       return entry;
@@ -294,7 +304,7 @@ class BufferWatcher {
       return;
     }
 
-    if (!entry.onIdleShell) return;
+    if (entry.idleShellSubscribers.length === 0) return;
     if (!entry.hasNewOutputSinceIdle) return;
 
     const tail = stripAnsiCodes(entry.buffer.buffer.slice(-600));
@@ -302,7 +312,7 @@ class BufferWatcher {
 
     entry._lastIdleShellAt = Date.now();
     entry.hasNewOutputSinceIdle = false;
-    entry.onIdleShell();
+    for (const cb of [...entry.idleShellSubscribers]) cb();
   }
 
   // ── Internal: sentinel check ───────────────────────────────────────────────
@@ -360,8 +370,11 @@ class BufferWatcher {
     const cb = entry.onSentinel;
     entry.onSentinel = undefined;
     entry.onAgentIdle = undefined;
-    entry.buffer.mode = 'idle';
     entry.buffer.buffer = '';
+    // Hand the session back to idle — or to summary mode when live-feed /
+    // continuation subscribers are waiting on it, so their deltas resume.
+    entry.buffer.mode = entry.summarySubscribers.length > 0 ? 'summary' : 'idle';
+    if (entry.buffer.mode === 'summary') entry.summaryLastLength = 0;
 
     if (cb) cb(result);
   }
@@ -494,20 +507,21 @@ class BufferWatcher {
   /**
    * Register a callback that fires when a non-conductor terminal session returns
    * to a shell prompt after being idle for 2 s (10 s cooldown per session).
-   * Returns an unsubscribe function.
+   * Multiple subscribers may watch the same session. Returns an unsubscribe
+   * function for this specific subscriber.
    *
-   * Skipped automatically for sessions in sentinel mode so Conductor-
-   * managed tasks do not generate spurious "done" notifications.
+   * Skipped automatically for sessions in sentinel mode so pipeline-managed
+   * tasks do not generate spurious "done" notifications.
    */
   async watchForIdle(sessionId: string, onIdle: () => void): Promise<() => void> {
     const entry = await this.ensureListening(sessionId);
-    entry.onIdleShell = onIdle;
+    if (!entry.idleShellSubscribers.includes(onIdle)) {
+      entry.idleShellSubscribers.push(onIdle);
+    }
     entry._lastIdleShellAt = undefined; // reset cooldown on (re-)subscribe
     entry.hasNewOutputSinceIdle = false; // do not fire immediately on subscription if no new data was output
     return () => {
-      if (entry.onIdleShell === onIdle) {
-        entry.onIdleShell = undefined;
-      }
+      entry.idleShellSubscribers = entry.idleShellSubscribers.filter((cb) => cb !== onIdle);
     };
   }
 
@@ -547,7 +561,11 @@ class BufferWatcher {
     const entry = this.entries.get(sessionId);
     if (!entry) return;
     entry.buffer.buffer = '';
-    entry.buffer.mode = 'idle';
+    // Hand the session back to summary mode when live-feed / continuation
+    // subscribers are waiting on it, so their deltas resume after a pipeline
+    // task instead of silently dying in 'idle'.
+    entry.buffer.mode = entry.summarySubscribers.length > 0 ? 'summary' : 'idle';
+    if (entry.buffer.mode === 'summary') entry.summaryLastLength = 0;
     entry.onSentinel = undefined;
     entry.onAgentIdle = undefined;
     entry.ignoreUntil = undefined;
