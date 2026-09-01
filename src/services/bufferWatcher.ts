@@ -65,7 +65,42 @@ const SENTINEL_SCAN_TAIL = 32 * 1024;
 const NEEDS_SCAN_THROTTLE_MS = 30;
 const SENTINEL_SCAN_THROTTLE_MS = 40;
 
+// ── Echo-anchor suppression ────────────────────────────────────────────────────
+// Length of the normalized prompt tail used as the echo anchor.
+const ECHO_ANCHOR_CHARS = 60;
+
+/**
+ * Normalises text for echo-anchor matching: ANSI-free, CR removed, whitespace
+ * runs collapsed to single spaces. PTY line-wrapping inserts breaks at column
+ * boundaries, so collapsing whitespace lets the anchor match regardless of
+ * where the wraps land.
+ */
+function normaliseForEcho(text: string): string {
+  return stripAnsiCodes(text).replace(/\r/g, '').replace(/\s+/g, ' ').trim();
+}
+
 // ── Internal entry ─────────────────────────────────────────────────────────────
+
+interface SentinelWatchHandlers {
+  /** Fires once with the parsed output when the sentinel block is detected. */
+  onSentinel: (output: OrchestratorTaskOutput) => void;
+  /** Fires when the terminal appears to be waiting for interactive input. */
+  onInteractivePrompt?: (text: string) => void;
+  /**
+   * Fires when the terminal returns to a shell prompt after 2s idle without a
+   * sentinel — the engine's soft-completion check.
+   */
+  onAgentIdle?: () => void;
+  /**
+   * Milliseconds to discard incoming data before starting detection, used as
+   * the fallback when the echo anchor (see echoText) never appears. Default
+   * 500. Set 0 to disable. Note: the anchor ends suppression early, so a
+   * longer window no longer delays detection for verbatim-echoing terminals.
+   */
+  echoSuppressMs?: number;
+  /** The exact prompt text about to be written to this session. */
+  echoText?: string;
+}
 
 interface WatchEntry {
   buffer: SessionBuffer;
@@ -75,14 +110,31 @@ interface WatchEntry {
   onInteractivePrompt?: (promptText: string) => void;
   /** Fires once per 10 s when the terminal returns to a shell prompt (non-conductor sessions). */
   onIdleShell?: () => void;
+  /**
+   * Soft-completion signal for sentinel-managed sessions: fires when the
+   * terminal returns to a shell prompt after being idle for 2s while a task is
+   * running — i.e. the agent likely finished without printing the sentinel
+   * block. The engine judges the buffer before completing anything.
+   */
+  onAgentIdle?: () => void;
   _lastIdleShellAt?: number;
   idleTimer?: ReturnType<typeof setTimeout>;
   /**
-   * Epoch ms after which plan/sentinel detection should actually fire.
+   * Epoch ms after which sentinel detection should actually fire.
    * While Date.now() < ignoreUntil, incoming data is wiped and not checked.
    * This lets the PTY echo of the sent prompt clear before we start scanning.
    */
   ignoreUntil?: number;
+  /**
+   * Normalised tail of the dispatched prompt. While set, incoming data is held
+   * in echoSeenAcc instead of the buffer; the moment the anchor appears the
+   * echo is deemed fully received (a command cannot execute before its final
+   * '\r' is echoed), suppression ends early, and any output already arriving
+   * is kept — instant commands no longer lose their output to the time window.
+   */
+  echoAnchor?: string;
+  /** Chunks received while the echo anchor is still pending. */
+  echoSeenAcc?: string;
   // Summary mode — supports multiple concurrent subscribers
   summarySubscribers: Array<(chunk: string) => void>;
   summaryDebounceTimer?: ReturnType<typeof setTimeout>;
@@ -223,13 +275,26 @@ class BufferWatcher {
   }
 
   // ── Internal: idle shell-prompt check ─────────────────────────────────────
-  // Fires onIdleShell when the terminal returns to a shell prompt after being
-  // idle for 2 s. Only active in 'idle' or 'summary' modes — conductor-managed
-  // sessions (sentinel) are intentionally excluded.
+  // Fires when the terminal returns to a shell prompt after being idle for
+  // 2 s. In 'idle' / 'summary' modes this notifies (onIdleShell). In 'sentinel'
+  // mode it routes to the engine's soft-completion check (onAgentIdle) instead
+  // — the generic notification would be premature when a task may still be
+  // unfinished.
 
   private checkIdleShell(entry: WatchEntry): void {
+    if (entry.buffer.mode === 'sentinel') {
+      if (!entry.onAgentIdle) return;
+      if (!entry.hasNewOutputSinceIdle) return;
+
+      const tail = stripAnsiCodes(entry.buffer.buffer.slice(-600));
+      if (!SHELL_PROMPT_REGEX.test(tail)) return;
+
+      entry.hasNewOutputSinceIdle = false;
+      entry.onAgentIdle();
+      return;
+    }
+
     if (!entry.onIdleShell) return;
-    if (entry.buffer.mode === 'sentinel') return;
     if (!entry.hasNewOutputSinceIdle) return;
 
     const tail = stripAnsiCodes(entry.buffer.buffer.slice(-600));
@@ -243,16 +308,37 @@ class BufferWatcher {
   // ── Internal: sentinel check ───────────────────────────────────────────────
 
   private checkSentinel(entry: WatchEntry): void {
-    // Echo-suppress window: discard incoming data until the delay has elapsed.
-    // The dispatch prompt (~2000 chars) echoes back from the PTY after write.
-    // Without suppression the echo's sentinel template (with placeholder summary)
-    // can trigger a false positive, marking the task done in ~1-2 s.
-    if (entry.ignoreUntil !== undefined) {
-      if (Date.now() < entry.ignoreUntil) {
+    // Echo suppression. Primary mechanism is content-anchored: the dispatched
+    // command cannot execute before its final '\r' has been echoed, so once
+    // the prompt's tail (the anchor) appears in the received data, the echo is
+    // complete — suppression ends immediately and the current chunk is kept,
+    // preserving output that arrived inside the old time window (instant
+    // commands). The time window is only a fallback for agents that render
+    // input through their own TUI widget instead of echoing it verbatim.
+    if (entry.echoAnchor !== undefined || entry.ignoreUntil !== undefined) {
+      const anchor = entry.echoAnchor;
+      const accNow = (entry.echoSeenAcc ?? '') + entry.buffer.buffer;
+
+      if (anchor !== undefined && normaliseForEcho(accNow).includes(anchor)) {
+        // Echo fully received — everything before this chunk was prompt echo
+        // (already discarded); this chunk may carry the first real output.
+        entry.echoAnchor = undefined;
+        entry.ignoreUntil = undefined;
+        entry.echoSeenAcc = undefined;
+        // fall through and scan the kept buffer
+      } else if (entry.ignoreUntil !== undefined && Date.now() < entry.ignoreUntil) {
+        // Anchor not seen yet and still inside the window — hold this data
+        // aside and keep the buffer clear of likely echo.
+        entry.echoSeenAcc = accNow;
         entry.buffer.buffer = '';
         return;
+      } else {
+        // Window expired without seeing the anchor — keep the current chunk
+        // (the first real response data) and start detecting.
+        entry.echoAnchor = undefined;
+        entry.ignoreUntil = undefined;
+        entry.echoSeenAcc = undefined;
       }
-      entry.ignoreUntil = undefined;
     }
 
     const now = Date.now();
@@ -273,6 +359,7 @@ class BufferWatcher {
     // Snapshot callback and clear before calling to avoid re-entrancy issues
     const cb = entry.onSentinel;
     entry.onSentinel = undefined;
+    entry.onAgentIdle = undefined;
     entry.buffer.mode = 'idle';
     entry.buffer.buffer = '';
 
@@ -336,24 +423,27 @@ class BufferWatcher {
 
   /**
    * Switch a session into sentinel-detection mode. Any previous mode and buffer
-   * is cleared. The callback fires once when the sentinel is detected.
-   *
-   * @param echoSuppressMs - milliseconds to discard incoming data before starting
-   *   detection. Covers PTY echo of the dispatch prompt (~2000 chars, ~200 ms to
-   *   send). Default 500 ms. Set 0 to disable.
+   * is cleared. The onSentinel callback fires once when the sentinel is
+   * detected. See SentinelWatchHandlers for the echo-suppression behaviour.
    */
-  async watchForSentinel(
-    sessionId: string,
-    onSentinel: (output: OrchestratorTaskOutput) => void,
-    onInteractivePrompt?: (text: string) => void,
-    echoSuppressMs = 500
-  ): Promise<void> {
+  async watchForSentinel(sessionId: string, handlers: SentinelWatchHandlers): Promise<void> {
     const entry = await this.ensureListening(sessionId);
     entry.buffer.buffer = '';
     entry.buffer.mode = 'sentinel';
-    entry.onSentinel = onSentinel;
-    entry.onInteractivePrompt = onInteractivePrompt;
-    entry.ignoreUntil = echoSuppressMs > 0 ? Date.now() + echoSuppressMs : undefined;
+    entry.onSentinel = handlers.onSentinel;
+    entry.onInteractivePrompt = handlers.onInteractivePrompt;
+    entry.onAgentIdle = handlers.onAgentIdle;
+    entry.ignoreUntil =
+      handlers.echoSuppressMs && handlers.echoSuppressMs > 0
+        ? Date.now() + handlers.echoSuppressMs
+        : undefined;
+    // Anchor on the normalised prompt tail so wraps/ANSI in the echo can't
+    // break the match. Only the tail is used: it is the last thing echoed
+    // before the command starts executing.
+    entry.echoAnchor = handlers.echoText
+      ? normaliseForEcho(handlers.echoText).slice(-ECHO_ANCHOR_CHARS)
+      : undefined;
+    entry.echoSeenAcc = undefined;
     if (entry.sentinelScanTimer) clearTimeout(entry.sentinelScanTimer);
     entry.sentinelScanTimer = undefined;
     entry.lastSentinelScanAt = undefined;
@@ -459,7 +549,10 @@ class BufferWatcher {
     entry.buffer.buffer = '';
     entry.buffer.mode = 'idle';
     entry.onSentinel = undefined;
+    entry.onAgentIdle = undefined;
     entry.ignoreUntil = undefined;
+    entry.echoAnchor = undefined;
+    entry.echoSeenAcc = undefined;
     entry.hasNewOutputSinceIdle = false;
     if (entry.sentinelScanTimer) clearTimeout(entry.sentinelScanTimer);
     entry.sentinelScanTimer = undefined;

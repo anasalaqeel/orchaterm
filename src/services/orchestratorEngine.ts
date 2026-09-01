@@ -32,12 +32,24 @@ import {
   buildMergeRelayPrompt,
   buildPassThroughBrief,
   buildAutoAnswerPrompt,
+  buildCompletionJudgePrompt,
+  parseCompletionJudgeResponse,
   CompletedTaskContext,
+  CompletionJudgeVerdict,
 } from './orchestratorPrompts';
 import { LLMProvider, createProvider } from './llm';
-import { SENTINEL_START, SENTINEL_END, NEEDS_START, NEEDS_END } from './sentinelParser';
+import {
+  SENTINEL_START,
+  SENTINEL_END,
+  NEEDS_START,
+  NEEDS_END,
+  stripAnsiCodes,
+} from './sentinelParser';
 
 // ── Engine configuration ────────────────────────────────────────────────────────
+
+/** Minimum time between soft-completion judge calls for the same task. */
+const SOFT_JUDGE_COOLDOWN_MS = 45_000;
 
 export interface EngineConfig {
   relayProvider: LLMProvider;
@@ -88,6 +100,11 @@ export class OrchestratorEngine {
 
   // timeout handle per taskId
   private taskTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  // last soft-completion judge attempt per taskId (rate limiting)
+  private softJudgeAt = new Map<string, number>();
+  // taskIds with a soft-completion judge call currently in flight
+  private softJudgeInFlight = new Set<string>();
 
   // subscribers
   private stateListeners: Array<(plan: OrchestratorPlan) => void> = [];
@@ -405,13 +422,14 @@ PROJECT: ${this.plan.goal}
 YOUR TASK:
 ${task.description}${buildAgentProtocol(task.id)}`;
 
-    // Start watching for sentinel before writing prompt so PTY echo is cleanly suppressed
-    await bufferWatcher.watchForSentinel(
-      task.assignedSessionId,
-      (output) => {
+    // Start watching for sentinel before writing prompt so PTY echo is cleanly
+    // suppressed. The prompt text anchors echo suppression: the moment its tail
+    // comes back, detection starts — output from instant commands is preserved.
+    await bufferWatcher.watchForSentinel(task.assignedSessionId, {
+      onSentinel: (output) => {
         this.onSentinelReceived(task.id, output);
       },
-      async (promptText) => {
+      onInteractivePrompt: async (promptText) => {
         const shortPrompt = promptText.length > 80 ? promptText.slice(0, 77) + '...' : promptText;
 
         if (this.config.interactionMode === 'auto') {
@@ -450,8 +468,11 @@ ${task.description}${buildAgentProtocol(task.id)}`;
           task.assignedSessionId
         );
       },
-      800 // 800ms echo suppression window
-    );
+      // Fallback window when the echo anchor never appears (TUI agents).
+      echoSuppressMs: 800,
+      onAgentIdle: () => this.onAgentIdle(task.id),
+      echoText: prompt,
+    });
 
     // Inject into the terminal — '\n' is mandatory to execute
     try {
@@ -494,6 +515,92 @@ ${task.description}${buildAgentProtocol(task.id)}`;
       taskOutput: output,
       agentTitle: task.assignedSessionTitle,
     });
+    this.emitState();
+    this.dispatchReady();
+    this.checkPlanCompletion();
+  }
+
+  // ── Private: soft completion (agent idle, no sentinel output) ──────────────
+
+  /**
+   * Fired by BufferWatcher when a sentinel-watched terminal returns to a shell
+   * prompt after 2s of silence. The agent likely finished without printing the
+   * sentinel block (non-compliant agents, plain shell commands), so a small
+   * model judges the terminal output against the task's goal before we
+   * complete anything. A malformed judge reply is treated as "not done".
+   */
+  private async onAgentIdle(taskId: string): Promise<void> {
+    // One judge call per task at a time — rapid idle/output/idle cycles must
+    // not start overlapping evaluations of the same task.
+    if (this.softJudgeInFlight.has(taskId)) return;
+
+    const task = this.getTask(taskId);
+    if (!task || task.status !== 'running') return;
+
+    const tail = stripAnsiCodes(
+      bufferWatcher.getBuffer(task.assignedSessionId).slice(-4000)
+    ).trim();
+    if (tail.length < 40) return; // nothing meaningful to judge yet
+
+    // Rate-limit actual judge calls (not skipped checks) — an agent that keeps
+    // producing output and going quiet again must not trigger one every few
+    // seconds. Stamped only once we know a call will be made, so a too-short
+    // buffer never burns the cooldown.
+    const last = this.softJudgeAt.get(taskId) ?? 0;
+    if (Date.now() - last < SOFT_JUDGE_COOLDOWN_MS) return;
+    this.softJudgeAt.set(taskId, Date.now());
+    this.softJudgeInFlight.add(taskId);
+
+    let verdict: CompletionJudgeVerdict;
+    try {
+      const { system, userContent } = buildCompletionJudgePrompt(
+        task.title,
+        task.description,
+        tail
+      );
+      const response = await this.config.autoAnswerProvider.complete(
+        [{ role: 'user', content: userContent }],
+        system
+      );
+      verdict = parseCompletionJudgeResponse(response);
+    } catch (err) {
+      this.log(
+        'error',
+        `Soft-completion check failed for "${task.title}": ${err}`,
+        taskId,
+        task.assignedSessionId
+      );
+      return;
+    } finally {
+      this.softJudgeInFlight.delete(taskId);
+    }
+
+    // The real sentinel may have arrived (or the task may have failed/timed
+    // out) while the judge call was in flight — re-check before completing.
+    const current = this.getTask(taskId);
+    if (!current || current.status !== 'running' || !verdict.complete) return;
+
+    const raw = bufferWatcher.getBuffer(task.assignedSessionId);
+    const output: OrchestratorTaskOutput = {
+      raw,
+      taskId,
+      summary: verdict.summary,
+      filesModified: [],
+      needs: 'none',
+    };
+
+    // Reset watch state for this session (mirrors the sentinel path) so the
+    // next dispatched task starts from a clean buffer.
+    bufferWatcher.clearBuffer(task.assignedSessionId);
+    this.clearTaskTimer(taskId);
+    this.updateTask(taskId, { status: 'done', completedAt: Date.now(), output });
+    this.log(
+      'sentinel',
+      `Task "${task.title}" complete (soft completion — no sentinel block was output)`,
+      taskId,
+      task.assignedSessionId,
+      { taskOutput: output, agentTitle: task.assignedSessionTitle }
+    );
     this.emitState();
     this.dispatchReady();
     this.checkPlanCompletion();
@@ -561,6 +668,7 @@ ${task.description}${buildAgentProtocol(task.id)}`;
   }
 
   private clearTaskTimer(taskId: string): void {
+    this.softJudgeAt.delete(taskId);
     const timer = this.taskTimers.get(taskId);
     if (timer !== undefined) {
       clearTimeout(timer);

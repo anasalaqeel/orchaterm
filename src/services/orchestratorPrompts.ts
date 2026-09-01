@@ -302,6 +302,61 @@ Message: "${message}"`,
   };
 }
 
+// ── Soft-completion judge (idle fallback when no sentinel is printed) ────────
+
+export interface CompletionJudgeVerdict {
+  complete: boolean;
+  summary: string;
+}
+
+/**
+ * Asks a small model whether the task's goal was accomplished, based on the
+ * terminal output alone. Used when a dispatched task's terminal went quiet and
+ * returned to its prompt without printing the sentinel completion block.
+ */
+export function buildCompletionJudgePrompt(
+  taskTitle: string,
+  taskDescription: string,
+  terminalTail: string
+): { system: string; userContent: string } {
+  return {
+    system:
+      'You judge whether a terminal agent finished its assigned task. Reply with DONE or WAITING as the first word. Never explain before the first word.',
+    userContent: `A task was dispatched to an agent in a terminal. The terminal has gone quiet and returned to its prompt WITHOUT printing the required completion block, so the result must be judged from the output alone.
+
+TASK: ${taskTitle}
+INSTRUCTIONS GIVEN TO THE AGENT: ${taskDescription}
+
+LAST TERMINAL OUTPUT (ANSI stripped, may be truncated):
+"""
+${terminalTail}
+"""
+
+Rules:
+1. Reply DONE only if the output shows the instructed work was finished (the agent reported/completed it, or a plain command ran to completion). Reply WAITING if it is still working, streaming, showing a spinner, or failed with an error it has not recovered from.
+2. If the terminal is showing a question, permission dialog, or option menu, reply WAITING.
+3. First line: exactly DONE or WAITING. If DONE, add a second line: a 1-2 sentence factual summary of what was accomplished. No other text.`,
+  };
+}
+
+/**
+ * Parses the judge model's reply. The first line must be exactly DONE (or
+ * DONE with trailing punctuation) — anything else, including malformed or
+ * hedged replies, is treated as WAITING so a bad reply can never complete a
+ * task on its own.
+ */
+export function parseCompletionJudgeResponse(response: string): CompletionJudgeVerdict {
+  const lines = response.trim().split('\n');
+  const first = (lines[0] ?? '').trim().toUpperCase();
+  if (!/^DONE[.!]?$/.test(first)) return { complete: false, summary: '' };
+  const summary = lines.slice(1).join(' ').trim();
+  return {
+    complete: true,
+    summary:
+      summary || 'Task finished (terminal returned to its prompt; no completion block was output).',
+  };
+}
+
 // ── Pass-through fallback (no LLM needed) ────────────────────────────────────
 
 export function buildPassThroughBrief(
