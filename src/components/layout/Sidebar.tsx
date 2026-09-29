@@ -611,7 +611,7 @@ const s = {
     background: var(--bg-secondary);
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100%;
     flex-shrink: 0;
     overflow: hidden; /* clip content during width animation */
     will-change: width;

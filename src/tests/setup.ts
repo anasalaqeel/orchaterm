@@ -36,3 +36,46 @@ if (!('fonts' in document)) {
 if (typeof Element.prototype.scrollIntoView !== 'function') {
   Element.prototype.scrollIntoView = () => {};
 }
+
+// Node 22+ ships an experimental global `localStorage`/`sessionStorage`.
+// jsdom detects that global and defers to it instead of providing its own
+// working implementation — but without `--localstorage-file` the Node one is
+// inert (`undefined`), so both `localStorage` and `window.localStorage` end
+// up unusable. Polyfill a minimal in-memory Storage so persistence code
+// (agentStats, settings, etc.) works the same in tests regardless of the
+// Node version or flags the test runner happens to be invoked with.
+function createMemoryStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    getItem: (key) => (store.has(key) ? store.get(key)! : null),
+    setItem: (key, value) => {
+      store.set(key, String(value));
+    },
+    removeItem: (key) => {
+      store.delete(key);
+    },
+    clear: () => {
+      store.clear();
+    },
+    key: (index) => Array.from(store.keys())[index] ?? null,
+    get length() {
+      return store.size;
+    },
+  } as Storage;
+}
+
+for (const key of ['localStorage', 'sessionStorage'] as const) {
+  let usable = false;
+  try {
+    usable = typeof (globalThis as any)[key]?.clear === 'function';
+  } catch {
+    usable = false;
+  }
+  if (!usable) {
+    const storage = createMemoryStorage();
+    Object.defineProperty(globalThis, key, { configurable: true, value: storage });
+    if (typeof window !== 'undefined') {
+      Object.defineProperty(window, key, { configurable: true, value: storage });
+    }
+  }
+}

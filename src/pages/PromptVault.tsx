@@ -3,7 +3,6 @@ import { useDashboard } from '../context/DashboardContext';
 import { ConfirmDialog, Input, InfoTooltip, Select, MarkdownViewer } from '../components/ui';
 import { SavedPrompt, QuickAction } from '../types';
 import { DEFAULT_QUICK_ACTIONS } from '../utils/terminalThemes';
-import { WindowControls } from '../components/layout/WindowControls';
 import {
   Search,
   Copy,
@@ -279,7 +278,6 @@ export const PromptVaultView: React.FC = () => {
             <Plus className={styles.iconSm} />
             <span>Save Prompt</span>
           </button>
-          <WindowControls />
         </div>
       </div>
 

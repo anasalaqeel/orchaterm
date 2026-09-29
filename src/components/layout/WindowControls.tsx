@@ -2,9 +2,11 @@
  * WindowControls.tsx
  *
  * Caption buttons (minimize / maximize-restore / close) for the undecorated
- * main window. The native title bar is disabled in tauri.conf.json
- * (`decorations: false`), so these replace it — flush to the top-right corner
- * in the console tab strip, or inset with rounded corners on padded pages.
+ * main window on Windows/Linux (`decorations: false` in tauri.conf.json
+ * disables the native title bar there). Only ever mounted from
+ * <WindowTitleBar>, which is what decides whether this renders at all — see
+ * that file for why macOS never reaches this component (it gets a real
+ * native title bar instead, via `src-tauri/tauri.macos.conf.json`).
  *
  * Drag regions are handled separately via `data-tauri-drag-region` on the
  * surrounding chrome (Tauri's injected script starts a drag on mousedown and
@@ -30,16 +32,7 @@ function getWindow(): TauriWindow | null {
   return appWindow;
 }
 
-interface WindowControlsProps {
-  /**
-   * true → square corners, zero margin: sits flush against the window's
-   * top-right corner (console tab strip). false → rounded, slightly inset
-   * (padded page headers).
-   */
-  flush?: boolean;
-}
-
-export function WindowControls({ flush = false }: WindowControlsProps) {
+export function WindowControls() {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
@@ -54,41 +47,41 @@ export function WindowControls({ flush = false }: WindowControlsProps) {
         })
         .catch(() => {});
     sync();
-    const unlistenP = win.onResized(sync);
+    const unlistenResize = win.onResized(sync);
     return () => {
       disposed = true;
-      unlistenP.then((un) => un()).catch(() => {});
+      unlistenResize.then((un) => un()).catch(() => {});
     };
   }, []);
 
+  const minimize = () =>
+    getWindow()
+      ?.minimize()
+      .catch(() => {});
+  const toggleMaximize = () =>
+    getWindow()
+      ?.toggleMaximize()
+      .catch(() => {});
+  const close = () =>
+    getWindow()
+      ?.close()
+      .catch(() => {});
+
   return (
     <div
-      className={cx(wc.controls, flush ? wc.flush : wc.inset)}
+      className={wc.controls}
       // Swallow double-clicks so rapid clicking two buttons can't bubble into
       // any ancestor drag-region double-click → maximize toggle.
       onDoubleClick={(e) => e.stopPropagation()}
     >
-      <button
-        className={wc.btn}
-        title="Minimize"
-        aria-label="Minimize window"
-        onClick={() =>
-          getWindow()
-            ?.minimize()
-            .catch(() => {})
-        }
-      >
+      <button className={wc.btn} title="Minimize" aria-label="Minimize window" onClick={minimize}>
         <Minus size={13} />
       </button>
       <button
         className={wc.btn}
         title={maximized ? 'Restore' : 'Maximize'}
         aria-label={maximized ? 'Restore window' : 'Maximize window'}
-        onClick={() =>
-          getWindow()
-            ?.toggleMaximize()
-            .catch(() => {})
-        }
+        onClick={toggleMaximize}
       >
         {maximized ? <Copy size={11} /> : <Square size={11} />}
       </button>
@@ -96,11 +89,7 @@ export function WindowControls({ flush = false }: WindowControlsProps) {
         className={cx(wc.btn, wc.close)}
         title="Close"
         aria-label="Close window"
-        onClick={() =>
-          getWindow()
-            ?.close()
-            .catch(() => {})
-        }
+        onClick={close}
       >
         <X size={14} />
       </button>
@@ -108,29 +97,15 @@ export function WindowControls({ flush = false }: WindowControlsProps) {
   );
 }
 
-/* ── Styles ───────────────────────────────────────────────────────────── */
+/* ── Styles: Windows/Linux caption buttons ───────────────────────────────── */
 
 const wc = {
   controls: css`
     display: flex;
     align-items: stretch;
-    flex-shrink: 0;
-    height: 34px;
-    user-select: none;
-  `,
-  /* Flush variant — reaches the window edge (console tab strip). */
-  flush: css`
     align-self: stretch;
-    height: auto;
-    margin-left: 10px;
-  `,
-  /* Inset variant — floats inside a padded page header. */
-  inset: css`
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-color);
-    background: var(--bg-secondary);
-    overflow: hidden;
-    margin-left: 12px;
+    flex-shrink: 0;
+    user-select: none;
   `,
   btn: css`
     width: 42px;

@@ -21,7 +21,6 @@ import {
 } from '../components/ui';
 import { createProvider } from '../services/llm';
 import type { ProviderConfig, UseCaseProviders } from '../services/llm/types';
-import { WindowControls } from '../components/layout/WindowControls';
 import {
   Sun,
   Moon,
@@ -684,7 +683,6 @@ export const SettingsView: React.FC = () => {
             Control data persistence, manage configuration resources, and UI modes.
           </p>
         </div>
-        <WindowControls />
       </div>
 
       {/* Tabs */}

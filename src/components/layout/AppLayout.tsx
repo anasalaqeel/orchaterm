@@ -4,6 +4,7 @@ import { css } from '@emotion/css';
 import { motion } from 'motion/react';
 import { useDashboard } from '../../context/DashboardContext';
 import { Sidebar } from './Sidebar';
+import { WindowTitleBar } from './WindowTitleBar';
 import { DashboardView } from '../../pages/Overview';
 import { QuickSwitcher } from '../ui/QuickSwitcher';
 import { Toast } from '../ui/Toast';
@@ -113,17 +114,21 @@ export function AppLayout() {
 
   return (
     <div className={s.app}>
-      <Sidebar />
+      <WindowTitleBar />
 
-      <main className={s.main}>
-        {/* Always mounted — CSS toggles visibility */}
-        <div className={onDashboard ? s.visible : s.hidden}>
-          <DashboardView />
-        </div>
+      <div className={s.body}>
+        <Sidebar />
 
-        {/* All other routes */}
-        <Outlet />
-      </main>
+        <main className={s.main}>
+          {/* Always mounted — CSS toggles visibility */}
+          <div className={onDashboard ? s.visible : s.hidden}>
+            <DashboardView />
+          </div>
+
+          {/* All other routes */}
+          <Outlet />
+        </main>
+      </div>
 
       <QuickSwitcher />
       <Toast />
@@ -146,12 +151,19 @@ export function AppLayout() {
 const s = {
   app: css`
     display: flex;
+    flex-direction: column;
     height: 100vh;
     width: 100vw;
     overflow: hidden;
     background: var(--bg-canvas);
     color: var(--text-primary);
     position: relative;
+  `,
+  body: css`
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
   `,
   main: css`
     flex: 1;
