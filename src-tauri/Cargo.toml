@@ -1,6 +1,6 @@
 [package]
 name = "orchaterm"
-version = "0.4.0"
+version = "0.5.0"
 description = "Next-generation developer terminal built for the AI era of software engineering"
 authors = ["Anas Alaqeel"]
 license = "MIT"
