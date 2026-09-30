@@ -69,3 +69,15 @@ Pipelines allow you to coordinate multi-session workflows across different termi
 - When working with long-running CLI sessions, Orchaterm automatically captures rolling checkpoints.
 - If an agent hits a usage limit or stops, Orchaterm saves a checkpoint and notifies you — nothing runs or injects automatically.
 - To hand the work over: open a new tab, start whichever agent you want, then right-click the stopped session's tab and choose **Pass work to another terminal…**. Orchaterm waits for the new agent to finish booting, then injects a resume prompt pointing at the checkpoint file.
+
+---
+
+## 7. Orchestrator Chat Commands
+
+The right-panel chat is a command cockpit: besides answering questions and generating plans (Pipeline tab), it can act on the workspace when you explicitly ask:
+
+- **"What's running right now?"** — lists every tab in the Space with what it's running and checkpoint state (answered instantly, no LLM guesswork).
+- **"Checkpoint the claude tab"** — captures a checkpoint of that terminal and replies with the file path.
+- **"Pass the claude work to the gemini tab"** — captures a fresh checkpoint and opens the handover dialog with the destination preselected. You still confirm the handover — the chat never injects on its own.
+
+If a command names a tab that doesn't exist, the chat lists the open tabs instead of guessing.

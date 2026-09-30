@@ -288,18 +288,89 @@ export function buildIntentClassifyPrompt(message: string): {
   userContent: string;
 } {
   return {
-    system: "You are a strict classifier. Output exactly one word: 'chat' or 'plan'.",
+    system: "You are a strict classifier. Output exactly one word: 'chat', 'command', or 'plan'.",
     userContent: `You are an intent classifier for a developer orchestration tool.
 The user is talking to an orchestrator that can either:
 1. "chat": Answer questions, route a simple instruction to a terminal, or summarize.
-2. "plan": Break down a goal into a multi-step pipeline and assign agents to tasks.
+2. "command": Act on the workspace itself — show what is running, checkpoint a terminal, or hand one terminal's work to another terminal.
+3. "plan": Break down a goal into a multi-step pipeline and assign agents to tasks.
 
-Classify the following user message. If the message describes building a feature, creating a pipeline, or assigning multiple agents to a goal, classify it as "plan". Otherwise, classify it as "chat".
+Classify the following user message. If it asks the orchestrator to act on the workspace (status, checkpoint, passing work between terminals), classify it as "command". If it describes building a feature, creating a pipeline, or assigning multiple agents to a goal, classify it as "plan". Otherwise, classify it as "chat".
 
-Return ONLY the word "chat" or "plan". No other text.
+Return ONLY one word: "chat", "command", or "plan". No other text.
 
 Message: "${message}"`,
   };
+}
+
+export type IntentLabel = 'chat' | 'command' | 'plan';
+
+/** Parse the classifier's one-word reply. Order matters: 'command' before 'plan'. */
+export function parseIntentResponse(response: string): IntentLabel {
+  const res = response.toLowerCase().trim();
+  if (/\bcommand\b/.test(res)) return 'command';
+  if (/\bplan\b/.test(res)) return 'plan';
+  return 'chat';
+}
+
+// ── Command extraction (used after the classifier flags a command) ───────────
+
+export type ChatCommandAction = 'status' | 'checkpoint' | 'pass_work';
+
+export interface CommandRequest {
+  action: ChatCommandAction;
+  /** Source tab title for checkpoint / pass_work. */
+  source?: string;
+  /** Destination tab title for pass_work. */
+  destination?: string;
+}
+
+const COMMAND_ACTIONS: readonly string[] = ['status', 'checkpoint', 'pass_work'];
+
+export function buildCommandExtractPrompt(
+  message: string,
+  sessionTitles: string[]
+): { system: string; userContent: string } {
+  const titles =
+    sessionTitles.length > 0
+      ? sessionTitles.map((t) => `"${t}"`).join(', ')
+      : '(no terminals open)';
+  return {
+    system:
+      'You extract a structured command from a user message. Output ONLY a JSON object, no other text.',
+    userContent: `Available terminals: ${titles}
+
+Extract the user's command into JSON:
+{"action": "status" | "checkpoint" | "pass_work", "source": "<tab title>", "destination": "<tab title>"}
+
+Rules:
+- "status": the user wants to know what is running. Leave source and destination as "".
+- "checkpoint": save a checkpoint of one terminal. Set "source" to the matching tab title; use "" if none was named.
+- "pass_work": one terminal's work should continue in another terminal. "source" = the tab whose work moves, "destination" = the tab that takes over. Use "" for anything unknown.
+- Copy tab titles EXACTLY as they appear in the list. Never invent titles.
+
+User message: "${message}"`,
+  };
+}
+
+/** Extract the command JSON from the LLM reply. Returns null when unparseable or the action is unknown. */
+export function parseCommandResponse(response: string): CommandRequest | null {
+  const objMatch = response.match(/\{[\s\S]*\}/);
+  if (!objMatch) return null;
+  try {
+    const parsed = JSON.parse(objMatch[0]) as Record<string, unknown>;
+    const action = parsed.action;
+    if (typeof action !== 'string' || !COMMAND_ACTIONS.includes(action)) {
+      return null;
+    }
+    return {
+      action: action as ChatCommandAction,
+      source: typeof parsed.source === 'string' ? parsed.source.trim() : '',
+      destination: typeof parsed.destination === 'string' ? parsed.destination.trim() : '',
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ── Pass-through fallback (no LLM needed) ────────────────────────────────────

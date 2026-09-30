@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { copyToClipboard } from '../utils/clipboard';
 import {
   Workspace,
@@ -166,7 +166,9 @@ export interface DashboardContextType {
   lastCheckpoint: CheckpointSnapshot | null;
   /** Snapshot to show in the manual handover dialog; null = closed. Never set automatically. */
   pendingInjectionSnapshot: CheckpointSnapshot | null;
-  setPendingInjectionSnapshot: (s: CheckpointSnapshot | null) => void;
+  /** Target preselected for the open handover dialog (e.g. from a chat command); user can change it. */
+  pendingInjectionTargetId: string | null;
+  setPendingInjectionSnapshot: (s: CheckpointSnapshot | null, preselectTargetId?: string) => void;
   captureSessionNow: (sessionId: string) => Promise<CheckpointSnapshot | null>;
 }
 
@@ -295,8 +297,17 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [pipelineTemplates, setPipelineTemplates] = useState<PipelineTemplate[]>([]);
   const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
   const [lastCheckpoint, setLastCheckpoint] = useState<CheckpointSnapshot | null>(null);
-  const [pendingInjectionSnapshot, setPendingInjectionSnapshot] =
+  const [pendingInjectionSnapshot, setPendingInjectionSnapshotState] =
     useState<CheckpointSnapshot | null>(null);
+  const [pendingInjectionTargetId, setPendingInjectionTargetId] = useState<string | null>(null);
+  /** Opens/closes the manual handover dialog, optionally preselecting a target tab. */
+  const setPendingInjectionSnapshot = useCallback(
+    (s: CheckpointSnapshot | null, preselectTargetId?: string) => {
+      setPendingInjectionTargetId(s ? (preselectTargetId ?? null) : null);
+      setPendingInjectionSnapshotState(s);
+    },
+    []
+  );
   /** Sessions currently running agents under autonomous orchestration (the agent tabs). */
   const [agentSessionIds, setAgentSessionIds] = useState<string[]>([]);
   const [llmProviders, setLlmProviders] = useState(() =>
@@ -908,6 +919,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         updateTerminalSession,
         lastCheckpoint,
         pendingInjectionSnapshot,
+        pendingInjectionTargetId,
         setPendingInjectionSnapshot,
         captureSessionNow,
       }}

@@ -47,8 +47,12 @@ import {
   buildPlanGenPrompt,
   buildSummarisePrompt,
   buildIntentClassifyPrompt,
+  buildCommandExtractPrompt,
+  parseIntentResponse,
+  parseCommandResponse,
   parsePlanGenResponse,
   RawPlanTask,
+  CommandRequest,
 } from '../../services/orchestratorPrompts';
 import type { ChatMessage } from '../../services/llm/types';
 import { bufferWatcher } from '../../services/bufferWatcher';
@@ -246,7 +250,7 @@ function parseInject(
 function getSuggestions(sessionTitles: string[]): string[] {
   const first = sessionTitles[0] ?? 'the terminal';
   return [
-    'What is everyone working on right now?',
+    "What's running right now?",
     `Summarise what ${first} has done so far`,
     `Tell ${first} to write a brief status update`,
   ];
@@ -265,6 +269,9 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
     addSavedPrompt,
     showToast,
     llmProviders,
+    lastCheckpoint,
+    captureSessionNow,
+    setPendingInjectionSnapshot,
   } = useDashboard();
 
   /** Master AI switch — when off, every LLM-triggering feature is disabled. */
@@ -597,6 +604,99 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
     };
   }, [workspaceId]);
 
+  // ── Chat commands (status / checkpoint / pass_work) ─────────────────────────
+
+  const pushSystemMessage = useCallback((content: string) => {
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'system', content }]);
+  }, []);
+
+  const executeChatCommand = useCallback(
+    async (cmd: CommandRequest) => {
+      // Same title matching as plan generation: exact, then substring, then the
+      // sole session. Anything unmatched is reported — never silently rerouted.
+      const resolveSession = (title: string) => {
+        const lc = title.toLowerCase().trim();
+        if (!lc) return undefined;
+        return (
+          groupSessions.find((s) => s.title.toLowerCase() === lc) ??
+          groupSessions.find(
+            (s) => s.title.toLowerCase().includes(lc) || lc.includes(s.title.toLowerCase())
+          ) ??
+          (groupSessions.length === 1 ? groupSessions[0] : undefined)
+        );
+      };
+      const tabList = groupSessions.map((s) => `"${s.title}"`).join(', ') || '(none open)';
+
+      if (cmd.action === 'status') {
+        if (groupSessions.length === 0) {
+          pushSystemMessage('No terminal tabs are open in this Space.');
+          return;
+        }
+        const agentIds = new Set(autonomousOrchestrator.getActiveSessionIds());
+        const lines = groupSessions.map((s) => {
+          const parts = [
+            agentIds.has(s.id) ? 'agent' : 'shell',
+            s.dynamicTitle ? `running ${s.dynamicTitle}` : null,
+            s.isCheckpointing ? 'checkpointing…' : null,
+          ].filter(Boolean);
+          const ck =
+            lastCheckpoint && lastCheckpoint.sessionId === s.id
+              ? ` · last checkpoint: ${lastCheckpoint.filePath.split(/[\\/]/).pop()}`
+              : '';
+          return `• ${s.title} — ${parts.join(', ')}${ck}`;
+        });
+        pushSystemMessage(`📋 Current tabs:\n${lines.join('\n')}`);
+        return;
+      }
+
+      if (cmd.action === 'checkpoint') {
+        const session = resolveSession(cmd.source ?? '');
+        if (!session) {
+          pushSystemMessage(`⚠ Which tab should I checkpoint? Open tabs: ${tabList}`);
+          return;
+        }
+        pushSystemMessage(`📷 Creating checkpoint for "${session.title}"…`);
+        const snapshot = await captureSessionNow(session.id);
+        if (snapshot) {
+          pushSystemMessage(`✅ Checkpoint saved: ${snapshot.filePath}`);
+        }
+        return;
+      }
+
+      // pass_work
+      const source = resolveSession(cmd.source ?? '');
+      const destination = resolveSession(cmd.destination ?? '');
+      if (!source || !destination) {
+        const missing = [
+          !source ? `source ("${cmd.source || '?'}")` : null,
+          !destination ? `destination ("${cmd.destination || '?'}")` : null,
+        ]
+          .filter(Boolean)
+          .join(' and ');
+        pushSystemMessage(`⚠ Could not match ${missing} to an open tab. Open tabs: ${tabList}`);
+        return;
+      }
+      if (source.id === destination.id) {
+        pushSystemMessage('⚠ Source and destination are the same tab — nothing to hand over.');
+        return;
+      }
+      pushSystemMessage(
+        `🔀 Capturing "${source.title}" — confirm the handover to "${destination.title}" in the dialog…`
+      );
+      const snapshot = await captureSessionNow(source.id);
+      if (snapshot) {
+        setPendingInjectionSnapshot(snapshot, destination.id);
+      }
+    },
+    [
+      groupSessions,
+      lastCheckpoint,
+      captureSessionNow,
+      setPendingInjectionSnapshot,
+      pushSystemMessage,
+    ]
+  );
+
   // ── Send message ──────────────────────────────────────────────────────────
 
   const handleSend = useCallback(
@@ -632,7 +732,36 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
         .complete([{ role: 'user', content: intentContent }], intentSystem)
         .then((res) => {
           if (planAbort.signal.aborted) return;
-          const intent = /\bplan\b/.test(res.toLowerCase().trim()) ? 'plan' : 'chat';
+          const intent = parseIntentResponse(res);
+          if (intent === 'command') {
+            setClassifying(false);
+            const { system: cmdSystem, userContent: cmdContent } = buildCommandExtractPrompt(
+              text,
+              groupSessions.map((s) => s.title)
+            );
+            llmProviders.planGen
+              .complete([{ role: 'user', content: cmdContent }], cmdSystem)
+              .then((cmdRes) => {
+                if (planAbort.signal.aborted) return;
+                const cmd = parseCommandResponse(cmdRes);
+                if (!cmd) {
+                  pushSystemMessage(
+                    `⚠ Couldn't interpret that command. Try: "what's running?", ` +
+                      `"checkpoint <tab>", or "pass <tab> work to <tab>".`
+                  );
+                  return;
+                }
+                void executeChatCommand(cmd);
+              })
+              .catch((err: Error) => {
+                if (planAbort.signal.aborted) return;
+                pushSystemMessage(`⚠ Command failed: ${err.message}`);
+              })
+              .finally(() => {
+                planAbortRef.current = null;
+              });
+            return;
+          }
           if (intent === 'plan') {
             setClassifying(false);
             setGeneratingPlan(true);
@@ -844,6 +973,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
       workspaceId,
       llmProviders,
       onPendingPlan,
+      executeChatCommand,
+      pushSystemMessage,
     ]
   );
 

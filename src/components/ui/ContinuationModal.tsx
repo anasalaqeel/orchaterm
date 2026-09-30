@@ -23,6 +23,8 @@ interface ContinuationModalProps {
   snapshot: CheckpointSnapshot;
   sessions: TerminalSession[];
   workspaces: Workspace[];
+  /** Target preselected by the caller (e.g. a chat command); the user can still change it. */
+  preselectedTargetId?: string | null;
   onDismiss: () => void;
 }
 
@@ -94,11 +96,18 @@ export const ContinuationModal: React.FC<ContinuationModalProps> = ({
   snapshot,
   sessions,
   workspaces,
+  preselectedTargetId,
   onDismiss,
 }) => {
   const { setActiveWorkspaceId, setViewMode } = useDashboard();
 
-  const [selectedId, setSelectedId] = useState<string>(sessions[0]?.id ?? '');
+  const [selectedId, setSelectedId] = useState<string>(
+    preselectedTargetId ?? sessions[0]?.id ?? ''
+  );
+  // Reconcile when a preselection arrives after mount (e.g. chat-command handover).
+  useEffect(() => {
+    if (preselectedTargetId) setSelectedId(preselectedTargetId);
+  }, [preselectedTargetId]);
   const [injecting, setInjecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusText, setStatusText] = useState<string | null>(null);

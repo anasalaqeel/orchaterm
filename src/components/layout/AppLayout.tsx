@@ -58,6 +58,7 @@ export function AppLayout() {
   const {
     isLoaded,
     pendingInjectionSnapshot,
+    pendingInjectionTargetId,
     setPendingInjectionSnapshot,
     terminalSessions,
     workspaces,
@@ -132,6 +133,7 @@ export function AppLayout() {
           snapshot={pendingInjectionSnapshot}
           sessions={terminalSessions}
           workspaces={workspaces}
+          preselectedTargetId={pendingInjectionTargetId}
           onDismiss={() => setPendingInjectionSnapshot(null)}
         />
       )}
