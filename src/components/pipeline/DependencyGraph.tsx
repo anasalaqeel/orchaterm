@@ -22,6 +22,7 @@ const STATUS_FILL: Record<OrchestratorTask['status'], string> = {
   running: 'var(--color-brand)',
   done: 'var(--color-success)',
   failed: 'var(--color-error)',
+  cancelled: 'var(--text-tertiary)',
 };
 
 const STATUS_STROKE: Record<OrchestratorTask['status'], string> = {
@@ -29,6 +30,7 @@ const STATUS_STROKE: Record<OrchestratorTask['status'], string> = {
   running: 'var(--color-brand)',
   done: 'var(--color-success)',
   failed: 'var(--color-error)',
+  cancelled: 'var(--text-tertiary)',
 };
 
 interface LaidOut {

@@ -68,7 +68,7 @@ describe('bufferWatcher sentinel scan throttle', () => {
   it('detects a sentinel that arrives in a single chunk immediately (no throttle wait)', async () => {
     const sid = nextSid('immediate');
     const onSentinel = vi.fn();
-    await bufferWatcher.watchForSentinel(sid, onSentinel, undefined, 0);
+    await bufferWatcher.watchForSentinel(sid, { onSentinel, echoSuppressMs: 0 });
 
     feed(
       sid,
@@ -86,7 +86,7 @@ describe('bufferWatcher sentinel scan throttle', () => {
     vi.useFakeTimers();
     const sid = nextSid('throttle');
     const onSentinel = vi.fn();
-    await bufferWatcher.watchForSentinel(sid, onSentinel, undefined, 0);
+    await bufferWatcher.watchForSentinel(sid, { onSentinel, echoSuppressMs: 0 });
 
     // First chunk: no sentinel yet — runs an immediate (unthrottled) scan that misses,
     // and marks this instant as the last-scan time.
@@ -107,6 +107,73 @@ describe('bufferWatcher sentinel scan throttle', () => {
     await vi.advanceTimersByTimeAsync(50);
     expect(onSentinel).toHaveBeenCalledTimes(1);
     expect(onSentinel.mock.calls[0][0].taskId).toBe('t2');
+
+    bufferWatcher.unwatch(sid);
+  });
+});
+
+describe('bufferWatcher echo-anchored suppression', () => {
+  const PROMPT = 'TASK ID: t9\nYOUR TASK: run the build now.\nUse only when genuinely blocked.';
+
+  it('ends suppression as soon as the prompt echo completes, keeping in-window output', async () => {
+    // An instant command: echo AND its output arrive well inside the old
+    // 800ms window. The anchor (prompt tail) must end suppression early so
+    // the command output survives in the buffer instead of being wiped.
+    const sid = nextSid('anchor');
+    const onSentinel = vi.fn();
+    await bufferWatcher.watchForSentinel(sid, {
+      onSentinel,
+      echoSuppressMs: 800,
+      echoText: PROMPT,
+    });
+
+    // Chunk 1: start of the echo (prompt head) — suppressed, anchor not seen.
+    feed(sid, 'TASK ID: t9\nYOUR TASK: run the');
+    // Chunk 2: echo tail (contains the anchor) + instant command output.
+    feed(sid, ' build now.\nUse only when genuinely blocked.\nBUILD OK\n$ ');
+
+    const buf = bufferWatcher.getBuffer(sid);
+    expect(buf).toContain('BUILD OK'); // in-window output preserved
+    expect(buf).not.toContain('TASK ID'); // pre-anchor echo discarded
+
+    bufferWatcher.unwatch(sid);
+  });
+
+  it('detects a sentinel arriving immediately after the anchor', async () => {
+    const sid = nextSid('anchor-sentinel');
+    const onSentinel = vi.fn();
+    await bufferWatcher.watchForSentinel(sid, {
+      onSentinel,
+      echoSuppressMs: 800,
+      echoText: PROMPT,
+    });
+
+    feed(
+      sid,
+      PROMPT +
+        '\n###ORCHATERM_DONE###\ntask_id: t9\nsummary: Built it.\n' +
+        'files_modified: none\nneeds: none\n###ORCHATERM_END###\n'
+    );
+
+    expect(onSentinel).toHaveBeenCalledTimes(1);
+    expect(onSentinel.mock.calls[0][0].taskId).toBe('t9');
+
+    bufferWatcher.unwatch(sid);
+  });
+
+  it('still wipes echo during the window when the anchor has not appeared', async () => {
+    // TUI-agent case: the prompt is rendered through the agent's widget, not
+    // echoed verbatim — the fallback window must keep discarding data.
+    const sid = nextSid('no-anchor');
+    const onSentinel = vi.fn();
+    await bufferWatcher.watchForSentinel(sid, {
+      onSentinel,
+      echoSuppressMs: 800,
+      echoText: PROMPT,
+    });
+
+    feed(sid, 'TUI redraw noise without the prompt tail');
+    expect(bufferWatcher.getBuffer(sid)).toBe('');
 
     bufferWatcher.unwatch(sid);
   });

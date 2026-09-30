@@ -8,6 +8,8 @@
  * provider.complete([{ role: 'user', content: userContent }], system).
  */
 
+import type { DetectionLabel } from '../types';
+
 export const DETECTION_SYSTEM_PROMPT = `You are monitoring a terminal session running a coding agent.
 Classify the agent's current state as EXACTLY one of these labels:
 
@@ -19,6 +21,30 @@ STOPPED       — agent exited, crashed, or terminated unexpectedly (shell promp
 TASK_COMPLETE — agent finished the task successfully on its own
 
 Respond with ONLY the label — one word, no explanation, no punctuation.`;
+
+export const DETECTION_LABELS = [
+  'PROGRESS',
+  'STALLED',
+  'LIMIT_HIT',
+  'STOPPED',
+  'TASK_COMPLETE',
+] as const;
+
+/**
+ * Extracts the detection label from the model's reply. Models frequently
+ * decorate the answer despite the prompt ("STOPPED.", "Label: STOPPED",
+ * trailing prose) — an exact string compare silently degraded all of those to
+ * PROGRESS, so auto-detection never fired. The label is matched as a
+ * word anywhere in the reply; anything unrecognisable falls back to PROGRESS
+ * (the safe, non-triggering label).
+ */
+export function parseDetectionLabel(response: string): DetectionLabel {
+  const up = response.trim().toUpperCase();
+  for (const label of DETECTION_LABELS) {
+    if (new RegExp(`\\b${label}\\b`).test(up)) return label;
+  }
+  return 'PROGRESS';
+}
 
 export const CHECKPOINT_SYSTEM_PROMPT = `You are a technical writer summarizing a coding agent session for handoff to a new agent.
 You will receive raw terminal output. Extract only meaningful technical content — ignore shell prompts, file listings, and build noise.

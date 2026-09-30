@@ -17,6 +17,10 @@ export interface AgentNeedsRequest {
 /** Events emitted by AutonomousOrchestrator into the GroupChat feed. */
 export type RoutingEvent =
   | { type: 'relayed'; from: string; to: string; message: string }
-  | { type: 'relay-skipped'; reason: 'interrupt-policy' | 'no-relevant-content'; target: string }
+  | {
+      type: 'relay-skipped';
+      reason: 'interrupt-policy' | 'no-relevant-content' | 'unparseable-reply';
+      target: string;
+    }
   | { type: 'needs-answered'; requestingAgent: string; question: string; answer: string }
   | { type: 'needs-failed'; requestingAgent: string; error: string };

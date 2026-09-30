@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
 import { Workspace, TaskLog, OrchestratorPlan } from '../../types';
-import { orchestratorEngine } from '../../services/orchestratorEngine';
+import { workspaceEngines } from '../../services/engineRegistry';
 
 interface WorkspacePanelProps {
   workspace: Workspace;
@@ -49,7 +49,7 @@ function formatDuration(ms: number): string {
 const OrchestratorStatus: React.FC<{ plan: OrchestratorPlan | null }> = ({ plan }) => {
   if (!plan) return <p className={s.muted}>No plan running</p>;
 
-  const counts = { pending: 0, running: 0, done: 0, failed: 0 };
+  const counts = { pending: 0, running: 0, done: 0, failed: 0, cancelled: 0 };
   plan.tasks.forEach((t) => counts[t.status]++);
   const total = plan.tasks.length;
   const progress = total > 0 ? (counts.done / total) * 100 : 0;
@@ -123,8 +123,10 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    return orchestratorEngine.onStateChange((p) => setLivePlan({ ...p }));
-  }, []);
+    const engine = workspaceEngines.get(workspace.id);
+    setLivePlan(engine.getCurrentPlan());
+    return engine.onStateChange((p) => setLivePlan({ ...p }));
+  }, [workspace.id]);
   useEffect(() => {
     if (editing) textareaRef.current?.focus();
   }, [editing]);

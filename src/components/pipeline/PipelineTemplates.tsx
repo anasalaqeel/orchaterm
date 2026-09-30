@@ -12,7 +12,7 @@ import { useDashboard } from '../../context/DashboardContext';
 import { ConfirmDialog, Input, Select } from '../ui';
 import { useDragReorder } from '../../hooks';
 import { ExecutionModeToggle, ExecutionModeBadge, DraggableTaskRow, TaskRow } from './index';
-import { orchestratorEngine } from '../../services/orchestratorEngine';
+import { workspaceEngines } from '../../services/engineRegistry';
 import type {
   OrchestratorPlan,
   PipelineTemplate,
@@ -128,15 +128,17 @@ export const PipelineTemplates: React.FC<PipelineTemplatesProps> = ({ workspaceI
       executionMode: template.executionMode,
     };
 
-    orchestratorEngine.updateConfig({
+    workspaceEngines.get(targetWorkspaceId).updateConfig({
       relayProvider: llmProviders.relay,
+      plannerProvider: llmProviders.planGen,
       autoAnswerProvider: llmProviders.autoAnswer,
       taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
       interactionMode: settings.conductorInteractionMode,
       sessionTitles: new Map(sessionsInScope.map((s) => [s.id, s.title])),
+      workspacePath: workspace.path,
     });
 
-    orchestratorEngine.start(plan);
+    workspaceEngines.get(targetWorkspaceId).start(plan);
     addPlan(plan);
     void incrementTemplateUse(template.id);
     showToast(`Pipeline started in "${workspace.name}"`, 'success');

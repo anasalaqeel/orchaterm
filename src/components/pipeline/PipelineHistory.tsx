@@ -7,10 +7,11 @@
  */
 import React, { useMemo, useState } from 'react';
 import { css, cx } from '@emotion/css';
-import { ChevronDown, ChevronUp, RotateCcw, BookmarkPlus } from 'lucide-react';
+import { ChevronDown, ChevronUp, RotateCcw, BookmarkPlus, Play } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
-import type { OrchestratorPlan, PipelineTemplate } from '../../types';
+import type { OrchestratorPlan, OrchestratorTask, PipelineTemplate } from '../../types';
 import { formatRelative } from '../../utils';
+import { TaskOutputReplay } from './TaskOutputReplay';
 import { PLAN_STATUS_COLORS, PLAN_STATUS_ICONS, ExecutionModeBadge, TaskRow } from './index';
 
 interface PipelineHistoryProps {
@@ -33,6 +34,7 @@ export const PipelineHistory: React.FC<PipelineHistoryProps> = ({ workspaceId, o
   const { plans, addPipelineTemplate, showToast } = useDashboard();
   const [filter, setFilter] = useState<FilterKey>('all');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [replayTask, setReplayTask] = useState<OrchestratorTask | null>(null);
 
   const filtered = useMemo(() => {
     return plans
@@ -165,7 +167,18 @@ export const PipelineHistory: React.FC<PipelineHistoryProps> = ({ workspaceId, o
                           .filter((t) => t.output?.summary)
                           .map((t) => (
                             <div key={t.id} className={s.summaryItem}>
-                              <span className={s.summaryLabel}>{t.title}</span>
+                              <span className={s.summaryLabel}>
+                                {t.title}
+                                {t.output?.raw && (
+                                  <button
+                                    className={s.replayBtn}
+                                    onClick={() => setReplayTask(t)}
+                                    title="Replay this task's terminal output"
+                                  >
+                                    <Play size={9} /> replay
+                                  </button>
+                                )}
+                              </span>
                               <span className={s.summaryText}>{t.output!.summary}</span>
                             </div>
                           ))}
@@ -197,6 +210,8 @@ export const PipelineHistory: React.FC<PipelineHistoryProps> = ({ workspaceId, o
           })}
         </div>
       )}
+
+      {replayTask && <TaskOutputReplay task={replayTask} onClose={() => setReplayTask(null)} />}
     </div>
   );
 };
@@ -375,6 +390,24 @@ const s = {
     font-size: 10px;
     font-weight: 700;
     color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  `,
+  replayBtn: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 9px;
+    font-weight: 600;
+    padding: 0;
+    cursor: pointer;
+    &:hover {
+      color: var(--color-brand);
+    }
   `,
   summaryText: css`
     font-size: 11px;

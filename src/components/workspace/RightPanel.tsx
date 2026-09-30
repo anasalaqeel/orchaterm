@@ -6,7 +6,7 @@
  * buildTasks, executionMode) so both tabs see the same live data, and so the
  * Chat tab can hand a generated plan off to the Pipeline tab.
  *
- * Also subscribes to orchestratorEngine log/state events — the chat feed
+ * Also subscribes to this workspace's engine log/state events — the chat feed
  * surfaces log lines via a window event so GroupChat can render them as
  * "conductor" rows without owning the subscription.
  *
@@ -19,7 +19,7 @@ import { MessageSquare, Workflow } from 'lucide-react';
 import { GroupChat } from '../ui/GroupChat';
 import { PipelinePanel } from '../pipeline/PipelinePanel';
 import { useDashboard } from '../../context/DashboardContext';
-import { orchestratorEngine } from '../../services/orchestratorEngine';
+import { workspaceEngines } from '../../services/engineRegistry';
 import type { OrchestratorPlan, OrchestratorTask, PipelineTemplate } from '../../types';
 
 type ActiveTab = 'chat' | 'pipeline';
@@ -36,6 +36,7 @@ interface PendingPlan {
 
 export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
   const {
+    workspaces,
     spaces,
     terminalSessions,
     activeSpaceId,
@@ -49,6 +50,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
   } = useDashboard();
 
   const aiEnabled = settings.aiEnabled !== false;
+
+  const workspacePath = workspaces.find((w) => w.id === workspaceId)?.path ?? '';
 
   const activeSpace = spaces.find((g) => g.id === activeSpaceId);
   const allSessions = terminalSessions.filter((s) => s.workspaceId === workspaceId);
@@ -81,15 +84,15 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
 
   // ── Engine subscription: state + log → re-renders + chat feed relay ────────
   useEffect(() => {
-    const unsubLog = orchestratorEngine.onLog((entry) => {
+    const unsubLog = workspaceEngines.get(workspaceId).onLog((entry) => {
       if (entry.workspaceId && entry.workspaceId !== workspaceId) return;
       // Forward to GroupChat via a CustomEvent so it can render a "conductor" row.
       window.dispatchEvent(new CustomEvent('orchaterm:conductor-log', { detail: entry }));
     });
-    const unsubState = orchestratorEngine.onStateChange((plan) => {
+    const unsubState = workspaceEngines.get(workspaceId).onStateChange((plan) => {
       setLivePlan({ ...plan });
     });
-    const existing = orchestratorEngine.getCurrentPlan();
+    const existing = workspaceEngines.get(workspaceId).getCurrentPlan();
     if (existing) setLivePlan({ ...existing });
     return () => {
       unsubLog();
@@ -130,7 +133,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
   const runPlan = useCallback(
     (plan: PendingPlan) => {
       if (!aiEnabled) return;
-      const currentPlan = orchestratorEngine.getCurrentPlan();
+      const currentPlan = workspaceEngines.get(workspaceId).getCurrentPlan();
       if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
         showToast('A plan is already running — stop it first via the Live Run tab', 'error');
         return;
@@ -147,7 +150,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
             dependsOn: executionMode === 'sequential' && idx > 0 ? [plan.tasks[idx - 1].id] : [],
           }));
 
-      const unassigned = finalTasks.filter((t) => !t.assignedSessionId);
+      // User gates never touch a terminal, so they don't need a session.
+      const unassigned = finalTasks.filter((t) => !t.assignedSessionId && !t.askUserQuestion);
       if (unassigned.length > 0) {
         showToast(
           `Assign a terminal to "${unassigned[0].title}"${unassigned.length > 1 ? ` (+${unassigned.length - 1} more)` : ''} before running`,
@@ -169,15 +173,17 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
         executionMode: declaresDeps ? undefined : executionMode,
       };
 
-      orchestratorEngine.updateConfig({
+      workspaceEngines.get(workspaceId).updateConfig({
         relayProvider: llmProviders.relay,
+        plannerProvider: llmProviders.planGen,
         autoAnswerProvider: llmProviders.autoAnswer,
         taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
         interactionMode: settings.conductorInteractionMode,
         sessionTitles: new Map(groupSessions.map((s) => [s.id, s.title])),
+        workspacePath,
       });
 
-      orchestratorEngine.start(orchPlan);
+      workspaceEngines.get(workspaceId).start(orchPlan);
       addPlan(orchPlan);
       setPendingPlan(null);
       setPinnedSubTab('live');
@@ -188,6 +194,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
       executionMode,
       activeSpaceId,
       workspaceId,
+      workspacePath,
       groupSessions,
       settings,
       addPlan,
@@ -215,7 +222,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
 
   const handleDismissLive = useCallback(() => {
     setLivePlan(null);
-    orchestratorEngine.clearPlan();
+    workspaceEngines.get(workspaceId).clearPlan();
   }, []);
 
   // ── Re-run an existing plan (from Live Run terminal state or History) ───────
@@ -228,7 +235,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
         showToast('Enable AI features to re-run a pipeline', 'error');
         return;
       }
-      const currentPlan = orchestratorEngine.getCurrentPlan();
+      const currentPlan = workspaceEngines.get(workspaceId).getCurrentPlan();
       if (currentPlan?.status === 'running' || currentPlan?.status === 'paused') {
         showToast('A plan is already running — stop it first via the Live Run tab', 'error');
         return;
@@ -239,12 +246,14 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
       }
 
       const newIds = sourcePlan.tasks.map(() => crypto.randomUUID());
+      // Spread the source task so capability fields (verifyCommand,
+      // askUserQuestion) survive the re-run; only identity/run-state is reset.
       const freshTasks: OrchestratorTask[] = sourcePlan.tasks.map((t, i) => ({
+        ...t,
         id: newIds[i],
-        title: t.title,
-        description: t.description,
-        assignedSessionId: t.assignedSessionId,
-        assignedSessionTitle: t.assignedSessionTitle,
+        startedAt: undefined,
+        completedAt: undefined,
+        output: undefined,
         dependsOn: t.dependsOn
           .map((oldId) => {
             const idx = sourcePlan.tasks.findIndex((tt) => tt.id === oldId);
@@ -265,15 +274,17 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
         executionMode: sourcePlan.executionMode,
       };
 
-      orchestratorEngine.updateConfig({
+      workspaceEngines.get(workspaceId).updateConfig({
         relayProvider: llmProviders.relay,
+        plannerProvider: llmProviders.planGen,
         autoAnswerProvider: llmProviders.autoAnswer,
         taskTimeoutMinutes: settings.conductorTaskTimeoutMinutes,
         interactionMode: settings.conductorInteractionMode,
         sessionTitles: new Map(groupSessions.map((s) => [s.id, s.title])),
+        workspacePath,
       });
 
-      orchestratorEngine.start(orchPlan);
+      workspaceEngines.get(workspaceId).start(orchPlan);
       addPlan(orchPlan);
       setPendingPlan(null);
       setActiveTab('pipeline');
@@ -287,6 +298,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
     [
       aiEnabled,
       workspaceId,
+      workspacePath,
       activeSpaceId,
       groupSessions,
       settings,

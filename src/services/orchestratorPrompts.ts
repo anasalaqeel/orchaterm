@@ -26,6 +26,10 @@ export interface RawPlanTask {
   description: string;
   assignedSessionTitle: string;
   dependsOn: string[];
+  /** Optional post-completion verification command (see PLAN_GEN_SYSTEM_PROMPT). */
+  verify?: string;
+  /** Optional user gate question (see PLAN_GEN_SYSTEM_PROMPT). */
+  askUser?: string;
 }
 
 // ── System prompts ────────────────────────────────────────────────────────────
@@ -55,10 +59,17 @@ JSON format:
       "title": "Short task name",
       "description": "Precise, self-contained instructions for the agent — ONLY the actual work to perform. Be specific and direct.",
       "assignedSessionTitle": "<MUST match one of the available agent names exactly>",
-      "dependsOn": []
+      "dependsOn": [],
+      "verify": "<optional: one shell command that PROVES this task succeeded, run automatically after the agent finishes. Omit if no meaningful check exists.>",
+      "askUser": "<optional: the exact question to ask the user before this task runs, when their input/approval is required mid-flow. Omit for normal tasks.>"
     }
   ]
 }
+
+Verification rules ("verify"):
+- Prefer a command whose EXIT CODE is 0 exactly when the task succeeded, e.g. "npm test -- --runTestsByPath tests/auth.test.ts", "node -e \\"require('./src/api')\\"", "git diff --name-only -- src/ | grep -q login".
+- Keep it side-effect-free where possible (tests/builds fine; never deploy or mutate remote state).
+- Omit "verify" entirely when no such command exists — do not invent weak checks.
 
 CRITICAL — description must contain ONLY the work itself, never routing/meta language:
 The description is typed directly into the assigned agent's terminal as its instructions. It must read like a task you'd hand a person, NOT like a sentence about the orchestration system. Routing information (which tab/agent handles this) already lives in "assignedSessionTitle" — never repeat it inside "description".
@@ -86,7 +97,8 @@ Other rules:
 - Specify enough in each task description that the agent can work without waiting — include interface shapes, file paths, function signatures if known.
 - Each task description must stand alone — the agent receives nothing else about the plan.
 - Assign tasks based on agent names/roles when they suggest specialization.
-- dependsOn values must exactly match the "title" field of another task in the tasks array.`;
+- dependsOn values must exactly match the "title" field of another task in the tasks array.
+- User gates ("askUser"): when the flow genuinely cannot continue without the user's decision (approval to deploy, choosing between options, providing a secret), emit a task whose only fields are "title", "askUser" (the exact question), "assignedSessionTitle" (any agent — it runs no terminal work) and "dependsOn". The orchestrator asks the user and feeds their answer to downstream tasks. Never use gates for anything an agent can decide itself.`;
 
 // ── Prompt builders ───────────────────────────────────────────────────────────
 
@@ -173,15 +185,15 @@ Signs it IS waiting: a selection cursor ("> 1."), a [y/N] bracket, a permission 
 Signs it is NOT waiting: the question appears mid-output, the agent is still writing (more lines follow the question), or it is just status/log text that contains a "?".
 If NOT waiting → return UNKNOWN immediately.
 
-STEP 2 — Identify the prompt and answer it using these rules (apply in order):
+STEP 2 — Identify the prompt and answer it using these rules (apply in order). The default posture is CAUTIOUS: grant only what a careful developer would grant unattended.
 1. Navigation footer lines ("↑/↓ Navigate", "tab Amend", "esc to cancel", "e edit command") are UI hints — NOT answer options. Ignore them when choosing.
 2. "Press Enter to continue" / "press any key" / empty-input continue prompts → ENTER
 3. Yes/no question ([y/N], [Y/n], "Do you want to", "Would you like to", "Shall we", etc.) → y
 4. Numbered option menu where option 1 is "Yes", "Allow", "Proceed", "Continue", or any affirmative/permissive action → 1
-5. Permission to read a file, execute a command, install a package, write a file, or run bash in the project → 1 (always allow for project work)
-6. "Always allow" option exists (persist permission) → pick that option number over a one-time allow
+5. Permission to READ files, run non-destructive project commands (tests, builds, lint), or run bash in the project → pick the ONE-TIME allow option.
+6. Permission to WRITE/modify files or install packages → pick the ONE-TIME allow option. NEVER pick an "always allow" / "don't ask again" option — persistent grants must come from a human.
 7. The agent is directly asking a question that requires specific factual input (e.g. "What is the database name?", "Enter your API key:", "Enter filename:") → UNKNOWN
-8. The prompt would permanently destroy data, force-push to production, or drop a live database → UNKNOWN
+8. The prompt would permanently destroy data, push to a remote, deploy, drop a database, change permissions, or anything irreversible → UNKNOWN
 
 Return ONLY the answer token. No quotes, no explanation.
 Valid tokens: single character (y/n/1/2/3/4), the word ENTER, or UNKNOWN.
@@ -189,7 +201,8 @@ Examples:
   "Do you want to proceed?  > 1. Yes  2. No" → 1
   "[y/N]" → y
   "Press Enter to continue" → ENTER
-  "Requesting permission for: npm install …  1. Yes  2. Yes, and always allow  3. No" → 2
+  "Requesting permission for: npm install …  1. Yes  2. Yes, and always allow  3. No" → 1
+  "Requesting permission for: rm -rf node_modules …  1. Yes  2. No" → UNKNOWN
   "Enter your commit message:" → UNKNOWN
   (agent mid-output that mentions "should we do X?") → UNKNOWN`,
   };
@@ -206,7 +219,7 @@ export function buildRoutingPrompt(
 
   return {
     system:
-      'You are a routing agent for a multi-agent coding team. Be decisive. Output exactly one line.',
+      'You are a routing agent for a multi-agent coding team. Be decisive. Output ONLY valid JSON — no prose, no markdown fences.',
     userContent: `You are monitoring a team of AI coding agents.
 
 Agent "${fromTitle}" just produced this output:
@@ -223,9 +236,40 @@ Rules:
 3. Keep any injected message under 80 words. Be direct — no filler.
 4. Do NOT relay if the agents are working on completely independent tasks.
 
-If nothing should be relayed, output exactly: NO_RELAY
-If relaying, output exactly one line: INJECT → <exact-terminal-title>: <message>`,
+Respond with ONLY one of these JSON objects:
+{"relay": false}
+{"relay": true, "target": "<exact terminal title of the receiving agent>", "message": "<the message to inject, under 80 words>"}`,
   };
+}
+
+export type RoutingDecision =
+  { type: 'no_relay' } | { type: 'inject'; targetTitle: string; message: string };
+
+/**
+ * Parses the routing model's JSON reply. Free-text contracts ("INJECT → …")
+ * silently degraded to no-ops whenever the model drifted off format; JSON with
+ * strict validation lets the caller surface unparseable replies instead of
+ * swallowing them. Returns null when the reply is not a valid decision.
+ */
+export function parseRoutingDecision(response: string): RoutingDecision | null {
+  const match = response.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[0]);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const obj = parsed as Record<string, unknown>;
+
+  if (obj.relay === false) return { type: 'no_relay' };
+  if (obj.relay !== true) return null;
+
+  const target = typeof obj.target === 'string' ? obj.target.trim() : '';
+  const message = typeof obj.message === 'string' ? obj.message.trim() : '';
+  if (!target || !message) return null;
+  return { type: 'inject', targetTitle: target, message };
 }
 
 export function buildSummarisePrompt(
@@ -371,6 +415,109 @@ export function parseCommandResponse(response: string): CommandRequest | null {
   } catch {
     return null;
   }
+}
+
+// ── Soft-completion judge (idle fallback when no sentinel is printed) ────────
+
+export interface CompletionJudgeVerdict {
+  complete: boolean;
+  summary: string;
+}
+
+/**
+ * Asks a small model whether the task's goal was accomplished, based on the
+ * terminal output alone. Used when a dispatched task's terminal went quiet and
+ * returned to its prompt without printing the sentinel completion block.
+ */
+export function buildCompletionJudgePrompt(
+  taskTitle: string,
+  taskDescription: string,
+  terminalTail: string
+): { system: string; userContent: string } {
+  return {
+    system:
+      'You judge whether a terminal agent finished its assigned task. Reply with DONE or WAITING as the first word. Never explain before the first word.',
+    userContent: `A task was dispatched to an agent in a terminal. The terminal has gone quiet and returned to its prompt WITHOUT printing the required completion block, so the result must be judged from the output alone.
+
+TASK: ${taskTitle}
+INSTRUCTIONS GIVEN TO THE AGENT: ${taskDescription}
+
+LAST TERMINAL OUTPUT (ANSI stripped, may be truncated):
+"""
+${terminalTail}
+"""
+
+Rules:
+1. Reply DONE only if the output shows the instructed work was finished (the agent reported/completed it, or a plain command ran to completion). Reply WAITING if it is still working, streaming, showing a spinner, or failed with an error it has not recovered from.
+2. If the terminal is showing a question, permission dialog, or option menu, reply WAITING.
+3. First line: exactly DONE or WAITING. If DONE, add a second line: a 1-2 sentence factual summary of what was accomplished. No other text.`,
+  };
+}
+
+/**
+ * Parses the judge model's reply. The first line must be exactly DONE (or
+ * DONE with trailing punctuation) — anything else, including malformed or
+ * hedged replies, is treated as WAITING so a bad reply can never complete a
+ * task on its own.
+ */
+export function parseCompletionJudgeResponse(response: string): CompletionJudgeVerdict {
+  const lines = response.trim().split('\n');
+  const first = (lines[0] ?? '').trim().toUpperCase();
+  if (!/^DONE[.!]?$/.test(first)) return { complete: false, summary: '' };
+  const summary = lines.slice(1).join(' ').trim();
+  return {
+    complete: true,
+    summary:
+      summary || 'Task finished (terminal returned to its prompt; no completion block was output).',
+  };
+}
+
+// ── Auto-replan (invoked when a task failure blocks the plan) ───────────────
+
+export interface ReplanFailedTask {
+  title: string;
+  description: string;
+  agentTitle: string;
+  /** Last terminal output before the failure — evidence of what went wrong. */
+  failureTail: string;
+}
+
+/**
+ * Asks the planner to replace a failed task with one or two tasks that
+ * actually finish the failed work, in the same JSON schema as plan generation.
+ */
+export function buildReplanPrompt(
+  goal: string,
+  failedTask: ReplanFailedTask,
+  remainingTasks: Array<{ title: string; description: string; agentTitle: string }>,
+  availableAgents: string[]
+): { system: string; userContent: string } {
+  return {
+    system: PLAN_GEN_SYSTEM_PROMPT,
+    userContent: `A task in an in-flight pipeline FAILED and blocked everything downstream. Replace it.
+
+Overall goal: ${goal}
+
+FAILED TASK:
+Title: ${failedTask.title}
+Instructions given: ${failedTask.description}
+Agent: ${failedTask.agentTitle}
+Last terminal output before failure (may show the error):
+"""
+${failedTask.failureTail}
+"""
+
+REMAINING TASKS (do NOT include these again — only produce replacements for the failed task):
+${remainingTasks.map((t) => `• ${t.title} (agent ${t.agentTitle})`).join('\n') || '(none)'}
+
+Available agents: ${availableAgents.join(', ')}
+
+Produce 1-2 replacement tasks that finish the failed work despite the error (split it, simplify it, or reassign it to a better-suited agent).
+- Replacement tasks' dependsOn must reference the SAME upstream task titles the failed task depended on (or other replacement titles).
+- The orchestrator will re-point downstream tasks onto your replacements automatically.
+
+Return ONLY the JSON object with a "tasks" array. No prose.`,
+  };
 }
 
 // ── Pass-through fallback (no LLM needed) ────────────────────────────────────

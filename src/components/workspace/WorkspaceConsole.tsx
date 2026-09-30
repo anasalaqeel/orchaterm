@@ -16,7 +16,6 @@ import { memo } from 'react';
 import { css } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
 import { TerminalContainer } from '../terminal/TerminalContainer';
-import { WindowControls } from '../layout/WindowControls';
 import { RightPanel } from './RightPanel';
 import { ConsoleSplit } from './ConsoleSplit';
 import type { Workspace, Space } from '../../types/workspace.types';
@@ -59,11 +58,6 @@ export const WorkspaceConsole = memo(function WorkspaceConsole({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Window caption buttons — the native frame is disabled; these replace
-          the old "← Workspaces" back button in this spot. The sidebar's
-          Workspaces section covers grid navigation. */}
-      <WindowControls flush />
     </div>
   );
 

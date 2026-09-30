@@ -53,12 +53,14 @@ import {
   parsePlanGenResponse,
   RawPlanTask,
   CommandRequest,
+  IntentLabel,
 } from '../../services/orchestratorPrompts';
 import type { ChatMessage } from '../../services/llm/types';
 import { bufferWatcher } from '../../services/bufferWatcher';
 import { stripAnsiCodes } from '../../services/sentinelParser';
 import { needsBroker } from '../../services/needsBroker';
 import { autonomousOrchestrator } from '../../services/autonomousOrchestrator';
+import { workspaceEngines } from '../../services/engineRegistry';
 import type { OrchestratorTask, ConductorLogEntry } from '../../types';
 
 // ── Props ──────────────────────────────────────────────────────────────────────
@@ -71,7 +73,7 @@ interface GroupChatProps {
 
 // ── Display message ────────────────────────────────────────────────────────────
 
-type MsgRole = 'user' | 'assistant' | 'system' | 'agent-summary' | 'conductor';
+type MsgRole = 'user' | 'assistant' | 'system' | 'agent-summary' | 'conductor' | 'ask-user';
 
 interface DisplayMessage {
   id: string;
@@ -87,6 +89,12 @@ interface DisplayMessage {
   taskOutput?: ConductorLogEntry['taskOutput'];
   /** Agent title — present on sentinel conductor messages. */
   agentTitle?: string;
+  /** Present on 'ask-user' gate messages — the engine task awaiting the answer. */
+  gateTaskId?: string;
+  /** Workspace whose engine owns the gate task — gates are answered there. */
+  gateWorkspaceId?: string;
+  /** Set when the gate has been answered (locally, for immediate feedback). */
+  gateAnswered?: boolean;
 }
 
 // ── Storage helpers ────────────────────────────────────────────────────────────
@@ -586,6 +594,35 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
       const entry = (e as CustomEvent<ConductorLogEntry>).detail;
       if (!entry) return;
       if (entry.workspaceId && entry.workspaceId !== workspaceId) return;
+      if (entry.type === 'ask-user') {
+        // Gate question → interactive row; the engine task id travels with it.
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: 'ask-user',
+            content: entry.message,
+            gateTaskId: entry.taskId,
+            gateWorkspaceId: entry.workspaceId,
+          },
+        ]);
+        return;
+      }
+      // A gate task reaching a terminal state (answered, or the plan was
+      // stopped/rewound) closes its interactive row — matched by task id, not
+      // by message wording.
+      if (entry.taskId) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === 'ask-user' &&
+            m.gateTaskId === entry.taskId &&
+            !m.gateAnswered &&
+            (entry.type === 'user-override' || entry.type === 'error' || entry.type === 'info')
+              ? { ...m, gateAnswered: true }
+              : m
+          )
+        );
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -697,6 +734,28 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
     ]
   );
 
+  // ── User gate answer → engine ─────────────────────────────────────────────
+  const handleGateAnswer = useCallback(
+    (messageId: string, taskId: string, gateWorkspaceId: string | undefined, answer: string) => {
+      if (!answer.trim()) return;
+      // Gate tasks belong to the workspace whose pipeline asked — route there,
+      // falling back to this panel's workspace for older persisted messages.
+      workspaceEngines.get(gateWorkspaceId ?? workspaceId).answerUserGate(taskId, answer);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? {
+                ...m,
+                gateAnswered: true,
+                content: `${m.content}\n→ You answered: ${answer.trim()}`,
+              }
+            : m
+        )
+      );
+    },
+    [workspaceId]
+  );
+
   // ── Send message ──────────────────────────────────────────────────────────
 
   const handleSend = useCallback(
@@ -721,22 +780,42 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
       // ── Intent Classification & Autonomous Routing ──────────────────────────
+      // "/plan …", "/command …" and "/chat …" force the mode and skip the
+      // classifier — one small model's word shouldn't be the only say in where
+      // a message goes.
+      const forced = text.startsWith('/plan ')
+        ? 'plan'
+        : text.startsWith('/command ')
+          ? 'command'
+          : text.startsWith('/chat ')
+            ? 'chat'
+            : null;
+      const messageText = forced ? text.replace(/^\/(?:plan|command|chat)\s+/, '') : text;
+      if (!messageText) return;
+
       setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: text }]);
       setClassifying(true);
 
       const planAbort = new AbortController();
       planAbortRef.current = planAbort;
 
-      const { system: intentSystem, userContent: intentContent } = buildIntentClassifyPrompt(text);
-      llmProviders.planGen
-        .complete([{ role: 'user', content: intentContent }], intentSystem)
-        .then((res) => {
+      const classify: Promise<IntentLabel> = forced
+        ? Promise.resolve(forced)
+        : (() => {
+            const { system: intentSystem, userContent: intentContent } =
+              buildIntentClassifyPrompt(messageText);
+            return llmProviders.planGen
+              .complete([{ role: 'user', content: intentContent }], intentSystem)
+              .then((res) => parseIntentResponse(res));
+          })();
+
+      classify
+        .then((intent) => {
           if (planAbort.signal.aborted) return;
-          const intent = parseIntentResponse(res);
           if (intent === 'command') {
             setClassifying(false);
             const { system: cmdSystem, userContent: cmdContent } = buildCommandExtractPrompt(
-              text,
+              messageText,
               groupSessions.map((s) => s.title)
             );
             llmProviders.planGen
@@ -767,7 +846,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
             setGeneratingPlan(true);
             // Plan generation mode — hand off to the parent (RightPanel) via onPendingPlan.
             const { system: planSystem, userContent: planContent } = buildPlanGenPrompt(
-              text,
+              messageText,
               groupSessions.map((s) => ({ title: s.title }))
             );
             llmProviders.planGen
@@ -800,7 +879,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
                 const unmatched: string[] = [];
                 const tasks: OrchestratorTask[] = rawTasks.map((t: RawPlanTask) => {
                   const session = resolveSession(t.assignedSessionTitle);
-                  if (!session) unmatched.push(t.title);
+                  // User gates never touch a terminal — they don't need a session.
+                  if (!session && !t.askUser?.trim()) unmatched.push(t.title);
                   const dependsOn = t.dependsOn
                     .map((depTitle) => idMap.get(depTitle) ?? '')
                     .filter(Boolean);
@@ -813,6 +893,12 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
                     assignedSessionTitle: session?.title ?? t.assignedSessionTitle,
                     dependsOn,
                     status: 'pending' as const,
+                    verifyCommand:
+                      typeof t.verify === 'string' && t.verify.trim() ? t.verify.trim() : undefined,
+                    askUserQuestion:
+                      typeof t.askUser === 'string' && t.askUser.trim()
+                        ? t.askUser.trim()
+                        : undefined,
                   };
                 });
 
@@ -878,7 +964,10 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
             };
 
             setMessages((prev) => [...prev, assistantMsg]);
-            const newHistory: ChatMessage[] = [...apiHistory, { role: 'user', content: text }];
+            const newHistory: ChatMessage[] = [
+              ...apiHistory,
+              { role: 'user', content: messageText },
+            ];
             setApiHistory(newHistory);
             setStreaming(true);
             setProviderOnline(true); // optimistic
@@ -1213,7 +1302,12 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
           </div>
         ) : (
           messages.map((msg) => (
-            <MessageRow key={msg.id} msg={msg} onSaveToVault={() => handleSaveToVault(msg)} />
+            <MessageRow
+              key={msg.id}
+              msg={msg}
+              onSaveToVault={() => handleSaveToVault(msg)}
+              onGateAnswer={handleGateAnswer}
+            />
           ))
         )}
         {/* Thinking / plan generating indicator */}
@@ -1333,12 +1427,71 @@ export const GroupChat: React.FC<GroupChatProps> = ({ workspaceId, onPendingPlan
   );
 };
 
+// ── GateRow (user gate question with inline answer input) ─────────────────────
+
+const GateRow: React.FC<{
+  msg: DisplayMessage;
+  onAnswer: (answer: string) => void;
+}> = ({ msg, onAnswer }) => {
+  const [value, setValue] = useState('');
+  if (msg.gateAnswered) {
+    return (
+      <div className={s.gateRow}>
+        <span className={s.gateIcon}>✅</span>
+        <span className={s.gateText}>{msg.content}</span>
+      </div>
+    );
+  }
+  return (
+    <div className={s.gateRowActive}>
+      <div className={s.gateHeader}>
+        <span className={s.gateIcon}>❓</span>
+        <span className={s.gateText}>{msg.content}</span>
+      </div>
+      <div className={s.gateInputRow}>
+        <input
+          className={s.gateInput}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && value.trim()) {
+              onAnswer(value);
+              setValue('');
+            }
+          }}
+          placeholder="Type your answer and press ↵ — the pipeline continues"
+          autoFocus
+        />
+        <button
+          className={s.gateSendBtn}
+          onClick={() => {
+            if (value.trim()) {
+              onAnswer(value);
+              setValue('');
+            }
+          }}
+          disabled={!value.trim()}
+          title="Send answer"
+        >
+          <Send size={12} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ── MessageRow ─────────────────────────────────────────────────────────────────
 
 const MessageRow: React.FC<{
   msg: DisplayMessage;
   onSaveToVault: () => void;
-}> = ({ msg, onSaveToVault }) => {
+  onGateAnswer: (
+    messageId: string,
+    taskId: string,
+    gateWorkspaceId: string | undefined,
+    answer: string
+  ) => void;
+}> = ({ msg, onSaveToVault, onGateAnswer }) => {
   const [hovered, setHovered] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -1350,6 +1503,17 @@ const MessageRow: React.FC<{
       }
     });
   };
+
+  if (msg.role === 'ask-user') {
+    return (
+      <GateRow
+        msg={msg}
+        onAnswer={(answer) =>
+          msg.gateTaskId && onGateAnswer(msg.id, msg.gateTaskId, msg.gateWorkspaceId, answer)
+        }
+      />
+    );
+  }
 
   if (msg.role === 'conductor') {
     const icons: Record<string, string> = {
@@ -2148,6 +2312,81 @@ const s = {
   `,
 
   // ── Conductor event row ──────────────────────────────────────────────────
+  gateRow: css`
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 6px 10px;
+    border-radius: var(--border-radius-sm);
+    background: rgba(var(--color-success-rgb), 0.06);
+    border: 1px solid rgba(var(--color-success-rgb), 0.2);
+    font-family: var(--font-family-mono);
+  `,
+  gateRowActive: css`
+    padding: 10px 12px;
+    border-radius: var(--radius-xl);
+    background: rgba(var(--color-warning-rgb), 0.06);
+    border: 1px solid rgba(var(--color-warning-rgb), 0.3);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  gateHeader: css`
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+  `,
+  gateIcon: css`
+    flex-shrink: 0;
+  `,
+  gateText: css`
+    font-size: 12px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    white-space: pre-wrap;
+  `,
+  gateInputRow: css`
+    display: flex;
+    gap: 6px;
+  `,
+  gateInput: css`
+    flex: 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color-hover);
+    border-radius: var(--radius-lg);
+    padding: 6px 10px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+    &:focus {
+      border-color: var(--border-color-focus);
+    }
+    &::placeholder {
+      color: var(--text-tertiary);
+    }
+  `,
+  gateSendBtn: css`
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: var(--radius-lg);
+    background: var(--color-brand);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: filter 150ms ease;
+    &:hover:not(:disabled) {
+      filter: brightness(1.1);
+    }
+    &:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+  `,
   conductorRow: css`
     display: flex;
     align-items: baseline;
