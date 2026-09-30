@@ -2,6 +2,17 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 
+// ── WebdriverIO E2E bridge ────────────────────────────────────────────────────
+// Only activated in E2E builds (vite --mode e2e, see e2e/wdio.conf.ts and
+// src-tauri/tauri.e2e.conf.json). The dynamic import is tree-shaken out of
+// dev/production builds, which never load the test bridge. The sandbox reset
+// gives every E2E boot a clean chat history and an expanded chat panel.
+if (import.meta.env.MODE === 'e2e') {
+  localStorage.clear();
+  localStorage.setItem('orchaterm:chatCollapsed', 'false');
+  import('@wdio/tauri-plugin');
+}
+
 // ── Boot the keyboard manager (registers the single capture-phase listener) ───
 // Import triggers module execution — the listener attaches once at startup so
 // every registerShortcut() call in components shares the same handler.

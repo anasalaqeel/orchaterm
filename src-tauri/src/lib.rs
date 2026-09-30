@@ -1006,7 +1006,7 @@ fn write_file_path(path: String, content: String) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
         .manage(Mutex::new(HashMap::<String, PtySession>::new()))
         .plugin(tauri_plugin_opener::init())
@@ -1044,7 +1044,18 @@ pub fn run() {
                 }
             }
             Ok(())
-        })
+        });
+
+    // WebdriverIO E2E hooks (execute API + embedded WebDriver server) — built
+    // only with the `wdio` feature (`bun run e2e:build`); default and release
+    // builds carry no test surface. Used by the `bun run test:e2e` suite
+    // (tauri.e2e.conf.json build).
+    #[cfg(feature = "wdio")]
+    let builder = builder
+        .plugin(tauri_plugin_wdio::init())
+        .plugin(tauri_plugin_wdio_webdriver::init());
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

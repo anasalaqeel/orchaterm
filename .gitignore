@@ -76,3 +76,7 @@ src-tauri/src/bin/test_bash_echo.rs
 
 # Playwright MCP artifacts
 .playwright-mcp/
+
+# E2E runtime fixtures
+e2e/.tmp/
+.zcode/
