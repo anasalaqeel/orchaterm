@@ -38,8 +38,6 @@ const mockProvider = {
 
 const defaultConfig = {
   enabled: true,
-  targetSessionId: null,
-  mode: 'semi' as const,
   snapshotIntervalChars: 4000,
 };
 

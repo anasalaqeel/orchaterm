@@ -105,9 +105,7 @@ export class SessionContinuationService {
         meta: fallbackMeta,
         config: fallbackConfig ?? {
           enabled: false,
-          targetSessionId: null,
           snapshotIntervalChars: 0,
-          mode: 'file-only',
         },
         detectionProvider: fallbackProvider,
         checkpointProvider: fallbackProvider,

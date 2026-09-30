@@ -1279,6 +1279,34 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
               >
                 📷 Create Checkpoint Now
               </button>
+              <button
+                onClick={async () => {
+                  const id = policyMenu.sessionId;
+                  setPolicyMenu(null);
+                  const snapshot = await captureSessionNow(id);
+                  if (snapshot) setPendingInjectionSnapshot(snapshot);
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '8px 12px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(86, 93, 97, 0.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                🔀 Pass work to another terminal…
+              </button>
               {lastCheckpoint && (
                 <>
                   <div

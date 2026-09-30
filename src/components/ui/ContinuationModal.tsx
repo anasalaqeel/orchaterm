@@ -1,9 +1,13 @@
 // src/components/ui/ContinuationModal.tsx
+// Manual handover dialog: pick a target terminal and inject the checkpoint's
+// resume prompt there. It is ONLY opened by explicit user actions ("Pass work
+// to another terminal…" / "Inject Last Checkpoint..."), never automatically.
 import React, { useEffect, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
-import { Save, X } from 'lucide-react';
+import { ArrowRightLeft, X } from 'lucide-react';
 import { writePtyChunked } from '../../utils/ptyUtils';
+import { bufferWatcher } from '../../services/bufferWatcher';
 import { Select, type SelectOption } from './Select';
 import { useDashboard, DEFAULT_TERMINAL_WORKSPACE } from '../../context/DashboardContext';
 import {
@@ -19,7 +23,6 @@ interface ContinuationModalProps {
   snapshot: CheckpointSnapshot;
   sessions: TerminalSession[];
   workspaces: Workspace[];
-  targetSessionId: string | null;
   onDismiss: () => void;
 }
 
@@ -35,8 +38,35 @@ const LAZY_TIMEOUT_MS = 8000;
 const WRITE_RETRY_TIMEOUT_MS = 5000;
 const POLL_INTERVAL_MS = 200;
 
+// Wait-until-ready: a freshly started agent TUI keeps printing while it boots,
+// and text injected during that window gets swallowed. We wait until the
+// target's output has been quiet for a moment before writing.
+const QUIET_POLL_MS = 500;
+const QUIET_WINDOW_MS = 2500;
+const QUIET_TIMEOUT_MS = 15000;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Resolves once the target session's terminal output has been stable for
+ * QUIET_WINDOW_MS. Gives up after QUIET_TIMEOUT_MS and injects anyway.
+ */
+async function waitForQuiet(sessionId: string): Promise<boolean> {
+  const deadline = Date.now() + QUIET_TIMEOUT_MS;
+  let lastLen = bufferWatcher.getBuffer(sessionId).length;
+  let lastChange = Date.now();
+  while (Date.now() - lastChange < QUIET_WINDOW_MS) {
+    if (Date.now() >= deadline) return false;
+    await sleep(QUIET_POLL_MS);
+    const len = bufferWatcher.getBuffer(sessionId).length;
+    if (len !== lastLen) {
+      lastLen = len;
+      lastChange = Date.now();
+    }
+  }
+  return true;
 }
 
 // Both segments are crypto.randomUUID() values (hyphens only, never colons),
@@ -64,12 +94,11 @@ export const ContinuationModal: React.FC<ContinuationModalProps> = ({
   snapshot,
   sessions,
   workspaces,
-  targetSessionId,
   onDismiss,
 }) => {
   const { setActiveWorkspaceId, setViewMode } = useDashboard();
 
-  const [selectedId, setSelectedId] = useState<string>(targetSessionId ?? sessions[0]?.id ?? '');
+  const [selectedId, setSelectedId] = useState<string>(sessions[0]?.id ?? '');
   const [injecting, setInjecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusText, setStatusText] = useState<string | null>(null);
@@ -179,11 +208,19 @@ export const ContinuationModal: React.FC<ContinuationModalProps> = ({
         setActiveWorkspaceId(lazy.workspaceId);
         setViewMode('console');
         await waitForRestoredSession(lazy.sessionId, option?.name ?? 'terminal');
-        setStatusText('Injecting…');
-        await writeWithRetry(lazy.sessionId, message + '\r');
-      } else {
-        await writePtyChunked(selectedId, message + '\r');
       }
+
+      const targetLabel =
+        sessionOptions.find((o) => o.value === selectedId)?.name ?? 'target terminal';
+      setStatusText(`Waiting for "${targetLabel}" to settle…`);
+      const settled = await waitForQuiet(lazy ? lazy.sessionId : selectedId);
+      if (!settled) {
+        setStatusText(`"${targetLabel}" is still active — injecting anyway…`);
+        await sleep(QUIET_POLL_MS);
+      }
+
+      setStatusText('Injecting…');
+      await writeWithRetry(lazy ? lazy.sessionId : selectedId, message + '\r');
       onDismiss();
     } catch (err) {
       setError(String(err));
@@ -233,7 +270,7 @@ export const ContinuationModal: React.FC<ContinuationModalProps> = ({
               margin-bottom: 16px;
             `}
           >
-            <Save size={18} color="var(--color-success)" />
+            <ArrowRightLeft size={18} color="var(--color-brand)" />
             <span
               className={css`
                 font-size: 15px;
@@ -241,7 +278,7 @@ export const ContinuationModal: React.FC<ContinuationModalProps> = ({
                 color: var(--text-primary);
               `}
             >
-              Agent stopped — checkpoint saved
+              Pass work to another terminal
             </span>
             <button
               onClick={onDismiss}
@@ -353,7 +390,7 @@ export const ContinuationModal: React.FC<ContinuationModalProps> = ({
                 }
               `}
             >
-              {injecting ? 'Injecting…' : 'Inject & Resume'}
+              {injecting ? 'Injecting…' : 'Pass & Resume'}
             </button>
           </div>
         </motion.div>

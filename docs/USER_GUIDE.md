@@ -67,4 +67,5 @@ Pipelines allow you to coordinate multi-session workflows across different termi
 ## 6. Continuous Checkpointing & Session Continuation
 
 - When working with long-running CLI sessions, Orchaterm automatically captures rolling checkpoints.
-- If a session approaches rate limits or context windows, click **Create Checkpoint Now** on the tab context menu to generate a migration checkpoint and resume cleanly in a new session.
+- If an agent hits a usage limit or stops, Orchaterm saves a checkpoint and notifies you — nothing runs or injects automatically.
+- To hand the work over: open a new tab, start whichever agent you want, then right-click the stopped session's tab and choose **Pass work to another terminal…**. Orchaterm waits for the new agent to finish booting, then injects a resume prompt pointing at the checkpoint file.

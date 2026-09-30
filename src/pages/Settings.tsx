@@ -410,14 +410,6 @@ const providerInputStyle = css`
   }
 `;
 
-const fieldLabelStyle = css`
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  display: block;
-  margin-bottom: 4px;
-`;
-
 const fieldLabelRowStyle = css`
   display: flex;
   align-items: center;
@@ -1013,8 +1005,6 @@ export const SettingsView: React.FC = () => {
                     updateSettings({
                       continuation: {
                         ...(settings.continuation ?? {
-                          targetSessionId: null,
-                          mode: 'semi',
                           snapshotIntervalChars: 4000,
                         }),
                         enabled: !(settings.continuation?.enabled ?? false),
@@ -1047,38 +1037,6 @@ export const SettingsView: React.FC = () => {
                 />
               </div>
 
-              {/* Mode selector */}
-              <div
-                className={css`
-                  margin-bottom: 16px;
-                `}
-              >
-                <label className={fieldLabelStyle}>Resume mode</label>
-                <Select
-                  value={settings.continuation?.mode ?? 'semi'}
-                  onChange={(v) =>
-                    updateSettings({
-                      continuation: {
-                        ...(settings.continuation ?? {
-                          enabled: false,
-                          targetSessionId: null,
-                          snapshotIntervalChars: 4000,
-                        }),
-                        mode: v as 'auto' | 'semi' | 'file-only',
-                      },
-                    })
-                  }
-                  options={[
-                    {
-                      value: 'auto',
-                      name: 'Auto — inject immediately (falls back to modal if no target set)',
-                    },
-                    { value: 'semi', name: 'Semi-automatic — show modal to confirm injection' },
-                    { value: 'file-only', name: 'File only — save checkpoint, no injection' },
-                  ]}
-                />
-              </div>
-
               {/* Snapshot interval */}
               <div
                 className={css`
@@ -1106,8 +1064,6 @@ export const SettingsView: React.FC = () => {
                       continuation: {
                         ...(settings.continuation ?? {
                           enabled: false,
-                          targetSessionId: null,
-                          mode: 'semi',
                         }),
                         snapshotIntervalChars: v,
                       },
@@ -1152,8 +1108,6 @@ export const SettingsView: React.FC = () => {
                       continuation: {
                         ...(settings.continuation ?? {
                           enabled: false,
-                          targetSessionId: null,
-                          mode: 'semi',
                           snapshotIntervalChars: 4000,
                         }),
                         maxContextChars: v,

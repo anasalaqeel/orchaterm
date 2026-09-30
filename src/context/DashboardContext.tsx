@@ -27,7 +27,6 @@ import { orchestratorEngine } from '../services/orchestratorEngine';
 import { autonomousOrchestrator } from '../services/autonomousOrchestrator';
 import { needsBroker } from '../services/needsBroker';
 import { sessionContinuationService } from '../services/sessionContinuationService';
-import { writePtyChunked } from '../utils/ptyUtils';
 import type { DetectionEvent, CheckpointSnapshot } from '../types';
 import { DEFAULT_TERMINAL_CONFIG, mergeTerminalConfig } from '../utils/terminalThemes';
 
@@ -165,9 +164,10 @@ export interface DashboardContextType {
 
   // ── Session continuation ─────────────────────────────────────────────────────────────────────
   lastCheckpoint: CheckpointSnapshot | null;
+  /** Snapshot to show in the manual handover dialog; null = closed. Never set automatically. */
   pendingInjectionSnapshot: CheckpointSnapshot | null;
   setPendingInjectionSnapshot: (s: CheckpointSnapshot | null) => void;
-  captureSessionNow: (sessionId: string) => Promise<void>;
+  captureSessionNow: (sessionId: string) => Promise<CheckpointSnapshot | null>;
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
@@ -199,8 +199,6 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
       terminalConfig: mergeTerminalConfig(raw.terminalConfig),
       continuation: raw.continuation ?? {
         enabled: false,
-        targetSessionId: null,
-        mode: 'semi',
         snapshotIntervalChars: 4000,
       },
       aiEnabled: raw.aiEnabled !== false,
@@ -230,8 +228,6 @@ function migrateSettings(raw: Partial<AppSettings>): AppSettings {
     terminalConfig: { ...DEFAULT_TERMINAL_CONFIG, ...(raw.terminalConfig ?? {}) },
     continuation: raw.continuation ?? {
       enabled: false,
-      targetSessionId: null,
-      mode: 'semi',
       snapshotIntervalChars: 4000,
     },
     aiEnabled: raw.aiEnabled !== false,
@@ -292,8 +288,6 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     terminalConfig: DEFAULT_TERMINAL_CONFIG,
     continuation: {
       enabled: false,
-      targetSessionId: null,
-      mode: 'semi',
       snapshotIntervalChars: 4000,
     },
   });
@@ -435,38 +429,25 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   ]);
 
   // ── Wire continuation service events to UI state ─────────────────────────────
+  // Detection is notification-only: checkpoints are written to disk and the user
+  // is told. Handing work to another terminal is always a manual action.
   useEffect(() => {
     return sessionContinuationService.onEvent((event: DetectionEvent) => {
       if (event.type !== 'checkpoint-written' || !event.snapshot) return;
       setLastCheckpoint(event.snapshot);
 
-      // Periodic snapshots are silent breadcrumbs — never pop the modal
-      if (event.snapshot.triggeredBy === 'periodic') return;
+      // Periodic snapshots are silent breadcrumbs; manual captures announce
+      // themselves in captureSessionNow. Only detection-driven checkpoints
+      // need the "your agent stopped" notification.
+      if (event.snapshot.triggeredBy !== 'auto-detection') return;
 
-      const continuationCfg = settings.continuation;
-      if (!continuationCfg?.enabled) return;
-
-      if (continuationCfg.mode === 'file-only') {
-        showToast(`Checkpoint saved: ${event.snapshot.sessionTitle}`, 'info');
-        return;
-      }
-
-      const mode = continuationCfg.mode;
-      const targetId = continuationCfg.targetSessionId;
-
-      if (mode === 'auto' && targetId) {
-        const message =
-          'Continue working on the following task. A previous agent session stopped mid-way. ' +
-          `Here is the full context of what happened and what needs to happen next:\n\n` +
-          `Checkpoint file: ${event.snapshot.filePath}\n\n` +
-          `Please read the checkpoint file and continue from where the previous session stopped.`;
-        writePtyChunked(targetId, message + '\r').catch(() => {});
-        showToast(`Auto-resumed ${event.snapshot.sessionTitle} in target session`, 'success');
-      } else {
-        setPendingInjectionSnapshot(event.snapshot);
-      }
+      showToast(
+        `Agent stopped — checkpoint saved for "${event.snapshot.sessionTitle}". ` +
+          `Use "Pass work to another terminal…" to hand it over when ready.`,
+        'info'
+      );
     });
-  }, [settings.continuation]);
+  }, []);
 
   // ── Track which sessions are running agents (autonomous orchestration) ───────
   // Continuation only watches these — never bare interactive terminals, whose
@@ -763,18 +744,18 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setTerminalSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, ...updates } : s)));
   };
 
-  const captureSessionNow = async (sessionId: string): Promise<void> => {
+  const captureSessionNow = async (sessionId: string): Promise<CheckpointSnapshot | null> => {
     const workspace = workspaces.find((w) => w.id === activeWorkspaceId);
     const workspacePath = workspace?.path ?? '';
     const session = terminalSessions.find((s) => s.id === sessionId);
 
     if (!session) {
       showToast(`Cannot create checkpoint: session ${sessionId} not found`, 'error');
-      return;
+      return null;
     }
     if (!workspacePath) {
       showToast(`Cannot create checkpoint: active workspace path is empty`, 'error');
-      return;
+      return null;
     }
 
     const isLocal =
@@ -794,15 +775,12 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         llmProviders.relay,
         {
           enabled: settings.continuation?.enabled ?? false,
-          targetSessionId: settings.continuation?.targetSessionId ?? null,
-          mode: settings.continuation?.mode ?? 'semi',
           snapshotIntervalChars: settings.continuation?.snapshotIntervalChars ?? 4000,
           maxContextChars,
         }
       );
       if (snapshot) {
         setLastCheckpoint(snapshot);
-        setPendingInjectionSnapshot(snapshot);
         showToast(
           `Checkpoint created successfully for tab "${session.title}" in workspace "${workspace?.name}"!`,
           'success',
@@ -811,9 +789,11 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       } else {
         showToast('Failed to generate checkpoint: checkpoint snapshot is null', 'error', true);
       }
+      return snapshot;
     } catch (err) {
       console.error('captureSessionNow error:', err);
       showToast(`Error creating checkpoint: ${err}`, 'error', true);
+      return null;
     } finally {
       updateTerminalSession(sessionId, { isCheckpointing: false });
     }

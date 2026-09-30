@@ -59,7 +59,7 @@ Orchaterm is a next-generation terminal built for the AI era of software develop
 
 ### D. Continuous Session Checkpointing (`src/services/sessionContinuationService.ts`)
 - **Autosave Snapshots**: Automatically snapshot session memory every 4,000 characters of terminal output.
-- **Context Handoffs**: When an agent session approaches rate limits or context windows, Orchaterm creates a structured Markdown checkpoint enabling seamless continuation in a new session.
+- **Context Handoffs**: When an agent session approaches rate limits or context windows, Orchaterm creates a structured Markdown checkpoint and notifies the user (never injects automatically). Handover to another terminal is always an explicit user action via **"Pass work to another terminal…"** on the tab context menu.
 
 ---
 
