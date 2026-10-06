@@ -4,6 +4,7 @@ import { TaskLog } from '../types';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Select } from '../components/ui/Select';
 import { Input } from '../components/ui';
+import { WindowControls } from '../components/layout/WindowControls';
 import { History, Search, Trash2, Plus, AlertTriangle, CheckCircle, Clock, X } from 'lucide-react';
 import { css, cx } from '@emotion/css';
 
@@ -109,6 +110,7 @@ export const TaskLogView: React.FC = () => {
             <Plus className={styles.iconSm} />
             <span>Manual Entry</span>
           </button>
+          <WindowControls />
         </div>
       </div>
 

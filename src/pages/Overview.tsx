@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useDashboard, DEFAULT_TERMINAL_WORKSPACE } from '../context/DashboardContext';
 import { WorkspaceConsole } from '../components/workspace/WorkspaceConsole';
+import { WindowControls } from '../components/layout/WindowControls';
 import { Input } from '../components/ui';
 import {
   Plus,
@@ -229,6 +230,7 @@ export const DashboardView: React.FC = () => {
                   <Plus size={15} />
                   <span>New Workspace</span>
                 </motion.button>
+                <WindowControls />
               </div>
             </div>
 
@@ -589,7 +591,7 @@ const s = {
   `,
   gridHeaderRight: css`
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     flex-shrink: 0;
   `,
   gridTitle: css`

@@ -1558,6 +1558,8 @@ const styles = {
   header: css`
     display: flex;
     align-items: flex-end;
+    height: 38px;
+    box-sizing: border-box;
     background-color: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
     user-select: none;

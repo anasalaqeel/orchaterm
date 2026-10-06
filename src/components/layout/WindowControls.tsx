@@ -3,10 +3,10 @@
  *
  * Caption buttons (minimize / maximize-restore / close) for the undecorated
  * main window on Windows/Linux (`decorations: false` in tauri.conf.json
- * disables the native title bar there). Only ever mounted from
- * <WindowTitleBar>, which is what decides whether this renders at all — see
- * that file for why macOS never reaches this component (it gets a real
- * native title bar instead, via `src-tauri/tauri.macos.conf.json`).
+ * disables the native title bar there).
+ *
+ * On macOS, native decorations are enabled via tauri.macos.conf.json, so this
+ * component renders nothing there (`isMacOS` check).
  *
  * Drag regions are handled separately via `data-tauri-drag-region` on the
  * surrounding chrome (Tauri's injected script starts a drag on mousedown and
@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import { getCurrentWindow, type Window as TauriWindow } from '@tauri-apps/api/window';
 import { css, cx } from '@emotion/css';
 import { Minus, Square, Copy, X } from 'lucide-react';
+import { isMacOS } from '../../utils/platform';
 
 // Resolved lazily — getCurrentWindow() throws outside Tauri (tests, plain
 // browser dev), and a module-level call would crash test collection.
@@ -32,10 +33,20 @@ function getWindow(): TauriWindow | null {
   return appWindow;
 }
 
-export function WindowControls() {
+export interface WindowControlsProps {
+  /**
+   * true → square corners, zero margin, full height: sits flush against the
+   * window's top-right corner (console tab strip or right panel header).
+   * false → rounded, slightly inset (padded page headers like Overview, TaskLog, Settings).
+   */
+  flush?: boolean;
+}
+
+export function WindowControls({ flush = false }: WindowControlsProps) {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
+    if (isMacOS) return;
     const win = getWindow();
     if (!win) return;
     let disposed = false;
@@ -54,6 +65,8 @@ export function WindowControls() {
     };
   }, []);
 
+  if (isMacOS) return null;
+
   const minimize = () =>
     getWindow()
       ?.minimize()
@@ -69,7 +82,7 @@ export function WindowControls() {
 
   return (
     <div
-      className={wc.controls}
+      className={cx(wc.controls, flush ? wc.flush : wc.inset)}
       // Swallow double-clicks so rapid clicking two buttons can't bubble into
       // any ancestor drag-region double-click → maximize toggle.
       onDoubleClick={(e) => e.stopPropagation()}
@@ -103,12 +116,25 @@ const wc = {
   controls: css`
     display: flex;
     align-items: stretch;
-    align-self: stretch;
     flex-shrink: 0;
     user-select: none;
   `,
+  flush: css`
+    align-self: stretch;
+    height: 100%;
+    margin-left: 10px;
+  `,
+  inset: css`
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    overflow: hidden;
+    height: 32px;
+    margin-left: 10px;
+  `,
   btn: css`
     width: 42px;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -120,11 +146,11 @@ const wc = {
       background 0.12s ease,
       color 0.12s ease;
     &:hover {
-      background: rgba(255, 255, 255, 0.07);
+      background: var(--bg-hover);
       color: var(--text-primary);
     }
     &:active {
-      background: rgba(255, 255, 255, 0.12);
+      background: var(--bg-active);
     }
   `,
   close: css`

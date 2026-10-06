@@ -16,8 +16,10 @@ import { memo } from 'react';
 import { css } from '@emotion/css';
 import { motion, AnimatePresence } from 'motion/react';
 import { TerminalContainer } from '../terminal/TerminalContainer';
+import { WindowControls } from '../layout/WindowControls';
 import { RightPanel } from './RightPanel';
 import { ConsoleSplit } from './ConsoleSplit';
+import { isMacOS } from '../../utils/platform';
 import type { Workspace, Space } from '../../types/workspace.types';
 
 interface WorkspaceConsoleProps {
@@ -37,8 +39,11 @@ export const WorkspaceConsole = memo(function WorkspaceConsole({
   active,
   panelKey,
 }: WorkspaceConsoleProps) {
-  const headerRight = (
-    <div className={s.consoleHeaderRight}>
+  const renderHeaderRight = (chatCollapsed: boolean) => (
+    <div
+      className={s.consoleHeaderRight}
+      style={{ paddingRight: isMacOS || !chatCollapsed ? 12 : 0 }}
+    >
       <span className={s.consoleDot} style={{ backgroundColor: project.color }} />
       <h2 className={s.consoleName}>{project.name}</h2>
 
@@ -58,6 +63,12 @@ export const WorkspaceConsole = memo(function WorkspaceConsole({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* When the chat panel is collapsed, the terminal tab strip reaches the
+          window's top-right corner; these caption buttons replace the native
+          frame in that spot. When chat is open, RightPanel's tabs strip takes
+          over the top-right corner instead. */}
+      {chatCollapsed && <WindowControls flush />}
     </div>
   );
 
@@ -65,16 +76,16 @@ export const WorkspaceConsole = memo(function WorkspaceConsole({
     <div className={active ? s.consoleLayer : s.consoleLayerHidden}>
       <ConsoleSplit
         active={active}
-        terminal={
+        terminal={(chatCollapsed) => (
           <TerminalContainer
             key={panelKey}
             scopeKey={panelKey}
             workspaceId={project.id}
             workspacePath={project.path}
             active={active}
-            headerRight={headerRight}
+            headerRight={renderHeaderRight(chatCollapsed)}
           />
-        }
+        )}
         right={active && <RightPanel key={panelKey} workspaceId={project.id} />}
       />
     </div>

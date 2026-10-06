@@ -18,6 +18,7 @@ import { css, cx } from '@emotion/css';
 import { MessageSquare, Workflow } from 'lucide-react';
 import { GroupChat } from '../ui/GroupChat';
 import { PipelinePanel } from '../pipeline/PipelinePanel';
+import { WindowControls } from '../layout/WindowControls';
 import { useDashboard } from '../../context/DashboardContext';
 import { workspaceEngines } from '../../services/engineRegistry';
 import type { OrchestratorPlan, OrchestratorTask, PipelineTemplate } from '../../types';
@@ -405,6 +406,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ workspaceId }) => {
             {pendingPlan && <span className={cx(s.tabDot, s.tabDotPending)} />}
           </button>
         </div>
+        <WindowControls flush />
       </div>
 
       <div className={s.body}>
@@ -456,9 +458,15 @@ const s = {
   `,
   tabs: css`
     flex-shrink: 0;
-    padding: 8px 10px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 38px;
+    box-sizing: border-box;
+    padding-left: 10px;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
+    user-select: none;
   `,
   tabsInner: css`
     display: flex;

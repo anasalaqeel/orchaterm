@@ -19,8 +19,8 @@ const CHAT_MAX = 700;
 const CHAT_DEFAULT = 360;
 
 interface ConsoleSplitProps {
-  /** Left pane — the terminal. */
-  terminal: React.ReactNode;
+  /** Left pane — the terminal. Accepts a node or a render function taking chatCollapsed. */
+  terminal: React.ReactNode | ((chatCollapsed: boolean) => React.ReactNode);
   /** Right pane — the chat + pipeline panel. */
   right: React.ReactNode;
   /** Whether the console is the visible view; gates the drag handle. */
@@ -105,9 +105,11 @@ export function ConsoleSplit({ terminal, right, active }: ConsoleSplitProps) {
     [chatCollapsed, chatWidth]
   );
 
+  const renderedTerminal = typeof terminal === 'function' ? terminal(chatCollapsed) : terminal;
+
   return (
     <div className={s.consoleSplit}>
-      <div className={s.consoleSplitLeft}>{terminal}</div>
+      <div className={s.consoleSplitLeft}>{renderedTerminal}</div>
 
       {/* Drag overlay — absolute, zero flex space; inert when collapsed */}
       {active && !chatCollapsed && (
@@ -127,6 +129,7 @@ export function ConsoleSplit({ terminal, right, active }: ConsoleSplitProps) {
         style={{
           width: chatCollapsed ? 0 : chatWidth,
           minWidth: 0,
+          borderLeftWidth: chatCollapsed ? 0 : undefined,
           transition: isResizing ? 'none' : 'width 0.22s cubic-bezier(0.4,0,0.2,1)',
         }}
       >

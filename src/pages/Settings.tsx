@@ -19,6 +19,7 @@ import {
   Select,
   MarkdownViewer,
 } from '../components/ui';
+import { WindowControls } from '../components/layout/WindowControls';
 import { createProvider } from '../services/llm';
 import type { ProviderConfig, UseCaseProviders } from '../services/llm/types';
 import {
@@ -675,6 +676,7 @@ export const SettingsView: React.FC = () => {
             Control data persistence, manage configuration resources, and UI modes.
           </p>
         </div>
+        <WindowControls />
       </div>
 
       {/* Tabs */}
