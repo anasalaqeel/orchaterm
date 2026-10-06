@@ -207,7 +207,10 @@ export const PipelineBuilder: React.FC<PipelineBuilderProps> = ({
                         onChange={(e) => setEditTitle(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') saveEditing();
-                          if (e.key === 'Escape') setEditingId(null);
+                          if (e.key === 'Escape') {
+                            e.preventDefault();
+                            setEditingId(null);
+                          }
                         }}
                         autoFocus
                       />

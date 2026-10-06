@@ -50,6 +50,22 @@ for (const def of TERMINAL_BLOCKED) {
   registerShortcut({ ...def, context: 'terminal-only', handler: noop });
 }
 
+// ── Block unhandled Escape from triggering macOS native fullscreen exit ────────
+// On macOS WKWebView, an unprevented Escape keydown event bubbles to NSWindow,
+// which invokes cancelOperation: and exits fullscreen mode by default.
+// In terminal and developer applications, Escape is an editing/navigation key, never
+// a window control shortcut (native macOS fullscreen toggle is Cmd+Ctrl+F).
+// Handlers that consume Escape call preventDefault() locally; this bubble-phase
+// catch-all ensures that even when focus is on a non-input element (e.g. sidebar,
+// background), pressing Escape will not unexpectedly drop the app out of fullscreen.
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+    }
+  });
+}
+
 // NOTE: React.StrictMode is intentionally omitted. StrictMode double-invokes
 // useEffect in development, which causes every TerminalTab to spawn, kill, and
 // re-spawn its PTY process. With N saved tabs that means 2N PowerShell processes

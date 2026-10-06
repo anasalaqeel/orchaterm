@@ -456,6 +456,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         // When search is open, Escape closes search and refocuses terminal
         if (searchVisibleRef.current) {
           if (e.key === 'Escape') {
+            e.preventDefault?.();
             setSearchVisible(false);
             searchAddonRef.current?.clearDecorations();
             setSearchQuery('');
@@ -468,6 +469,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
 
         // Escape closes context menu
         if (e.key === 'Escape' && contextMenuRef.current) {
+          e.preventDefault?.();
           setContextMenu(null);
           return false;
         }
@@ -602,10 +604,12 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         // macOS standard shortcuts (Cmd+K to clear, Cmd+A to select all)
         if (isMac && e.metaKey && !e.ctrlKey && !e.altKey) {
           if (e.key.toLowerCase() === 'k') {
+            e.preventDefault?.();
             term.clear();
             return false;
           }
           if (e.key.toLowerCase() === 'a') {
+            e.preventDefault?.();
             term.selectAll();
             return false;
           }
@@ -614,6 +618,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         // Unbound → PTY (legacy encoding, or kitty CSI-u when enabled)
         const kittySeq = kittyEncodeKey(e, kitty.getFlags());
         if (kittySeq) {
+          e.preventDefault?.();
           invoke('write_pty', { sessionId, data: kittySeq }).catch(() => {});
           return false;
         }

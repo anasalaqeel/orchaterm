@@ -154,7 +154,10 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({ workspace }) => 
       e.preventDefault();
       save();
     }
-    if (e.key === 'Escape') cancel();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      cancel();
+    }
   };
 
   const sectionVariants = {

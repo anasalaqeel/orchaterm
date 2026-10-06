@@ -30,7 +30,10 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       className={styles.overlay}
       onClick={onCancel}
       onKeyDown={(e) => {
-        if (e.key === 'Escape') onCancel();
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onCancel();
+        }
       }}
     >
       <div

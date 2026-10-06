@@ -635,7 +635,10 @@ export const TerminalContainer: React.FC<TerminalContainerProps> = ({
 
   const handleRenameKeyDown = (id: string, e: React.KeyboardEvent) => {
     if (e.key === 'Enter') saveRename(id);
-    else if (e.key === 'Escape') setEditingSessionId(null);
+    else if (e.key === 'Escape') {
+      e.preventDefault();
+      setEditingSessionId(null);
+    }
   };
 
   // ── Color picker ─────────────────────────────────────────────────────────

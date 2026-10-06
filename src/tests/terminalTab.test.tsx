@@ -376,7 +376,13 @@ describe('TerminalTab keyboard handling', () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 20));
     }); // rAF focus pass
-    expect(await act(async () => term.fireKey({ key: 'Escape' }))).toBe(false);
+    const preventDefaultSearchEsc = vi.fn();
+    expect(
+      await act(async () =>
+        term.fireKey({ key: 'Escape', preventDefault: preventDefaultSearchEsc })
+      )
+    ).toBe(false);
+    expect(preventDefaultSearchEsc).toHaveBeenCalled();
     expect(container.querySelector('[data-search-input="true"]')).toBeNull();
   });
 
@@ -483,11 +489,58 @@ describe('TerminalTab keyboard handling', () => {
       term.fireCsi('=', 'u', [1, 1]);
     });
 
-    // Shift+Enter and bare Escape must now be CSI-u encoded, not legacy bytes.
-    expect(await act(async () => term.fireKey({ shiftKey: true, key: 'Enter' }))).toBe(false);
+    // Shift+Enter and bare Escape must now be CSI-u encoded, not legacy bytes,
+    // and must prevent default to ensure macOS full screen is not exited.
+    const preventDefaultShiftEnter = vi.fn();
+    expect(
+      await act(async () =>
+        term.fireKey({ shiftKey: true, key: 'Enter', preventDefault: preventDefaultShiftEnter })
+      )
+    ).toBe(false);
     expect(writtenPayloads()).toContain('\x1b[13;2u');
-    expect(await act(async () => term.fireKey({ key: 'Escape' }))).toBe(false);
+    expect(preventDefaultShiftEnter).toHaveBeenCalled();
+
+    const preventDefaultEscape = vi.fn();
+    expect(
+      await act(async () => term.fireKey({ key: 'Escape', preventDefault: preventDefaultEscape }))
+    ).toBe(false);
     expect(writtenPayloads()).toContain('\x1b[27;1u');
+    expect(preventDefaultEscape).toHaveBeenCalled();
+  });
+
+  it('macOS Cmd+K and Cmd+A execute actions and call preventDefault', async () => {
+    const originalUA = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+      configurable: true,
+    });
+    try {
+      await renderTerminalTab();
+      const term = getLastTerminal();
+
+      const preventDefaultK = vi.fn();
+      expect(
+        await act(async () =>
+          term.fireKey({ metaKey: true, key: 'k', preventDefault: preventDefaultK })
+        )
+      ).toBe(false);
+      expect(term.cleared).toBe(1);
+      expect(preventDefaultK).toHaveBeenCalled();
+
+      const preventDefaultA = vi.fn();
+      expect(
+        await act(async () =>
+          term.fireKey({ metaKey: true, key: 'a', preventDefault: preventDefaultA })
+        )
+      ).toBe(false);
+      expect(term.selectAllCalled).toBe(true);
+      expect(preventDefaultA).toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', {
+        value: originalUA,
+        configurable: true,
+      });
+    }
   });
 });
 
@@ -535,7 +588,13 @@ describe('TerminalTab UI surfaces', () => {
 
     // Regression: the once-attached key handler used to capture the mount-time
     // contextMenu (null), so Escape passed through to the PTY instead.
-    expect(await act(async () => term.fireKey({ key: 'Escape' }))).toBe(false);
+    const preventDefaultContextMenuEsc = vi.fn();
+    expect(
+      await act(async () =>
+        term.fireKey({ key: 'Escape', preventDefault: preventDefaultContextMenuEsc })
+      )
+    ).toBe(false);
+    expect(preventDefaultContextMenuEsc).toHaveBeenCalled();
     expect(container.textContent).not.toContain('Select All');
   });
 

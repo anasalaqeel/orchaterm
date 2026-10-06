@@ -328,7 +328,10 @@ export const DashboardView: React.FC = () => {
                               onBlur={() => handleTaskSave(proj.id)}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleTaskSave(proj.id);
-                                if (e.key === 'Escape') setEditingTaskId(null);
+                                if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  setEditingTaskId(null);
+                                }
                               }}
                               className={s.taskInput}
                               autoFocus
