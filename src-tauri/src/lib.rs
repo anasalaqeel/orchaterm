@@ -9,6 +9,10 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+// Linux PRIMARY selection (middle-click paste buffer) — the clipboard-manager
+// plugin only handles the CLIPBOARD selection.
+mod primary_selection;
+
 // ── Windows process-tree kill via Job Object ──────────────────────────────────
 // `child.kill()` (TerminateProcess) ends only the shell PID — grandchildren
 // (e.g. a dev server the shell spawned) survive as orphans and keep their
@@ -1023,7 +1027,9 @@ pub fn run() {
             kill_pty,
             load_store,
             save_store,
-            write_file_path
+            write_file_path,
+            primary_selection::read_primary_selection,
+            primary_selection::write_primary_selection
         ])
         .setup(|_app| {
             #[cfg(target_os = "windows")]

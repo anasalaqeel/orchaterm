@@ -1,4 +1,5 @@
-﻿import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
+﻿import { invoke } from '@tauri-apps/api/core';
+import { writeText, readText } from '@tauri-apps/plugin-clipboard-manager';
 
 /**
  * Copies text to the clipboard using a multi-tier fallback strategy:
@@ -58,14 +59,42 @@ export async function readFromClipboard(): Promise<string> {
   try {
     const text = await readText();
     if (typeof text === 'string') return text;
-  } catch {
+  } catch (err) {
     // 2. Fall back to standard browser Clipboard API
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
         return await navigator.clipboard.readText();
       }
     } catch {}
+    console.warn('[clipboard] read failed on all backends:', err);
   }
 
   return '';
+}
+
+/**
+ * Reads the Linux PRIMARY selection (the middle-click paste buffer, set by
+ * merely selecting text). Returns '' off-Linux or when nothing is selected.
+ */
+export async function readPrimarySelection(): Promise<string> {
+  try {
+    const text = await invoke<string | null>('read_primary_selection');
+    return typeof text === 'string' ? text : '';
+  } catch (err) {
+    console.warn('[clipboard] primary selection read failed:', err);
+    return '';
+  }
+}
+
+/**
+ * Writes the Linux PRIMARY selection so other apps (and our own middle-click
+ * paste) see the text selected in this terminal. No-op off-Linux.
+ */
+export async function writePrimarySelection(text: string): Promise<void> {
+  if (!text) return;
+  try {
+    await invoke('write_primary_selection', { text });
+  } catch (err) {
+    console.warn('[clipboard] primary selection write failed:', err);
+  }
 }

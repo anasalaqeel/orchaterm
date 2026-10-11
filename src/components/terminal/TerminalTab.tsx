@@ -16,7 +16,13 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { copyToClipboard, readFromClipboard as pasteFromClipboard } from '../../utils/clipboard';
+import {
+  copyToClipboard,
+  readFromClipboard as pasteFromClipboard,
+  readPrimarySelection,
+  writePrimarySelection,
+} from '../../utils/clipboard';
+import { isLinux } from '../../utils/platform';
 import { css, cx } from '@emotion/css';
 import { Copy, Check, Search, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { useDashboard } from '../../context/DashboardContext';
@@ -385,19 +391,45 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       fitAddonRef.current = fitAddon;
 
       // ─ Mouse shortcuts ──────────────────────────────────────────────────
+      // Linux middle-click pastes the PRIMARY selection — the last text
+      // selected anywhere on the system, not just in this terminal.
+      let primarySelTimer: ReturnType<typeof setTimeout> | null = null;
+      const pasteSelectionOrClipboard = () => {
+        const selection = term.getSelection();
+        if (selection) {
+          safePaste(selection);
+        } else {
+          pasteFromClipboard()
+            .then((text) => {
+              if (text) safePaste(text);
+            })
+            .catch(() => {});
+        }
+      };
       const onMouseUp = (e: MouseEvent) => {
         if (e.button === 1) {
           e.preventDefault();
-          const selection = term.getSelection();
-          if (selection) {
-            safePaste(selection);
-          } else {
-            pasteFromClipboard()
-              .then((text) => {
-                if (text) safePaste(text);
-              })
-              .catch(() => {});
+          if (isLinux) {
+            // A pending debounce means the freshest selection is the local one.
+            if (primarySelTimer) {
+              clearTimeout(primarySelTimer);
+              primarySelTimer = null;
+              const selection = term.getSelection();
+              if (selection) {
+                safePaste(selection);
+                return;
+              }
+            }
+            readPrimarySelection().then((primary) => {
+              if (primary) {
+                safePaste(primary);
+              } else {
+                pasteSelectionOrClipboard();
+              }
+            });
+            return;
           }
+          pasteSelectionOrClipboard();
         }
       };
       const onMouseDown = (e: MouseEvent) => {
@@ -413,8 +445,16 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
       term.element?.addEventListener('mousedown', onMouseDown);
       term.element?.addEventListener('contextmenu', onContextMenu);
 
+      // Linux terminals set the system PRIMARY selection as the user selects
+      // text, so middle-click paste works in — and out of — this terminal.
       const selDispose = term.onSelectionChange(() => {
         setHasSelection(term.hasSelection());
+        if (!isLinux) return;
+        if (primarySelTimer) clearTimeout(primarySelTimer);
+        primarySelTimer = setTimeout(() => {
+          const selection = term.getSelection();
+          if (selection) void writePrimarySelection(selection);
+        }, 250);
       });
 
       const bellDispose = term.onBell(() => {
@@ -866,6 +906,7 @@ export const TerminalTab = forwardRef<TerminalTabHandle, TerminalTabProps>(
         term.element?.removeEventListener('mousedown', onMouseDown);
         term.element?.removeEventListener('contextmenu', onContextMenu);
         dataDispose.dispose();
+        if (primarySelTimer) clearTimeout(primarySelTimer);
         selDispose.dispose();
         bellDispose.dispose();
         if (unlisten) unlisten();

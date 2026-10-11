@@ -30,7 +30,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 portable-pty = "0.9"
 tauri-plugin-http = { version = "2", features = ["unsafe-headers"] }
-tauri-plugin-clipboard-manager = "~2.0.0"
+tauri-plugin-clipboard-manager = "~2.3.3"
 # WebdriverIO E2E test plugins — built only when the `wdio` feature is enabled
 # (`bun run e2e:build` passes `--features wdio`). Default builds, including
 # release, carry no test surface.
@@ -39,6 +39,12 @@ tauri-plugin-wdio-webdriver = { version = "1", optional = true }
 
 [features]
 wdio = ["dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# PRIMARY selection (middle-click paste) — the clipboard-manager plugin/arboard
+# only handle the CLIPBOARD selection, so we talk to PRIMARY directly.
+wl-clipboard-rs = "0.9"
+x11-clipboard = "0.9"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 webview2-com = "0.38"
