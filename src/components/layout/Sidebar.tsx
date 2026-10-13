@@ -22,6 +22,7 @@ import {
 import logoDark from '../../assets/logos/icon-large-dark.svg';
 import logoLight from '../../assets/logos/icon-large-light.svg';
 import { DevBadge } from '../ui/DevBadge';
+import { useAppVersion } from '../../hooks/useAppVersion';
 
 const NAV_ITEMS = [
   { to: '/logs', label: 'Task Log', icon: History },
@@ -49,6 +50,7 @@ export function Sidebar() {
 
   const navigate = useNavigate();
   const onDashboard = useMatch('/');
+  const appVersion = useAppVersion();
 
   const [hoveredWsId, setHoveredWsId] = useState<string | null>(null);
   const [hoveredWsRect, setHoveredWsRect] = useState<DOMRect | null>(null);
@@ -542,7 +544,8 @@ export function Sidebar() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
               >
-                v0.1.1{import.meta.env.DEV ? '-dev' : ''}
+                v{appVersion}
+                {import.meta.env.DEV ? '-dev' : ''}
               </motion.span>
             )}
           </AnimatePresence>

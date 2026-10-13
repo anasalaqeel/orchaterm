@@ -26,6 +26,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The pushed tag is the single source of truth for the release version:
+      # stamp it into package.json / tauri.conf.json / Cargo.toml so builds,
+      # artifacts, and the in-app version display all match the tag. Cuts a
+      # release with just `git tag vX.Y.Z && git push origin vX.Y.Z`.
+      - name: Derive app version from tag
+        run: |
+          npm pkg set version="${GITHUB_REF_NAME#v}"
+          node scripts/sync-version.js
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:

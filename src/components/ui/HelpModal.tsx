@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Input } from './Input';
+import { useAppVersion } from '../../hooks/useAppVersion';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -301,6 +302,7 @@ const SECTIONS: Section[] = [
 export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSection, setActiveSection] = useState('shortcuts');
+  const appVersion = useAppVersion();
 
   useEffect(() => {
     if (isOpen) {
@@ -508,7 +510,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 Press <kbd>Escape</kbd> or click outside to close
               </span>
               <span className={s.footerVersion}>
-                Orchaterm v0.1.1{import.meta.env.DEV ? ' (Development)' : ''}
+                Orchaterm v{appVersion}
+                {import.meta.env.DEV ? ' (Development)' : ''}
               </span>
             </div>
           </motion.div>
