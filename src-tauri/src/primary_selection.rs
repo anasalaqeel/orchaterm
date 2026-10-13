@@ -79,7 +79,7 @@ mod linux {
     fn read_wayland() -> Result<Option<String>, String> {
         use wl_clipboard_rs::paste::{get_contents, ClipboardType, MimeType, Seat};
         let (mut reader, _mime) =
-            get_contents(ClipboardType::Primary, Seat::All, MimeType::Text)
+            get_contents(ClipboardType::Primary, Seat::Unspecified, MimeType::Text)
                 .map_err(|e| e.to_string())?;
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
@@ -119,6 +119,7 @@ mod linux {
                 Some(Ok(None)) => Ok(None),
                 Some(Err(w)) => Err(format!("wayland: {w}; x11: {x11_err}")),
                 None => Err(x11_err),
+                Some(Ok(Some(text))) => Ok(Some(text)),
             },
         }
     }
