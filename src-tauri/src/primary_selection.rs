@@ -46,7 +46,7 @@ mod linux {
         std::env::var_os("WAYLAND_DISPLAY").is_some()
     }
 
-    fn clean(bytes: Vec<u8>) -> Option<String> {
+    pub(crate) fn clean(bytes: Vec<u8>) -> Option<String> {
         let text = String::from_utf8_lossy(&bytes);
         let trimmed = text.trim_end_matches('\0');
         (!trimmed.is_empty()).then(|| trimmed.to_string())
